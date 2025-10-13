@@ -1,0 +1,21 @@
+{
+  "name": "@hiscrm-im/shared",
+  "version": "1.0.0",
+  "description": "共享代码 - 协议定义、模型、工具函数",
+  "main": "index.js",
+  "scripts": {
+    "test": "jest"
+  },
+  "keywords": ["shared", "protocol", "models"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

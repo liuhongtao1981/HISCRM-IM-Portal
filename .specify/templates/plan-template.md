@@ -31,7 +31,17 @@
 
 *GATE: Must pass before Phase 0 research. Re-check after Phase 1 design.*
 
-[Gates determined based on constitution file]
+本功能设计必须符合以下宪章原则:
+
+- [ ] **进程隔离架构**: 确认新功能如何适配主控-Worker架构,是否需要新的Worker类型
+- [ ] **主控-Worker通信协议**: 确认通信接口的契约定义和版本控制
+- [ ] **界面简洁美观原则**: 如涉及UI,确认是否符合设计规范和响应式要求
+- [ ] **Worker可扩展性**: 确认Worker的注册、发现和热插拔机制
+- [ ] **测试优先**: 确认TDD流程,包括进程隔离和故障恢复测试
+- [ ] **可观测性**: 确认日志、指标、追踪和监控的实现方案
+- [ ] **版本控制与兼容性**: 确认版本策略和向后兼容性保证
+
+如有违反宪章原则的设计,必须在"复杂性跟踪"表格中记录理由。
 
 ## Project Structure
 
@@ -89,6 +99,43 @@ api/
 
 ios/ or android/
 └── [platform-specific structure: feature modules, UI flows, platform tests]
+
+# [REMOVE IF UNUSED] Option 4: Master-Worker Architecture (when "主控" + "worker" detected)
+master/
+├── src/
+│   ├── worker_manager/      # Worker进程管理
+│   ├── scheduler/           # 任务调度
+│   ├── monitor/             # 监控和健康检查
+│   ├── communication/       # 通信协议实现
+│   └── api/                 # 主控API
+└── tests/
+
+workers/
+├── worker_type1/            # 各类型Worker独立目录
+│   ├── src/
+│   │   ├── handlers/        # 任务处理器
+│   │   ├── communication/   # 通信客户端
+│   │   └── services/
+│   └── tests/
+├── worker_type2/
+└── ...
+
+shared/
+├── protocol/                # 通信协议定义
+├── contracts/               # 接口契约
+└── common/                  # 共享工具库
+
+ui/
+├── src/
+│   ├── components/          # UI组件
+│   ├── pages/
+│   └── services/
+└── tests/
+
+tests/
+├── integration/             # 主控-Worker集成测试
+├── process_isolation/       # 进程隔离测试
+└── fault_recovery/          # 故障恢复测试
 ```
 
 **Structure Decision**: [Document the selected structure and reference the real

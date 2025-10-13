@@ -1,0 +1,30 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(dir:*)",
+      "Read(//e/dev/workspaces/HisCrm-IM/specs/001-worker/**)",
+      "Bash(powershell:*)",
+      "WebSearch",
+      "Bash(npm test:*)",
+      "Bash(npm install)",
+      "Bash(pnpm install:*)",
+      "Bash(jest:*)",
+      "Bash(npx jest:*)",
+      "Bash(pnpm test:*)",
+      "Bash(cat:*)",
+      "Bash(curl:*)",
+      "Bash(python:*)",
+      "Bash(node:*)",
+      "Bash(netstat:*)",
+      "Bash(findstr:*)",
+      "Bash(taskkill:*)",
+      "Bash(npm start)",
+      "Bash(npm install:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(find:*)",
+      "Bash(powershell.exe:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

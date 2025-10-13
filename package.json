@@ -1,0 +1,30 @@
+{
+  "name": "hiscrm-im",
+  "version": "1.0.0",
+  "description": "社交媒体账户监控与通知系统 - Monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "install:all": "pnpm install",
+    "dev:master": "pnpm --filter @hiscrm-im/master dev",
+    "dev:worker": "pnpm --filter @hiscrm-im/worker dev",
+    "dev:desktop": "pnpm --filter @hiscrm-im/desktop-client dev",
+    "test": "pnpm -r test",
+    "lint": "eslint packages --ext .js,.jsx",
+    "format": "prettier --write \"packages/**/*.{js,jsx,json}\""
+  },
+  "keywords": ["social-media", "monitoring", "notification", "master-worker"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "pnpm": "^8.14.0",
+    "eslint": "^8.56.0",
+    "prettier": "^3.1.1"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "pnpm": ">=8.0.0"
+  }
+}

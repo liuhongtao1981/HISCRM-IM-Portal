@@ -66,6 +66,15 @@ Examples of foundational tasks (adjust based on your project):
 - [ ] T008 Configure error handling and logging infrastructure
 - [ ] T009 Setup environment configuration management
 
+**For Master-Worker Architecture** (if applicable):
+
+- [ ] T010 [P] Implement master-worker communication protocol in shared/protocol/
+- [ ] T011 [P] Setup worker process lifecycle management in master/src/worker_manager/
+- [ ] T012 [P] Implement health check and heartbeat mechanism in master/src/monitor/
+- [ ] T013 [P] Setup worker registration and discovery in master/src/worker_manager/
+- [ ] T014 [P] Configure structured logging for distributed tracing
+- [ ] T015 Setup worker base class/interface in shared/common/
+
 **Checkpoint**: Foundation ready - user story implementation can now begin in parallel
 
 ---

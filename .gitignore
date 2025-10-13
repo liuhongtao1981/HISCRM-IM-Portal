@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+package-lock.json
+pnpm-lock.yaml
+
+# Build output
+dist/
+build/
+*.tsbuildinfo
+
+# Data files
+packages/*/data/*.db
+packages/*/data/*.db-shm
+packages/*/data/*.db-wal
+packages/*/data/backups/
+
+# Logs
+packages/*/logs/*.log
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Testing
+coverage/
+.nyc_output/
+
+# Electron
+packages/desktop-client/out/
+
+# Mobile
+packages/mobile-client/android/app/build/
+packages/mobile-client/ios/build/
+packages/mobile-client/.expo/
+
+# Temporary files
+*.tmp
+.cache/

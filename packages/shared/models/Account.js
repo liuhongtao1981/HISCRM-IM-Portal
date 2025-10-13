@@ -1,0 +1,205 @@
+/**
+ * Account模型
+ * T033: 账户模型定义和加密工具
+ */
+
+const crypto = require('crypto');
+const { v4: uuidv4 } = require('uuid');
+
+// 加密算法配置
+const ALGORITHM = 'aes-256-cbc';
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-32-character-key-change-me!!'; // 必须是32字符
+const IV_LENGTH = 16; // AES block size
+
+/**
+ * 加密凭证数据
+ * @param {object} credentials - 凭证对象
+ * @returns {string} 加密后的Base64字符串
+ */
+function encryptCredentials(credentials) {
+  if (!credentials || typeof credentials !== 'object') {
+    throw new Error('Credentials must be an object');
+  }
+
+  const credentialsStr = JSON.stringify(credentials);
+  const iv = crypto.randomBytes(IV_LENGTH);
+  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
+
+  const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
+  let encrypted = cipher.update(credentialsStr, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+
+  // 将IV和加密数据组合
+  return iv.toString('hex') + ':' + encrypted;
+}
+
+/**
+ * 解密凭证数据
+ * @param {string} encryptedCredentials - 加密的凭证字符串
+ * @returns {object} 解密后的凭证对象
+ */
+function decryptCredentials(encryptedCredentials) {
+  if (!encryptedCredentials || typeof encryptedCredentials !== 'string') {
+    throw new Error('Encrypted credentials must be a string');
+  }
+
+  const parts = encryptedCredentials.split(':');
+  if (parts.length !== 2) {
+    throw new Error('Invalid encrypted credentials format');
+  }
+
+  const iv = Buffer.from(parts[0], 'hex');
+  const encrypted = parts[1];
+  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
+
+  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return JSON.parse(decrypted);
+}
+
+/**
+ * Account类
+ */
+class Account {
+  constructor(data = {}) {
+    this.id = data.id || `acc-${uuidv4()}`;
+    this.platform = data.platform;
+    this.account_name = data.account_name;
+    this.account_id = data.account_id;
+    this.credentials = data.credentials; // 未加密的凭证对象
+    this.status = data.status || 'active';
+    this.monitor_interval = data.monitor_interval || 30;
+    this.last_check_time = data.last_check_time || null;
+    this.assigned_worker_id = data.assigned_worker_id || null;
+    this.created_at = data.created_at || Math.floor(Date.now() / 1000);
+    this.updated_at = data.updated_at || Math.floor(Date.now() / 1000);
+  }
+
+  /**
+   * 验证账户数据
+   * @returns {{valid: boolean, errors: string[]}}
+   */
+  validate() {
+    const errors = [];
+
+    if (!this.platform) {
+      errors.push('Platform is required');
+    } else if (!['douyin'].includes(this.platform)) {
+      errors.push('Unsupported platform: ' + this.platform);
+    }
+
+    if (!this.account_name || this.account_name.length < 1 || this.account_name.length > 50) {
+      errors.push('Account name must be 1-50 characters');
+    }
+
+    if (!this.account_id) {
+      errors.push('Account ID is required');
+    }
+
+    if (!this.credentials || typeof this.credentials !== 'object') {
+      errors.push('Credentials must be an object');
+    }
+
+    if (this.monitor_interval < 10 || this.monitor_interval > 300) {
+      errors.push('Monitor interval must be 10-300 seconds');
+    }
+
+    if (!['active', 'paused', 'error', 'expired'].includes(this.status)) {
+      errors.push('Invalid status: ' + this.status);
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+    };
+  }
+
+  /**
+   * 转换为数据库行格式
+   * @returns {object} 数据库行对象
+   */
+  toDbRow() {
+    return {
+      id: this.id,
+      platform: this.platform,
+      account_name: this.account_name,
+      account_id: this.account_id,
+      credentials: encryptCredentials(this.credentials), // 加密
+      status: this.status,
+      monitor_interval: this.monitor_interval,
+      last_check_time: this.last_check_time,
+      assigned_worker_id: this.assigned_worker_id,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
+    };
+  }
+
+  /**
+   * 从数据库行创建Account实例
+   * @param {object} row - 数据库行
+   * @returns {Account}
+   */
+  static fromDbRow(row) {
+    const data = { ...row };
+
+    // 解密凭证
+    if (data.credentials) {
+      try {
+        data.credentials = decryptCredentials(data.credentials);
+      } catch (error) {
+        console.error('Failed to decrypt credentials:', error);
+        data.credentials = null;
+      }
+    }
+
+    return new Account(data);
+  }
+
+  /**
+   * 转换为安全的JSON格式（不包含敏感信息）
+   * @returns {object}
+   */
+  toSafeJSON() {
+    return {
+      id: this.id,
+      platform: this.platform,
+      account_name: this.account_name,
+      account_id: this.account_id,
+      status: this.status,
+      monitor_interval: this.monitor_interval,
+      last_check_time: this.last_check_time,
+      assigned_worker_id: this.assigned_worker_id,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
+      // 注意: 不包含credentials
+    };
+  }
+
+  /**
+   * 转换为JSON格式（包含加密的凭证）
+   * @returns {object}
+   */
+  toJSON() {
+    return {
+      id: this.id,
+      platform: this.platform,
+      account_name: this.account_name,
+      account_id: this.account_id,
+      credentials: this.credentials ? encryptCredentials(this.credentials) : null,
+      status: this.status,
+      monitor_interval: this.monitor_interval,
+      last_check_time: this.last_check_time,
+      assigned_worker_id: this.assigned_worker_id,
+      created_at: this.created_at,
+      updated_at: this.updated_at,
+    };
+  }
+}
+
+module.exports = {
+  Account,
+  encryptCredentials,
+  decryptCredentials,
+};
