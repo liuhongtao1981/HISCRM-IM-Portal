@@ -32,6 +32,41 @@
 - **进程管理**: PM2 / child_process
 - **测试**: Jest 29.x + Supertest + Playwright
 
+### Worker数据隔离机制
+
+每个Worker进程拥有独立的数据目录,避免并发冲突:
+
+```
+data/browser/
+├── worker-1/                    # Worker-1 专属目录
+│   ├── account-123_state.json  # 账户登录状态
+│   ├── account-456_state.json
+│   └── cache/                  # 监控缓存
+│
+├── worker-2/                    # Worker-2 专属目录
+│   ├── account-789_state.json
+│   ├── account-101_state.json
+│   └── cache/
+│
+└── worker-3/                    # Worker-3 专属目录
+    ├── account-202_state.json
+    └── cache/
+
+配置示例 (packages/worker/src/index.js):
+  dataDir: `./data/browser/${WORKER_ID}`  // 基于Worker ID的目录隔离
+```
+
+**隔离优势**:
+- ✅ **零冲突**: 每个Worker独立存储,无文件竞争
+- ✅ **易调试**: 根据Worker ID快速定位数据
+- ✅ **易清理**: 可按Worker批量清理历史数据
+- ✅ **高性能**: 无文件锁开销,并发性能最优
+
+**注意事项**:
+- 同一账户在不同Worker需要分别登录
+- 账户迁移到其他Worker需要重新登录
+- 详见: [.docs/archive/IMPLEMENTATION_COMPLETE.md](.docs/archive/IMPLEMENTATION_COMPLETE.md)
+
 ## 📦 项目结构
 
 ```
@@ -109,12 +144,24 @@ pnpm test -- --coverage
 
 ## 📖 文档
 
+### 核心文档
 - [功能规格](./specs/001-worker/spec.md)
 - [实施计划](./specs/001-worker/plan.md)
 - [数据模型](./specs/001-worker/data-model.md)
+- [数据库字典](./DATABASE_DICTIONARY.md) - **完整的数据库表结构和字段说明 (1200行)**
 - [API契约](./specs/001-worker/contracts/)
 - [快速验证指南](./specs/001-worker/quickstart.md)
 - [任务列表](./specs/001-worker/tasks.md)
+
+### 使用指南
+- [代理配置指南](./PROXY_USAGE_GUIDE.md)
+- [快速启动指南](./QUICKSTART.md)
+
+### 归档文档
+- [实施完成报告](./.docs/archive/IMPLEMENTATION_COMPLETE.md) - Worker数据隔离实施
+- [错误处理实施](./.docs/archive/ERROR_HANDLING_IMPLEMENTATION_COMPLETE.md) - 完整的错误处理系统
+- [工作总结](./.docs/archive/WORK_SUMMARY.md) - 项目开发总结
+- [更多归档文档...](./.docs/archive/)
 
 ## 🔒 安全性
 
