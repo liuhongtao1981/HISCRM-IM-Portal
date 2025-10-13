@@ -22,7 +22,8 @@
       "Bash(npm install:*)",
       "Bash(npm uninstall:*)",
       "Bash(find:*)",
-      "Bash(powershell.exe:*)"
+      "Bash(powershell.exe:*)",
+      "Bash(tree:*)"
     ],
     "deny": [],
     "ask": []

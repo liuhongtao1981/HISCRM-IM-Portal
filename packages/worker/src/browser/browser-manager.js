@@ -7,6 +7,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const FingerprintRandomizer = require('./fingerprint-randomizer');
 
 const logger = createLogger('browser-manager');
 
@@ -139,6 +140,9 @@ class BrowserManager {
 
       // 反检测措施
       await this.applyAntiDetection(context);
+
+      // 应用指纹随机化(每个账户独立的指纹)
+      await FingerprintRandomizer.applyRandomFingerprint(context, accountId);
 
       // 保存上下文引用
       this.contexts.set(accountId, context);

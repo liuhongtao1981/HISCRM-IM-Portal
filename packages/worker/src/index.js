@@ -10,7 +10,7 @@ const SocketClient = require('./communication/socket-client');
 const WorkerRegistration = require('./communication/registration');
 const HeartbeatSender = require('./communication/heartbeat');
 const TaskRunner = require('./handlers/task-runner');
-const BrowserManager = require('./browser/browser-manager');
+const { getBrowserManager, getArchitectureInfo } = require('./config/browser-config');
 const DouyinLoginHandler = require('./browser/douyin-login-handler');
 const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE } = require('@hiscrm-im/shared/protocol/messages');
 
@@ -43,6 +43,15 @@ async function start() {
     logger.info(`║  Master: ${MASTER_HOST}:${MASTER_PORT}${' '.repeat(21 - MASTER_HOST.length - MASTER_PORT.toString().length)} ║`);
     logger.info(`╚═══════════════════════════════════════════╝`);
 
+    // 显示浏览器架构信息
+    const archInfo = getArchitectureInfo();
+    logger.info(`\n🔧 浏览器架构: ${archInfo.name}`);
+    logger.info(`   ${archInfo.description}`);
+    logger.info(`   指纹隔离: ${archInfo.fingerprint_isolation}`);
+    logger.info(`   内存占用: ${archInfo.memory_per_account}`);
+    logger.info(`   启动时间: ${archInfo.startup_time}`);
+    logger.info(`   建议最大账户数: ${archInfo.max_recommended_accounts}\n`);
+
     // 1. 初始化Socket.IO客户端
     socketClient = new SocketClient(MASTER_HOST, MASTER_PORT, WORKER_ID);
     await socketClient.connect();
@@ -65,8 +74,8 @@ async function start() {
     heartbeatSender.start();
     logger.info('✓ Heartbeat sender started');
 
-    // 4. 初始化浏览器管理器
-    browserManager = new BrowserManager(WORKER_ID, {
+    // 4. 初始化浏览器管理器 (多Browser架构)
+    browserManager = getBrowserManager(WORKER_ID, {
       headless: process.env.HEADLESS !== 'false', // 默认 headless
       dataDir: `./data/browser/${WORKER_ID}`,  // Worker 专属目录,实现数据隔离
     });
