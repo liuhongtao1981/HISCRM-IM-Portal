@@ -30,8 +30,39 @@ class MonitorTask {
 
     // 任务状态
     this.isRunning = false;
-    this.intervalId = null;
+    this.timeoutId = null;
     this.executionCount = 0;
+
+    // 随机间隔配置 (15-30秒)
+    this.minInterval = 15;  // 最小间隔15秒
+    this.maxInterval = 30;  // 最大间隔30秒
+  }
+
+  /**
+   * 生成随机间隔时间 (15-30秒)
+   * @returns {number} 随机间隔时间(毫秒)
+   */
+  getRandomInterval() {
+    const randomSeconds = this.minInterval + Math.random() * (this.maxInterval - this.minInterval);
+    return Math.floor(randomSeconds * 1000);
+  }
+
+  /**
+   * 调度下一次执行
+   */
+  scheduleNext() {
+    if (!this.isRunning) {
+      return;
+    }
+
+    const nextInterval = this.getRandomInterval();
+    const nextIntervalSec = (nextInterval / 1000).toFixed(1);
+
+    logger.info(`Scheduling next execution in ${nextIntervalSec}s for account ${this.account.id}`);
+
+    this.timeoutId = setTimeout(() => {
+      this.execute();
+    }, nextInterval);
   }
 
   /**
@@ -45,7 +76,7 @@ class MonitorTask {
 
     logger.info(`Starting monitor task for account ${this.account.account_name}`, {
       account_id: this.account.id,
-      interval: this.account.monitor_interval,
+      interval_range: `${this.minInterval}-${this.maxInterval}s (random)`,
     });
 
     // 初始化爬虫
@@ -58,16 +89,13 @@ class MonitorTask {
 
     this.isRunning = true;
 
-    // 立即执行一次
-    this.execute();
+    // 立即执行第一次
+    await this.execute();
 
-    // 设置定时执行
-    const intervalMs = this.account.monitor_interval * 1000;
-    this.intervalId = setInterval(() => {
-      this.execute();
-    }, intervalMs);
+    // 调度下一次执行 (使用随机间隔)
+    this.scheduleNext();
 
-    logger.info(`Monitor task started with ${this.account.monitor_interval}s interval`);
+    logger.info(`Monitor task started with random interval ${this.minInterval}-${this.maxInterval}s`);
   }
 
   /**
@@ -82,9 +110,10 @@ class MonitorTask {
 
     this.isRunning = false;
 
-    if (this.intervalId) {
-      clearInterval(this.intervalId);
-      this.intervalId = null;
+    // 清除定时器
+    if (this.timeoutId) {
+      clearTimeout(this.timeoutId);
+      this.timeoutId = null;
     }
 
     // 清理爬虫资源
@@ -155,6 +184,9 @@ class MonitorTask {
     } catch (error) {
       logger.error('Monitor execution failed:', error);
       // TODO: T060 - 错误处理逻辑(重试、报警等)
+    } finally {
+      // 执行完成后调度下一次执行 (无论成功或失败)
+      this.scheduleNext();
     }
   }
 
