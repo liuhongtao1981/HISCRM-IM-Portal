@@ -9,7 +9,7 @@ build/
 *.tsbuildinfo
 
 # Data files
-packages/*/data/*.db
+#packages/*/data/*.db
 packages/*/data/*.db-shm
 packages/*/data/*.db-wal
 packages/*/data/backups/
