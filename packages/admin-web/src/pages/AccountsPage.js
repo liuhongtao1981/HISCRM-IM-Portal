@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LoginOutlined } from '@ant-design/icons';
 import { accountsAPI, workersAPI } from '../services/api';
-import { useSocket } from '../services/socketContext';
+import { useSocketContext } from '../services/socketContext';
 
 const { Option } = Select;
 
@@ -14,7 +14,7 @@ const AccountsPage = () => {
   const [editingAccount, setEditingAccount] = useState(null);
   const [form] = Form.useForm();
 
-  const { startLogin } = useSocket();
+  const { startLogin } = useSocketContext();
 
   // 加载账户列表
   const loadAccounts = async () => {
@@ -251,9 +251,9 @@ const AccountsPage = () => {
           <Form.Item
             name="account_id"
             label="账户ID"
-            rules={[{ required: true, message: '请输入账户ID' }]}
+            tooltip="可选，留空将自动生成临时ID，登录后自动更新为真实ID"
           >
-            <Input placeholder="输入账户ID" />
+            <Input placeholder="选填，留空将自动生成" />
           </Form.Item>
 
           <Form.Item name="status" label="状态" initialValue="active">

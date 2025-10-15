@@ -84,20 +84,24 @@ function createAccountsRouter(db, accountAssigner) {
     try {
       const { platform, account_name, account_id, credentials, monitor_interval } = req.body;
 
-      // 验证必填字段
-      if (!platform || !account_name || !account_id || !credentials) {
+      // 验证必填字段（只需要 platform 和 account_name）
+      if (!platform || !account_name) {
         return res.status(400).json({
           success: false,
-          error: 'Missing required fields: platform, account_name, account_id, credentials',
+          error: 'Missing required fields: platform, account_name',
         });
       }
 
-      // 创建账户对象
+      // 如果没有提供 account_id，自动生成临时ID
+      // 格式: temp_平台_时间戳_随机码
+      const finalAccountId = account_id || `temp_${platform}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+
+      // 创建账户对象（credentials 和 account_id 都可选）
       const account = new Account({
         platform,
         account_name,
-        account_id,
-        credentials,
+        account_id: finalAccountId,
+        credentials: credentials || {},  // 默认空对象，登录后更新
         monitor_interval: monitor_interval || 30,
         status: 'active',
       });

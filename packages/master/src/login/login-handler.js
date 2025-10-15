@@ -124,8 +124,9 @@ class LoginHandler {
    * @param {string} sessionId - 会话ID
    * @param {Object} cookies - 登录后的 cookies (可选)
    * @param {number} cookiesValidUntil - Cookies 有效期时间戳 (可选)
+   * @param {string} realAccountId - 从平台获取的真实账户ID (可选)
    */
-  handleLoginSuccess(sessionId, cookies = null, cookiesValidUntil = null) {
+  handleLoginSuccess(sessionId, cookies = null, cookiesValidUntil = null, realAccountId = null) {
     try {
       const session = this.getSession(sessionId);
       if (!session) {
@@ -143,15 +144,37 @@ class LoginHandler {
       `);
       sessionStmt.run(now, sessionId);
 
-      // 更新账户登录状态
-      const accountStmt = this.db.prepare(`
+      // 检查当前账户ID是否为临时ID
+      const account = this.db.prepare(`SELECT account_id FROM accounts WHERE id = ?`).get(session.account_id);
+      const isTemporaryId = account && account.account_id.startsWith('temp_');
+
+      // 更新账户登录状态和凭证
+      let updateSql = `
         UPDATE accounts
         SET login_status = 'logged_in',
             last_login_time = ?,
-            cookies_valid_until = ?
-        WHERE id = ?
-      `);
-      accountStmt.run(now, cookiesValidUntil || now + 86400 * 7, session.account_id);
+            cookies_valid_until = ?,
+            credentials = ?
+      `;
+
+      const params = [
+        now,
+        cookiesValidUntil || now + 86400 * 7,
+        cookies ? JSON.stringify({ cookies }) : '{}'
+      ];
+
+      // 如果提供了真实ID且当前是临时ID，则更新 account_id
+      if (realAccountId && isTemporaryId) {
+        updateSql += ', account_id = ?';
+        params.push(realAccountId);
+        logger.info(`Updating temporary account_id to real ID: ${account.account_id} -> ${realAccountId}`);
+      }
+
+      updateSql += ' WHERE id = ?';
+      params.push(session.account_id);
+
+      const accountStmt = this.db.prepare(updateSql);
+      accountStmt.run(...params);
 
       // 更新缓存
       session.status = 'success';

@@ -53,7 +53,13 @@ const ProxiesPage = () => {
       const values = await form.validateFields();
 
       if (editingProxy) {
-        await proxiesAPI.updateProxy(editingProxy.id, values);
+        // 编辑模式：如果密码为空且原代理有密码，则不更新密码字段
+        const updateData = { ...values };
+        if (!updateData.password && editingProxy.has_password) {
+          // 删除密码字段，保持原密码不变
+          delete updateData.password;
+        }
+        await proxiesAPI.updateProxy(editingProxy.id, updateData);
         message.success('代理更新成功');
       } else {
         await proxiesAPI.createProxy(values);
@@ -275,8 +281,18 @@ const ProxiesPage = () => {
             <Input placeholder="如果需要认证，请输入用户名" />
           </Form.Item>
 
-          <Form.Item name="password" label="密码">
-            <Input.Password placeholder="如果需要认证，请输入密码" />
+          <Form.Item
+            name="password"
+            label="密码"
+            tooltip={editingProxy && editingProxy.has_password ? "留空保持原密码不变" : null}
+          >
+            <Input.Password
+              placeholder={
+                editingProxy && editingProxy.has_password
+                  ? "留空保持原密码，输入新密码将覆盖"
+                  : "如果需要认证，请输入密码"
+              }
+            />
           </Form.Item>
 
           <Form.Item name="country" label="国家">

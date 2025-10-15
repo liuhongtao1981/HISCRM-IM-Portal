@@ -3,13 +3,12 @@ import { Card, Row, Col, Statistic, Space, Badge } from 'antd';
 import {
   UserOutlined,
   ClusterOutlined,
-  MessageOutlined,
   GlobalOutlined,
 } from '@ant-design/icons';
-import { useSocket } from '../services/socketContext';
+import { useSocketContext } from '../services/socketContext';
 
 const Dashboard = () => {
-  const { connected, systemStatus, requestSystemStatus } = useSocket();
+  const { connected, systemStatus, requestSystemStatus } = useSocketContext();
 
   useEffect(() => {
     // 初始加载

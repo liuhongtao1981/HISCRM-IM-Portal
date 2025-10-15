@@ -1,10 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Table, Tag, Space, Button, Tooltip } from 'antd';
-import { SyncOutlined, EyeOutlined } from '@ant-design/icons';
+import { SyncOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
-import { useSocket } from '../services/socketContext';
+import { useSocketContext } from '../services/socketContext';
 import QRCodeModal from '../components/QRCodeModal';
 
 dayjs.extend(relativeTime);
@@ -16,7 +16,7 @@ const LoginManagementPage = () => {
     loginSessions,
     qrCodeData,
     requestLoginSessions,
-  } = useSocket();
+  } = useSocketContext();
 
   const [qrModalVisible, setQRModalVisible] = useState(false);
 

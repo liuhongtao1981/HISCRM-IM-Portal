@@ -51,8 +51,13 @@ let messageReceiver;
 let sessionManager;
 let notificationBroadcaster;
 let notificationQueue;
+let workerNamespace;
+let clientNamespace;
 let adminNamespace;
 let loginHandler;
+let workerLifecycleManager;
+let workerConfigDAO;
+let workerRuntimeDAO;
 
 // API路由
 app.get('/api/v1/status', (req, res) => {
@@ -218,12 +223,14 @@ async function start() {
       onClientDisconnect: (socket) => handleClientDisconnect(socket),
     };
 
-    const { workerNamespace, clientNamespace, adminNamespace: adminNs } = initSocketServer(
+    const socketNamespaces = initSocketServer(
       server,
       tempHandlers,
       masterServer
     );
-    adminNamespace = adminNs;
+    workerNamespace = socketNamespaces.workerNamespace;
+    clientNamespace = socketNamespaces.clientNamespace;
+    adminNamespace = socketNamespaces.adminNamespace;
     logger.info('Socket.IO server initialized');
 
     // 5. 初始化登录管理器
@@ -274,6 +281,19 @@ async function start() {
     accountAssigner = new AccountAssigner(db, workerRegistry, taskScheduler);
     logger.info('Account assigner initialized');
 
+    // 10.1 初始化 Worker 生命周期管理器
+    const WorkerConfigDAO = require('./database/worker-config-dao');
+    const WorkerRuntimeDAO = require('./database/worker-runtime-dao');
+    const WorkerLifecycleManager = require('./worker_manager/lifecycle-manager');
+
+    workerConfigDAO = new WorkerConfigDAO(db);
+    workerRuntimeDAO = new WorkerRuntimeDAO(db);
+    workerLifecycleManager = new WorkerLifecycleManager(workerConfigDAO, workerRuntimeDAO);
+
+    // 初始化生命周期管理器（启动自动启动的 Worker）
+    await workerLifecycleManager.initialize();
+    logger.info('Worker lifecycle manager initialized');
+
     // 11. 挂载API路由
     const createAccountsRouter = require('./api/routes/accounts');
     app.use('/api/v1/accounts', createAccountsRouter(db, accountAssigner));
@@ -290,6 +310,13 @@ async function start() {
     const createProxiesRouter = require('./api/routes/proxies');
     app.use('/api/v1/proxies', createProxiesRouter(db));
 
+    // Worker 生命周期管理路由
+    const createWorkerConfigsRouter = require('./api/routes/worker-configs');
+    app.use('/api/v1/worker-configs', createWorkerConfigsRouter(workerConfigDAO));
+
+    const createWorkerLifecycleRouter = require('./api/routes/worker-lifecycle');
+    app.use('/api/v1/worker-lifecycle', createWorkerLifecycleRouter(workerLifecycleManager));
+
     logger.info('API routes mounted');
 
     // 12. 启动HTTP服务器
@@ -304,32 +331,111 @@ async function start() {
     });
 
     // 13. 优雅退出处理
+    let isShuttingDown = false;
+    let forceShutdownTimer = null;
+
     const shutdown = async (signal) => {
+      if (isShuttingDown) {
+        logger.warn('Shutdown already in progress');
+        return;
+      }
+      isShuttingDown = true;
+
       logger.info(`${signal} received, shutting down gracefully`);
 
-      // 停止调度器和监控
-      if (taskScheduler) taskScheduler.stop();
-      if (heartbeatMonitor) heartbeatMonitor.stop();
-      if (notificationQueue) notificationQueue.stop();
-      if (loginHandler) loginHandler.stopCleanupTimer();
-
-      // 关闭HTTP服务器
-      server.close(() => {
-        logger.info('HTTP server closed');
-        if (db) db.close();
-        logger.info('Shutdown complete');
-        process.exit(0);
-      });
-
-      // 强制退出超时
-      setTimeout(() => {
+      // 启动强制退出超时（只在 shutdown 时启动）
+      forceShutdownTimer = setTimeout(() => {
         logger.error('Forced shutdown after timeout');
         process.exit(1);
       }, 10000);
+
+      try {
+        // 停止调度器和监控（阻止新任务）
+        logger.info('Stopping schedulers and monitors...');
+        if (taskScheduler) taskScheduler.stop();
+        if (heartbeatMonitor) heartbeatMonitor.stop();
+        if (notificationQueue) notificationQueue.stop();
+        if (loginHandler) loginHandler.stopCleanupTimer();
+
+        // 停止所有由 Master 管理的 Worker 进程
+        if (workerLifecycleManager) {
+          logger.info('Stopping worker lifecycle manager...');
+          await workerLifecycleManager.cleanup();
+          logger.info('Worker lifecycle manager stopped');
+        }
+
+        // 等待一小段时间让当前任务完成
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        // 关闭 Socket.IO 服务器
+        logger.info('Closing Socket.IO connections...');
+        if (workerNamespace) {
+          workerNamespace.disconnectSockets(true);
+        }
+        if (clientNamespace) {
+          clientNamespace.disconnectSockets(true);
+        }
+        if (adminNamespace) {
+          adminNamespace.disconnectSockets(true);
+        }
+
+        // 关闭HTTP服务器
+        logger.info('Closing HTTP server...');
+        await new Promise((resolve, reject) => {
+          server.close((err) => {
+            if (err) reject(err);
+            else resolve();
+          });
+        });
+        logger.info('HTTP server closed');
+
+        // 关闭数据库
+        if (db) {
+          logger.info('Closing database...');
+          db.close();
+          logger.info('Database closed');
+        }
+
+        // 清除强制退出定时器
+        if (forceShutdownTimer) {
+          clearTimeout(forceShutdownTimer);
+        }
+
+        logger.info('Shutdown complete');
+        process.exit(0);
+      } catch (error) {
+        logger.error('Error during shutdown:', error);
+        process.exit(1);
+      }
     };
 
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
+
+    // Windows 兼容性：监听 Ctrl+C
+    if (process.platform === 'win32') {
+      const readline = require('readline');
+      const rl = readline.createInterface({
+        input: process.stdin,
+        output: process.stdout
+      });
+
+      rl.on('SIGINT', () => {
+        logger.info('Received SIGINT from readline (Windows)');
+        shutdown('SIGINT (Windows)');
+      });
+    }
+
+    // 捕获未处理的错误
+    process.on('uncaughtException', (error) => {
+      logger.error('Uncaught Exception:', error);
+      shutdown('UNCAUGHT_EXCEPTION');
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+      shutdown('UNHANDLED_REJECTION');
+    });
   } catch (error) {
     logger.error('Failed to start master server:', error);
     process.exit(1);

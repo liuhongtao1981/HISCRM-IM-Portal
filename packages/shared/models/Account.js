@@ -94,11 +94,13 @@ class Account {
       errors.push('Account name must be 1-50 characters');
     }
 
+    // account_id 是可选的（可以是临时ID，登录后更新）
     if (!this.account_id) {
       errors.push('Account ID is required');
     }
 
-    if (!this.credentials || typeof this.credentials !== 'object') {
+    // credentials 可以是空对象（登录后更新）
+    if (this.credentials !== null && this.credentials !== undefined && typeof this.credentials !== 'object') {
       errors.push('Credentials must be an object');
     }
 

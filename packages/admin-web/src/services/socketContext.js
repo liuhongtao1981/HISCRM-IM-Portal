@@ -9,6 +9,15 @@ export const useSocket = () => {
   if (!context) {
     throw new Error('useSocket must be used within a SocketProvider');
   }
+  return context.socket; // 直接返回 socket 实例而不是整个 context
+};
+
+// 导出完整的 context hook (用于需要访问其他状态的组件)
+export const useSocketContext = () => {
+  const context = useContext(SocketContext);
+  if (!context) {
+    throw new Error('useSocketContext must be used within a SocketProvider');
+  }
   return context;
 };
 

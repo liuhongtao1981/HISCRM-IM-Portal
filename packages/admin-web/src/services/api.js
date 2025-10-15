@@ -24,8 +24,11 @@ api.interceptors.response.use(
     return response.data;
   },
   (error) => {
-    const errorMessage = error.response?.data?.error || error.message || '请求失败';
-    message.error(errorMessage);
+    // 如果请求配置中设置了 silent: true，则不显示错误消息
+    if (!error.config?.silent) {
+      const errorMessage = error.response?.data?.error || error.message || '请求失败';
+      message.error(errorMessage);
+    }
     return Promise.reject(error);
   }
 );
@@ -58,6 +61,22 @@ export const workersAPI = {
 
   // 获取 Worker 详情
   getWorker: (id) => api.get(`/workers/${id}`),
+
+  // Worker 配置管理
+  getWorkerConfigs: () => api.get('/worker-configs'),
+  createWorkerConfig: (data) => api.post('/worker-configs', data),
+  updateWorkerConfig: (id, data) => api.patch(`/worker-configs/${id}`, data),
+  deleteWorkerConfig: (id) => api.delete(`/worker-configs/${id}`),
+
+  // Worker 生命周期控制
+  startWorker: (id) => api.post(`/worker-lifecycle/${id}/start`),
+  stopWorker: (id) => api.post(`/worker-lifecycle/${id}/stop`),
+  restartWorker: (id) => api.post(`/worker-lifecycle/${id}/restart`),
+  getWorkerStatus: (id, silent = false) => api.get(`/worker-lifecycle/${id}/status`, { silent }),
+  getWorkerLogs: (id, params) => api.get(`/worker-lifecycle/${id}/logs`, { params }),
+  getWorkerHealth: (id) => api.get(`/worker-lifecycle/${id}/health`),
+  batchStartWorkers: (ids) => api.post('/worker-lifecycle/batch', { action: 'start', worker_ids: ids }),
+  batchStopWorkers: (ids) => api.post('/worker-lifecycle/batch', { action: 'stop', worker_ids: ids }),
 };
 
 // =========================
@@ -72,7 +91,7 @@ export const proxiesAPI = {
   createProxy: (data) => api.post('/proxies', data),
 
   // 更新代理
-  updateProxy: (id, data) => api.put(`/proxies/${id}`, data),
+  updateProxy: (id, data) => api.patch(`/proxies/${id}`, data),
 
   // 删除代理
   deleteProxy: (id) => api.delete(`/proxies/${id}`),

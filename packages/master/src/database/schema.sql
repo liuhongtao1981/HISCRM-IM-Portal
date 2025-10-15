@@ -12,8 +12,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   account_id TEXT NOT NULL,
   credentials TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active',
+  login_status TEXT DEFAULT 'not_logged_in',
   monitor_interval INTEGER DEFAULT 30,
   last_check_time INTEGER,
+  last_login_time INTEGER,
+  cookies_valid_until INTEGER,
   assigned_worker_id TEXT,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
@@ -21,6 +24,7 @@ CREATE TABLE IF NOT EXISTS accounts (
 );
 
 CREATE INDEX IF NOT EXISTS idx_accounts_status ON accounts(status);
+CREATE INDEX IF NOT EXISTS idx_accounts_login_status ON accounts(login_status);
 CREATE INDEX IF NOT EXISTS idx_accounts_worker ON accounts(assigned_worker_id);
 
 -- ============================================
@@ -134,3 +138,50 @@ CREATE TABLE IF NOT EXISTS notification_rules (
 );
 
 CREATE INDEX IF NOT EXISTS idx_rules_enabled ON notification_rules(enabled);
+
+-- ============================================
+-- 8. login_sessions - 登录会话表
+-- ============================================
+CREATE TABLE IF NOT EXISTS login_sessions (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  worker_id TEXT,
+  status TEXT NOT NULL DEFAULT 'pending',
+  login_method TEXT NOT NULL DEFAULT 'qrcode',
+  qr_code_data TEXT,
+  qr_code_url TEXT,
+  error_message TEXT,
+  expires_at INTEGER NOT NULL,
+  logged_in_at INTEGER,
+  created_at INTEGER NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_login_sessions_status ON login_sessions(status);
+CREATE INDEX IF NOT EXISTS idx_login_sessions_account ON login_sessions(account_id);
+CREATE INDEX IF NOT EXISTS idx_login_sessions_created ON login_sessions(created_at);
+
+-- ============================================
+-- 9. proxies - 代理服务器表
+-- ============================================
+CREATE TABLE IF NOT EXISTS proxies (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  server TEXT NOT NULL,
+  protocol TEXT NOT NULL,
+  username TEXT,
+  password TEXT,
+  country TEXT,
+  city TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  success_rate REAL DEFAULT 1.0,
+  last_check_time INTEGER,
+  response_time INTEGER,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  UNIQUE(server)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proxies_status ON proxies(status);
+CREATE INDEX IF NOT EXISTS idx_proxies_country ON proxies(country);
+CREATE INDEX IF NOT EXISTS idx_proxies_protocol ON proxies(protocol);

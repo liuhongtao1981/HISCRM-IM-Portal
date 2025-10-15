@@ -133,7 +133,7 @@ function initAdminNamespace(io, masterServer) {
             ls.*,
             a.account_name,
             a.platform,
-            w.name as worker_name
+            w.id as worker_name
           FROM login_sessions ls
           LEFT JOIN accounts a ON ls.account_id = a.id
           LEFT JOIN workers w ON ls.worker_id = w.id
