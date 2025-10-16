@@ -3,6 +3,7 @@ import { Table, Button, Space, Tag, Modal, Form, Input, Select, message } from '
 import { PlusOutlined, EditOutlined, DeleteOutlined, LoginOutlined } from '@ant-design/icons';
 import { accountsAPI, workersAPI } from '../services/api';
 import { useSocketContext } from '../services/socketContext';
+import LoginModal from '../components/LoginModal';
 
 const { Option } = Select;
 
@@ -14,7 +15,7 @@ const AccountsPage = () => {
   const [editingAccount, setEditingAccount] = useState(null);
   const [form] = Form.useForm();
 
-  const { startLogin } = useSocketContext();
+  const { startLogin, loginModalData, submitUserInput, closeLoginModal } = useSocketContext();
 
   // 加载账户列表
   const loadAccounts = async () => {
@@ -111,15 +112,60 @@ const AccountsPage = () => {
       return;
     }
 
-    Modal.confirm({
-      title: '启动登录流程',
-      content: `确定要为账户 "${account.account_name}" 启动登录流程吗？`,
-      okText: '启动',
-      cancelText: '取消',
-      onOk: () => {
-        startLogin(account.id, account.assigned_worker_id);
-      },
-    });
+    // 直接启动登录流程，LoginModal 会自动弹出
+    startLogin(account.id, account.assigned_worker_id);
+  };
+
+  // 解析并展示用户信息和 Cookie 状态
+  const renderUserInfo = (record) => {
+    try {
+      const userInfo = record.user_info ? JSON.parse(record.user_info) : null;
+      if (!userInfo) return '-';
+
+      return (
+        <Space>
+          {userInfo.avatar && (
+            <img
+              src={userInfo.avatar}
+              alt="avatar"
+              style={{ width: 24, height: 24, borderRadius: '50%' }}
+            />
+          )}
+          <span>{userInfo.nickname || userInfo.douyin_id || '-'}</span>
+        </Space>
+      );
+    } catch (e) {
+      return '-';
+    }
+  };
+
+  const renderCookieStatus = (record) => {
+    try {
+      const credentials = record.credentials ? JSON.parse(record.credentials) : null;
+      const cookieCount = credentials && credentials.cookies ? credentials.cookies.length : 0;
+      const validUntil = record.cookies_valid_until;
+      const now = Math.floor(Date.now() / 1000);
+      const isExpired = validUntil && validUntil < now;
+
+      if (cookieCount === 0) {
+        return <Tag color="default">无 Cookie</Tag>;
+      }
+
+      return (
+        <Space direction="vertical" size={0}>
+          <Tag color={isExpired ? 'red' : 'green'}>
+            {cookieCount} 个 Cookie
+          </Tag>
+          {validUntil && (
+            <span style={{ fontSize: 12, color: isExpired ? '#ff4d4f' : '#999' }}>
+              {isExpired ? '已过期' : `有效期至 ${new Date(validUntil * 1000).toLocaleDateString()}`}
+            </span>
+          )}
+        </Space>
+      );
+    } catch (e) {
+      return '-';
+    }
   };
 
   // 表格列定义
@@ -128,14 +174,14 @@ const AccountsPage = () => {
       title: 'ID',
       dataIndex: 'id',
       key: 'id',
-      width: 150,
+      width: 120,
       ellipsis: true,
     },
     {
       title: '平台',
       dataIndex: 'platform',
       key: 'platform',
-      width: 100,
+      width: 80,
       render: (platform) => (
         <Tag color={platform === 'douyin' ? 'blue' : 'green'}>{platform}</Tag>
       ),
@@ -144,33 +190,65 @@ const AccountsPage = () => {
       title: '账户名称',
       dataIndex: 'account_name',
       key: 'account_name',
+      width: 120,
     },
     {
       title: '账户ID',
       dataIndex: 'account_id',
       key: 'account_id',
+      width: 120,
+      ellipsis: true,
+    },
+    {
+      title: '用户信息',
+      key: 'user_info',
+      width: 150,
+      render: (_, record) => renderUserInfo(record),
+    },
+    {
+      title: '登录状态',
+      dataIndex: 'login_status',
+      key: 'login_status',
+      width: 100,
+      render: (status) => {
+        const statusMap = {
+          logged_in: { color: 'success', text: '已登录' },
+          logging_in: { color: 'processing', text: '登录中' },
+          login_failed: { color: 'error', text: '登录失败' },
+          not_logged_in: { color: 'default', text: '未登录' },
+        };
+        const config = statusMap[status] || statusMap.not_logged_in;
+        return <Tag color={config.color}>{config.text}</Tag>;
+      },
+    },
+    {
+      title: 'Cookie 状态',
+      key: 'cookie_status',
+      width: 120,
+      render: (_, record) => renderCookieStatus(record),
     },
     {
       title: '状态',
       dataIndex: 'status',
       key: 'status',
-      width: 100,
+      width: 80,
       render: (status) => {
         const color = status === 'active' ? 'green' : 'red';
-        return <Tag color={color}>{status}</Tag>;
+        return <Tag color={color}>{status === 'active' ? '启用' : '禁用'}</Tag>;
       },
     },
     {
       title: '分配 Worker',
       dataIndex: 'assigned_worker_id',
       key: 'assigned_worker_id',
-      width: 150,
+      width: 120,
       ellipsis: true,
     },
     {
       title: '操作',
       key: 'action',
-      width: 200,
+      width: 180,
+      fixed: 'right',
       render: (_, record) => (
         <Space size="small">
           <Button
@@ -178,6 +256,7 @@ const AccountsPage = () => {
             size="small"
             icon={<LoginOutlined />}
             onClick={() => handleStartLogin(record)}
+            disabled={record.login_status === 'logged_in'}
           >
             登录
           </Button>
@@ -268,6 +347,14 @@ const AccountsPage = () => {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 登录弹窗 */}
+      <LoginModal
+        visible={loginModalData.visible}
+        loginData={loginModalData}
+        onSubmitInput={submitUserInput}
+        onCancel={closeLoginModal}
+      />
     </Space>
   );
 };

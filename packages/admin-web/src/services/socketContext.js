@@ -27,6 +27,7 @@ export const SocketProvider = ({ children }) => {
   const [systemStatus, setSystemStatus] = useState(null);
   const [loginSessions, setLoginSessions] = useState([]);
   const [qrCodeData, setQRCodeData] = useState(null);
+  const [loginModalData, setLoginModalData] = useState({ visible: false }); // 新增：统一登录模态框数据
 
   // 连接 Socket.IO
   useEffect(() => {
@@ -84,31 +85,124 @@ export const SocketProvider = ({ children }) => {
       setLoginSessions(data.sessions || []);
     });
 
-    // QR 码准备就绪
+    // 新框架：统一登录状态更新事件
+    socketInstance.on('login:status:update', (data) => {
+      console.log('=== Login status update received ===');
+      console.log('Full data:', JSON.stringify(data, null, 2));
+      const { session_id, status, account_id, ...extraData } = data;
+      console.log('Parsed - session_id:', session_id, 'status:', status, 'account_id:', account_id);
+      console.log('Extra data:', extraData);
+
+      switch (status) {
+        case 'qrcode_ready':
+          // 二维码已准备
+          console.log('Setting QR code modal data:', {
+            qr_code_data: extraData.qr_code_data ? 'PRESENT' : 'MISSING',
+            expires_at: extraData.expires_at,
+          });
+          setLoginModalData({
+            visible: true,
+            session_id,
+            account_id,
+            login_method: 'qrcode',
+            qr_code_data: extraData.qr_code_data,
+            expires_at: extraData.expires_at,
+          });
+          message.success('二维码已加载，请使用抖音 App 扫码');
+          break;
+
+        case 'qrcode_refreshed':
+          // 二维码已刷新（自动更新）
+          console.log('QR code refreshed, updating modal data:', {
+            qr_code_data: extraData.qr_code_data ? 'PRESENT' : 'MISSING',
+          });
+          setLoginModalData(prev => ({
+            ...prev,
+            qr_code_data: extraData.qr_code_data,
+            expires_at: extraData.expires_at,
+          }));
+          message.info('二维码已自动刷新');
+          break;
+
+        case 'sms_input_required':
+          // 需要用户输入（手机号或验证码）
+          setLoginModalData({
+            visible: true,
+            session_id,
+            account_id,
+            login_method: 'sms',
+            step: extraData.step, // 'phone_number' | 'verification_code'
+            message: extraData.message,
+            phone_number: extraData.phone_number,
+          });
+          if (extraData.step === 'phone_number') {
+            message.info('请输入手机号');
+          } else if (extraData.step === 'verification_code') {
+            message.info('请输入验证码');
+          }
+          break;
+
+        case 'scanning':
+          // 正在扫码中
+          message.info('正在扫码中，请在手机上确认登录');
+          break;
+
+        case 'success':
+          // 登录成功
+          message.success(`账户 ${account_id} 登录成功！`);
+          setLoginModalData({ visible: false });
+          setQRCodeData(null);
+          // 刷新登录会话列表
+          if (socketInstance) {
+            socketInstance.emit('admin:login_sessions:list');
+          }
+          break;
+
+        case 'failed':
+          // 登录失败
+          message.error(`登录失败: ${extraData.error_message || '未知错误'}`);
+          setLoginModalData({ visible: false });
+          setQRCodeData(null);
+          break;
+
+        case 'timeout':
+          // 登录超时
+          message.warning('登录超时，请重试');
+          setLoginModalData({ visible: false });
+          setQRCodeData(null);
+          break;
+
+        case 'expired':
+          // 二维码过期
+          message.warning('二维码已过期，请关闭窗口重新登录');
+          break;
+
+        default:
+          console.log('Unknown login status:', status);
+      }
+    });
+
+    // 保持兼容：旧的 QR 码事件
     socketInstance.on('login:qrcode:ready', (data) => {
-      console.log('QR code ready:', data);
+      console.log('QR code ready (legacy):', data);
       setQRCodeData(data);
-      message.success(`账户 ${data.account_id} 的 QR 码已准备就绪`);
     });
 
-    // 登录成功
+    // 保持兼容：旧的登录成功事件
     socketInstance.on('login:success', (data) => {
-      console.log('Login success:', data);
-      message.success(`账户 ${data.account_id} 登录成功`);
+      console.log('Login success (legacy):', data);
       setQRCodeData(null);
     });
 
-    // 登录失败
+    // 保持兼容：旧的登录失败事件
     socketInstance.on('login:failed', (data) => {
-      console.log('Login failed:', data);
-      message.error(`账户 ${data.account_id} 登录失败: ${data.error_message}`);
+      console.log('Login failed (legacy):', data);
       setQRCodeData(null);
     });
 
-    // QR 码过期
+    // 保持兼容：旧的 QR 码过期事件
     socketInstance.on('login:qrcode:expired', (data) => {
-      console.log('QR code expired:', data);
-      message.warning(`账户 ${data.account_id} 的 QR 码已过期`);
+      console.log('QR code expired (legacy):', data);
       setQRCodeData(null);
     });
 
@@ -159,15 +253,36 @@ export const SocketProvider = ({ children }) => {
     return null;
   }, [socket]);
 
+  // 提交用户输入（手机号、验证码）
+  const submitUserInput = useCallback((sessionId, inputType, value) => {
+    if (socket) {
+      socket.emit('master:login:user_input', {
+        session_id: sessionId,
+        input_type: inputType, // 'phone_number' | 'verification_code'
+        value: value,
+      });
+
+      console.log(`Submitted user input: ${inputType} for session ${sessionId}`);
+    }
+  }, [socket]);
+
+  // 关闭登录模态框
+  const closeLoginModal = useCallback(() => {
+    setLoginModalData({ visible: false });
+  }, []);
+
   const value = {
     socket,
     connected,
     systemStatus,
     loginSessions,
     qrCodeData,
+    loginModalData, // 新增
     requestSystemStatus,
     requestLoginSessions,
     startLogin,
+    submitUserInput, // 新增
+    closeLoginModal, // 新增
   };
 
   return <SocketContext.Provider value={value}>{children}</SocketContext.Provider>;

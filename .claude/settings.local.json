@@ -42,7 +42,11 @@
       "Bash(set MASTER_PORT=3000)",
       "Bash(set PORT=4002)",
       "Bash(cmd.exe /c \"taskkill /F /PID 30104\")",
-      "Bash(cmd.exe /c \"taskkill /F /PID 28532\")"
+      "Bash(cmd.exe /c \"taskkill /F /PID 28532\")",
+      "Bash(if not exist \"packages\\master\\src\\database\\migrations\" mkdir \"packages\\master\\src\\database\\migrations\")",
+      "Bash(git log:*)",
+      "Bash(git add:*)",
+      "Bash(git reset:*)"
     ],
     "deny": [],
     "ask": []

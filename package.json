@@ -1,27 +1,26 @@
 {
   "name": "hiscrm-im",
   "version": "1.0.0",
-  "description": "社交媒体账户监控与通知系统 - Monorepo",
   "private": true,
   "workspaces": [
     "packages/*"
   ],
   "scripts": {
-    "install:all": "pnpm install",
-    "dev:master": "pnpm --filter @hiscrm-im/master dev",
-    "dev:worker": "pnpm --filter @hiscrm-im/worker dev",
-    "dev:desktop": "pnpm --filter @hiscrm-im/desktop-client dev",
-    "test": "pnpm -r test",
-    "lint": "eslint packages --ext .js,.jsx",
-    "format": "prettier --write \"packages/**/*.{js,jsx,json}\""
+    "install:all": "npm install && npm run install:packages",
+    "install:packages": "npm install --workspaces",
+    "start": "npm run start:master",
+    "start:master": "npm run start --workspace=packages/master",
+    "start:worker": "npm run start --workspace=packages/worker",
+    "start:admin": "npm run start --workspace=packages/admin-web",
+    "start:desktop": "npm run start --workspace=packages/desktop-client",
+    "test": "npm run test --workspaces --if-present",
+    "dev": "concurrently \"npm run start:master\" \"npm run start:worker\"",
+    "dev:all": "concurrently \"npm run start:master\" \"npm run start:worker\" \"npm run start:admin\"",
+    "build": "npm run build --workspaces --if-present"
   },
-  "keywords": ["social-media", "monitoring", "notification", "master-worker"],
-  "author": "",
-  "license": "MIT",
   "devDependencies": {
-    "pnpm": "^8.14.0",
-    "eslint": "^8.56.0",
-    "prettier": "^3.1.1"
+    "concurrently": "^8.2.2",
+    "jest": "^29.7.0"
   },
   "engines": {
     "node": ">=18.0.0",

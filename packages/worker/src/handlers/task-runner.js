@@ -9,9 +9,10 @@ const MonitorTask = require('./monitor-task');
 const logger = createLogger('task-runner');
 
 class TaskRunner {
-  constructor(socketClient, heartbeatSender) {
+  constructor(socketClient, heartbeatSender, platformManager) {
     this.socketClient = socketClient;
     this.heartbeatSender = heartbeatSender;
+    this.platformManager = platformManager;
     this.tasks = new Map(); // accountId -> MonitorTask
     this.running = false;
   }
@@ -58,8 +59,8 @@ class TaskRunner {
       interval: account.monitor_interval,
     });
 
-    // 创建并启动监控任务
-    const monitorTask = new MonitorTask(account, this.socketClient);
+    // 创建并启动监控任务（传入 platformManager）
+    const monitorTask = new MonitorTask(account, this.socketClient, this.platformManager);
     await monitorTask.start();
 
     this.tasks.set(id, monitorTask);

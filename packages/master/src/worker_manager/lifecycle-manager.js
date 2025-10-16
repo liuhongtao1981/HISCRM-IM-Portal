@@ -179,7 +179,14 @@ class WorkerLifecycleManager extends EventEmitter {
       // 2. 检查运行状态
       const runtime = this.workerRuntimeDAO.findByWorkerId(worker_id);
       if (!runtime || runtime.status === 'stopped') {
-        throw new Error(`Worker is not running: ${worker_id}`);
+        logger.warn(`Worker is already stopped: ${worker_id}`);
+        return {
+          success: true,
+          message: `Worker ${worker_id} is already stopped`,
+          worker_id,
+          status: 'stopped',
+          stopped_at: Date.now()
+        };
       }
 
       // 3. 更新状态为 stopping
@@ -197,7 +204,8 @@ class WorkerLifecycleManager extends EventEmitter {
       this.workerRuntimeDAO.updateStatus(worker_id, 'stopped');
       this.workerRuntimeDAO.upsert(worker_id, {
         stopped_at: result.stopped_at,
-        process_id: null
+        process_id: null,
+        container_id: null
       });
 
       logger.info(`Worker stopped successfully: ${worker_id}`);

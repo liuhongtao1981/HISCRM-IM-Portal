@@ -39,24 +39,32 @@ function encryptCredentials(credentials) {
  * @returns {object} 解密后的凭证对象
  */
 function decryptCredentials(encryptedCredentials) {
+  // 如果凭证为空或不是字符串，返回 null 而不是抛出错误
   if (!encryptedCredentials || typeof encryptedCredentials !== 'string') {
-    throw new Error('Encrypted credentials must be a string');
+    return null;
   }
 
   const parts = encryptedCredentials.split(':');
   if (parts.length !== 2) {
-    throw new Error('Invalid encrypted credentials format');
+    // 格式不正确，返回 null
+    return null;
   }
 
-  const iv = Buffer.from(parts[0], 'hex');
-  const encrypted = parts[1];
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
+  try {
+    const iv = Buffer.from(parts[0], 'hex');
+    const encrypted = parts[1];
+    const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
 
-  const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
-  let decrypted = decipher.update(encrypted, 'hex', 'utf8');
-  decrypted += decipher.final('utf8');
+    const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
+    let decrypted = decipher.update(encrypted, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
 
-  return JSON.parse(decrypted);
+    return JSON.parse(decrypted);
+  } catch (error) {
+    // 解密失败，返回 null
+    console.warn('Failed to decrypt credentials, returning null:', error.message);
+    return null;
+  }
 }
 
 /**
@@ -146,14 +154,9 @@ class Account {
   static fromDbRow(row) {
     const data = { ...row };
 
-    // 解密凭证
+    // 解密凭证（如果解密失败，decryptCredentials 会返回 null）
     if (data.credentials) {
-      try {
-        data.credentials = decryptCredentials(data.credentials);
-      } catch (error) {
-        console.error('Failed to decrypt credentials:', error);
-        data.credentials = null;
-      }
+      data.credentials = decryptCredentials(data.credentials);
     }
 
     return new Account(data);

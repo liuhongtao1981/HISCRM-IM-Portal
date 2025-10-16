@@ -32,7 +32,29 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
   workerNamespace.on('connection', (socket) => {
     logger.info(`Worker connected: ${socket.id}`);
 
-    // 监听登录事件（由 handlers.onLoginEvent 处理）
+    // 监听登录状态更新（新框架）
+    socket.on('worker:login:status', (data) => {
+      const { session_id, status, account_id } = data;
+      logger.info(`Worker ${socket.id} login status update for session ${session_id}: ${status}`);
+      logger.info(`Login status data:`, JSON.stringify(data, null, 2));
+      
+      // 转发到 Admin namespace
+      const adminNamespace = io.of('/admin');
+      logger.info(`Forwarding to admin namespace, connected clients: ${adminNamespace.sockets.size}`);
+      adminNamespace.emit('login:status:update', data);
+      logger.info(`Emitted login:status:update to admin namespace`);
+      
+      // 如果有旧的处理器，保持兼容
+      if (status === 'qrcode_ready' && handlers.onLoginQRCodeReady) {
+        handlers.onLoginQRCodeReady(data);
+      } else if (status === 'success' && handlers.onLoginSuccess) {
+        handlers.onLoginSuccess(data);
+      } else if (status === 'failed' && handlers.onLoginFailed) {
+        handlers.onLoginFailed(data);
+      }
+    });
+
+    // 监听登录事件（由 handlers.onLoginEvent 处理，保持兼容旧代码）
     socket.on('worker:login:qrcode:ready', (data) => {
       logger.info(`Worker ${socket.id} QR code ready:`, data);
       if (handlers.onLoginQRCodeReady) {

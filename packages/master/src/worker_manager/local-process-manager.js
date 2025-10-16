@@ -368,12 +368,37 @@ class LocalProcessManager extends EventEmitter {
     logger.info('Cleaning up all worker processes...');
 
     const workerIds = Array.from(this.processes.keys());
+    
+    // 在关闭时使用更短的超时时间
     const stopPromises = workerIds.map(worker_id =>
-      this.stopWorker(worker_id, { graceful: true, timeout: 10000 })
+      this.stopWorker(worker_id, { graceful: true, timeout: 3000 })
         .catch(error => logger.error(`Failed to stop worker ${worker_id}:`, error))
     );
 
-    await Promise.all(stopPromises);
+    // 添加整体超时保护
+    try {
+      await Promise.race([
+        Promise.all(stopPromises),
+        new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Cleanup timeout')), 5000)
+        )
+      ]);
+    } catch (error) {
+      logger.warn('Cleanup timeout reached, forcing cleanup:', error.message);
+      // 强制清理所有进程
+      workerIds.forEach(worker_id => {
+        const processInfo = this.processes.get(worker_id);
+        if (processInfo) {
+          try {
+            processInfo.process.kill('SIGKILL');
+          } catch (err) {
+            // 忽略错误，进程可能已经退出
+          }
+          this.processes.delete(worker_id);
+        }
+      });
+    }
+    
     logger.info('All worker processes cleaned up');
   }
 

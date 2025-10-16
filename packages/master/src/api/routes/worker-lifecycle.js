@@ -8,16 +8,23 @@ const router = express.Router();
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('WorkerLifecycleAPI');
 
-module.exports = (lifecycleManager) => {
+module.exports = (lifecycleManager, workerConfigDAO) => {
   /**
    * 启动 Worker
-   * POST /api/v1/workers/:id/start
+   * POST /api/v1/worker-lifecycle/:id/start
    */
   router.post('/:id/start', async (req, res) => {
     try {
-      const { id: worker_id } = req.params;
+      const { id } = req.params;
 
-      logger.info(`API: Starting worker ${worker_id}`);
+      // 首先尝试根据配置ID查找worker_id
+      let worker_id = id;
+      const config = workerConfigDAO.findById(id);
+      if (config) {
+        worker_id = config.worker_id;
+      }
+
+      logger.info(`API: Starting worker ${worker_id} (config ID: ${id})`);
       const result = await lifecycleManager.startWorker(worker_id);
 
       res.json(result);
@@ -34,14 +41,21 @@ module.exports = (lifecycleManager) => {
 
   /**
    * 停止 Worker
-   * POST /api/v1/workers/:id/stop
+   * POST /api/v1/worker-lifecycle/:id/stop
    */
   router.post('/:id/stop', async (req, res) => {
     try {
-      const { id: worker_id } = req.params;
+      const { id } = req.params;
       const { graceful = true, timeout = 30000 } = req.body;
 
-      logger.info(`API: Stopping worker ${worker_id}, graceful: ${graceful}`);
+      // 首先尝试根据配置ID查找worker_id
+      let worker_id = id;
+      const config = workerConfigDAO.findById(id);
+      if (config) {
+        worker_id = config.worker_id;
+      }
+
+      logger.info(`API: Stopping worker ${worker_id} (config ID: ${id}), graceful: ${graceful}`);
       const result = await lifecycleManager.stopWorker(worker_id, { graceful, timeout });
 
       res.json(result);
@@ -58,14 +72,21 @@ module.exports = (lifecycleManager) => {
 
   /**
    * 重启 Worker
-   * POST /api/v1/workers/:id/restart
+   * POST /api/v1/worker-lifecycle/:id/restart
    */
   router.post('/:id/restart', async (req, res) => {
     try {
-      const { id: worker_id } = req.params;
+      const { id } = req.params;
       const { graceful = true } = req.body;
 
-      logger.info(`API: Restarting worker ${worker_id}, graceful: ${graceful}`);
+      // 首先尝试根据配置ID查找worker_id
+      let worker_id = id;
+      const config = workerConfigDAO.findById(id);
+      if (config) {
+        worker_id = config.worker_id;
+      }
+
+      logger.info(`API: Restarting worker ${worker_id} (config ID: ${id}), graceful: ${graceful}`);
       const result = await lifecycleManager.restartWorker(worker_id, { graceful });
 
       res.json(result);
@@ -82,11 +103,18 @@ module.exports = (lifecycleManager) => {
 
   /**
    * 获取 Worker 状态
-   * GET /api/v1/workers/:id/status
+   * GET /api/v1/worker-lifecycle/:id/status
    */
   router.get('/:id/status', async (req, res) => {
     try {
-      const { id: worker_id } = req.params;
+      const { id } = req.params;
+
+      // 首先尝试根据配置ID查找worker_id
+      let worker_id = id;
+      const config = workerConfigDAO.findById(id);
+      if (config) {
+        worker_id = config.worker_id;
+      }
 
       const status = await lifecycleManager.getWorkerStatus(worker_id);
       res.json(status);

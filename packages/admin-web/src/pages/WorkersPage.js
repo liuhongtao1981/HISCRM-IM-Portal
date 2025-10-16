@@ -38,7 +38,7 @@ import {
   WarningOutlined,
   ClockCircleOutlined,
 } from '@ant-design/icons';
-import { workersAPI } from '../services/api';
+import { workersAPI, proxiesAPI } from '../services/api';
 import { useSocket } from '../services/socketContext';
 
 const { Option } = Select;
@@ -48,6 +48,7 @@ const { TabPane } = Tabs;
 const WorkersPage = () => {
   const [configs, setConfigs] = useState([]);
   const [runtimes, setRuntimes] = useState({});
+  const [proxies, setProxies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [configModalVisible, setConfigModalVisible] = useState(false);
   const [detailDrawerVisible, setDetailDrawerVisible] = useState(false);
@@ -87,8 +88,32 @@ const WorkersPage = () => {
     }
   };
 
+  // 加载代理列表
+  const loadProxies = async () => {
+    try {
+      console.log('开始加载代理列表...');
+      const response = await proxiesAPI.getProxies();
+      console.log('Proxies API response:', response); // 添加调试日志
+      
+      // 检查响应结构
+      if (response && response.data) {
+        console.log('设置代理数据:', response.data);
+        setProxies(response.data);
+      } else {
+        console.warn('代理 API 响应格式异常:', response);
+        setProxies([]);
+      }
+    } catch (error) {
+      console.error('Failed to load proxies:', error);
+      console.error('Error details:', error.response?.data);
+      message.error('加载代理列表失败: ' + (error.response?.data?.error || error.message));
+      setProxies([]);
+    }
+  };
+
   useEffect(() => {
     loadConfigs();
+    loadProxies(); // 添加加载代理列表
     // 每 5 秒刷新一次状态
     const interval = setInterval(loadConfigs, 5000);
     return () => clearInterval(interval);
@@ -115,16 +140,35 @@ const WorkersPage = () => {
   }, [socket]);
 
   // 打开新建/编辑配置模态框
-  const handleOpenConfigModal = (config = null) => {
+  const handleOpenConfigModal = async (config = null) => {
     setEditingConfig(config);
+    // 每次打开模态框时重新加载代理列表，等待加载完成
+    await loadProxies();
+    
     if (config) {
       // 编辑模式
-      form.setFieldsValue({
+      console.log('========== 编辑模式 ==========');
+      console.log('原始配置数据:', JSON.stringify(config, null, 2));
+      console.log('配置中的 proxy_id:', config.proxy_id);
+      console.log('proxy_id 类型:', typeof config.proxy_id);
+      
+      const formValues = {
         ...config,
         env_variables: config.env_variables ? JSON.stringify(config.env_variables, null, 2) : '{}',
         browser_config: config.browser_config ? JSON.stringify(config.browser_config, null, 2) : '{}',
         docker_volumes: config.docker_volumes ? JSON.stringify(config.docker_volumes, null, 2) : '[]',
-      });
+      };
+      
+      console.log('准备设置到表单的值:', JSON.stringify(formValues, null, 2));
+      console.log('表单值中的 proxy_id:', formValues.proxy_id);
+      form.setFieldsValue(formValues);
+      
+      // 验证设置后的表单值
+      setTimeout(() => {
+        const currentValues = form.getFieldsValue();
+        console.log('表单设置后的实际值:', JSON.stringify(currentValues, null, 2));
+        console.log('表单中的 proxy_id:', form.getFieldValue('proxy_id'));
+      }, 100);
     } else {
       // 新建模式
       form.resetFields();
@@ -132,6 +176,7 @@ const WorkersPage = () => {
         deployment_type: 'local',
         host: 'localhost',
         port: 4001,
+        proxy_id: null, // 显式设置代理为 null
         auto_start: true,
         auto_restart: true,
         restart_delay_ms: 5000,
@@ -140,6 +185,7 @@ const WorkersPage = () => {
         browser_config: '{"headless": true}',
         docker_volumes: '[]',
       });
+      console.log('新建模式：表单已初始化，proxy_id 设为 null');
     }
     setConfigModalVisible(true);
   };
@@ -148,14 +194,23 @@ const WorkersPage = () => {
   const handleSaveConfig = async () => {
     try {
       const values = await form.validateFields();
+      
+      // 调试日志
+      console.log('Form values:', values);
+      console.log('Proxy ID from form:', values.proxy_id);
 
       // 解析 JSON 字段
       const payload = {
         ...values,
+        // 特别处理 proxy_id 字段，确保 undefined 被转换为 null
+        proxy_id: values.proxy_id === undefined ? null : values.proxy_id,
         env_variables: values.env_variables ? JSON.parse(values.env_variables) : null,
         browser_config: values.browser_config ? JSON.parse(values.browser_config) : null,
         docker_volumes: values.docker_volumes ? JSON.parse(values.docker_volumes) : null,
       };
+      
+      console.log('Final payload:', payload);
+      console.log('Final proxy_id:', payload.proxy_id);
 
       if (editingConfig) {
         // 更新
@@ -213,7 +268,17 @@ const WorkersPage = () => {
       setTimeout(loadConfigs, 1000);
     } catch (error) {
       console.error('Failed to stop worker:', error);
-      message.error('停止 Worker 失败');
+      
+      // 检查具体的错误类型
+      const errorMsg = error.response?.data?.message || error.message || '停止 Worker 失败';
+      
+      // 如果 Worker 已经停止，这不算真正的错误
+      if (errorMsg.includes('is not running') || errorMsg.includes('已经停止')) {
+        message.warning('Worker 已经处于停止状态');
+        setTimeout(loadConfigs, 500); // 刷新状态
+      } else {
+        message.error(`停止 Worker 失败: ${errorMsg}`);
+      }
     }
   };
 
@@ -333,6 +398,25 @@ const WorkersPage = () => {
           {record.host}:{record.port}
         </code>
       ),
+    },
+    {
+      title: '代理',
+      key: 'proxy',
+      width: 150,
+      render: (_, record) => {
+        if (!record.proxy_id) {
+          return <Tag>无代理</Tag>;
+        }
+        const proxy = proxies.find(p => p.id === record.proxy_id);
+        if (!proxy) {
+          return <Tag color="red">代理失效</Tag>;
+        }
+        return (
+          <Tooltip title={`${proxy.server} (${proxy.protocol})`}>
+            <Tag color="blue">{proxy.name}</Tag>
+          </Tooltip>
+        );
+      },
     },
     {
       title: 'PID',
@@ -529,7 +613,17 @@ const WorkersPage = () => {
         okText="保存"
         cancelText="取消"
       >
-        <Form form={form} layout="vertical">
+        <Form 
+          form={form} 
+          layout="vertical"
+          onValuesChange={(changedValues, allValues) => {
+            // 调试：监控表单值变化
+            if (changedValues.proxy_id !== undefined) {
+              console.log('代理字段变化:', changedValues.proxy_id);
+              console.log('所有表单值:', allValues);
+            }
+          }}
+        >
           <Row gutter={16}>
             <Col span={12}>
               <Form.Item
@@ -570,17 +664,17 @@ const WorkersPage = () => {
           </Row>
 
           <Row gutter={16}>
-            <Col span={12}>
+            <Col span={8}>
               <Form.Item label="端口" name="port" rules={[{ required: true, message: '请输入端口' }]}>
                 <InputNumber min={1} max={65535} style={{ width: '100%' }} />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col span={8}>
               <Form.Item label="自动启动" name="auto_start" valuePropName="checked">
                 <Switch />
               </Form.Item>
             </Col>
-            <Col span={6}>
+            <Col span={8}>
               <Form.Item label="自动重启" name="auto_restart" valuePropName="checked">
                 <Switch />
               </Form.Item>
@@ -597,6 +691,54 @@ const WorkersPage = () => {
               <Form.Item label="最大重启次数" name="max_restart_attempts">
                 <InputNumber min={0} style={{ width: '100%' }} />
               </Form.Item>
+            </Col>
+          </Row>
+
+          <Row gutter={16}>
+            <Col span={24}>
+              <Form.Item label="代理" name="proxy_id">
+                <Select 
+                  placeholder={proxies.length === 0 ? "加载代理中..." : "选择代理"} 
+                  allowClear
+                  loading={proxies.length === 0}
+                  optionLabelProp="label"
+                  listHeight={400}
+                >
+                  {/* 无代理选项 */}
+                  <Option key="none" value={null} label="无代理">
+                    <div style={{ padding: '4px 0' }}>
+                      <div style={{ fontWeight: 'bold', marginBottom: '4px', color: '#999' }}>
+                        🚫 无代理
+                      </div>
+                      <div style={{ fontSize: '12px', color: '#999' }}>
+                        直连，不使用代理服务器
+                      </div>
+                    </div>
+                  </Option>
+                  
+                  {proxies.map(proxy => (
+                    <Option 
+                      key={proxy.id} 
+                      value={proxy.id}
+                      label={proxy.name}
+                    >
+                      <div style={{ padding: '4px 0' }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>{proxy.name}</div>
+                        <div style={{ fontSize: '12px', color: '#666' }}>
+                          {proxy.server} ({proxy.protocol})
+                        </div>
+                      </div>
+                    </Option>
+                  ))}
+                </Select>
+              </Form.Item>
+              {/* 调试信息 */}
+              {process.env.NODE_ENV === 'development' && (
+                <div style={{ fontSize: '10px', color: '#999', marginTop: '-16px', marginBottom: '8px' }}>
+                  代理数量: {proxies.length} | 当前值: {form.getFieldValue('proxy_id') || 'null'}
+                  {proxies.length === 0 && <span style={{ color: 'red' }}> ⚠️ 代理列表为空！</span>}
+                </div>
+              )}
             </Col>
           </Row>
 

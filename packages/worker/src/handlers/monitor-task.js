@@ -4,7 +4,6 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
-const DouyinCrawler = require('../crawlers/douyin-crawler');
 const CommentParser = require('../parsers/comment-parser');
 const DMParser = require('../parsers/dm-parser');
 const CacheHandler = require('./cache-handler');
@@ -17,12 +16,13 @@ const logger = createLogger('monitor-task');
  * 管理单个账户的监控任务
  */
 class MonitorTask {
-  constructor(account, socketClient) {
+  constructor(account, socketClient, platformManager) {
     this.account = account;
     this.socketClient = socketClient;
+    this.platformManager = platformManager;
 
     // 初始化组件
-    this.crawler = new DouyinCrawler();
+    // 注意: crawler 将通过 platformManager 获取，不再直接实例化
     this.commentParser = new CommentParser();
     this.dmParser = new DMParser();
     this.cacheHandler = new CacheHandler();
@@ -79,13 +79,14 @@ class MonitorTask {
       interval_range: `${this.minInterval}-${this.maxInterval}s (random)`,
     });
 
-    // 初始化爬虫
-    try {
-      await this.crawler.initialize(this.account);
-    } catch (error) {
-      logger.error('Failed to initialize crawler:', error);
+    // 获取平台实例
+    const platformInstance = this.platformManager.getPlatform(this.account.platform);
+    if (!platformInstance) {
+      logger.error(`Platform ${this.account.platform} not supported or not loaded`);
       return;
     }
+    
+    this.platformInstance = platformInstance;
 
     this.isRunning = true;
 
@@ -116,13 +117,6 @@ class MonitorTask {
       this.timeoutId = null;
     }
 
-    // 清理爬虫资源
-    try {
-      await this.crawler.cleanup();
-    } catch (error) {
-      logger.error('Failed to cleanup crawler:', error);
-    }
-
     // 清理缓存
     this.cacheHandler.clear(this.account.id);
 
@@ -142,8 +136,10 @@ class MonitorTask {
     logger.info(`Executing monitor task for account ${this.account.id} (count: ${this.executionCount})`);
 
     try {
-      // 1. 爬取评论
-      const rawComments = await this.crawler.crawlComments(this.account);
+      // 1. 爬取评论（通过平台实例）
+      const rawComments = await this.platformInstance.crawlComments({
+        accountId: this.account.id,
+      });
 
       // 2. 解析评论
       const parsedComments = this.commentParser.parse(rawComments);
@@ -155,8 +151,10 @@ class MonitorTask {
         'platform_comment_id'
       );
 
-      // 4. 爬取私信
-      const rawDMs = await this.crawler.crawlDirectMessages(this.account);
+      // 4. 爬取私信（通过平台实例）
+      const rawDMs = await this.platformInstance.crawlDirectMessages({
+        accountId: this.account.id,
+      });
 
       // 5. 解析私信
       const parsedDMs = this.dmParser.parse(rawDMs);

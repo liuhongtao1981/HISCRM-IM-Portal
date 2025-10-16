@@ -414,23 +414,40 @@ class WorkerRuntimeDAO {
     const existing = this.findByWorkerId(worker_id);
 
     if (existing) {
-      // 更新现有记录
-      const updates = { ...runtime, worker_id, updated_at: Date.now() };
+      // 更新现有记录 - 确保所有参数都有默认值
+      const updates = {
+        worker_id,
+        process_id: runtime.process_id ?? existing.process_id,
+        container_id: runtime.container_id ?? existing.container_id,
+        pod_name: runtime.pod_name ?? existing.pod_name,
+        status: runtime.status ?? existing.status,
+        started_at: runtime.started_at ?? existing.started_at,
+        stopped_at: runtime.stopped_at ?? existing.stopped_at,
+        last_heartbeat: runtime.last_heartbeat ?? existing.last_heartbeat,
+        cpu_usage: runtime.cpu_usage ?? existing.cpu_usage,
+        memory_usage_mb: runtime.memory_usage_mb ?? existing.memory_usage_mb,
+        assigned_accounts: runtime.assigned_accounts ?? existing.assigned_accounts,
+        active_tasks: runtime.active_tasks ?? existing.active_tasks,
+        worker_version: runtime.worker_version ?? existing.worker_version,
+        node_version: runtime.node_version ?? existing.node_version,
+        updated_at: Date.now()
+      };
+      
       const stmt = this.db.prepare(`
         UPDATE worker_runtime SET
-          process_id = COALESCE(@process_id, process_id),
-          container_id = COALESCE(@container_id, container_id),
-          pod_name = COALESCE(@pod_name, pod_name),
-          status = COALESCE(@status, status),
-          started_at = COALESCE(@started_at, started_at),
-          stopped_at = COALESCE(@stopped_at, stopped_at),
-          last_heartbeat = COALESCE(@last_heartbeat, last_heartbeat),
-          cpu_usage = COALESCE(@cpu_usage, cpu_usage),
-          memory_usage_mb = COALESCE(@memory_usage_mb, memory_usage_mb),
-          assigned_accounts = COALESCE(@assigned_accounts, assigned_accounts),
-          active_tasks = COALESCE(@active_tasks, active_tasks),
-          worker_version = COALESCE(@worker_version, worker_version),
-          node_version = COALESCE(@node_version, node_version),
+          process_id = @process_id,
+          container_id = @container_id,
+          pod_name = @pod_name,
+          status = @status,
+          started_at = @started_at,
+          stopped_at = @stopped_at,
+          last_heartbeat = @last_heartbeat,
+          cpu_usage = @cpu_usage,
+          memory_usage_mb = @memory_usage_mb,
+          assigned_accounts = @assigned_accounts,
+          active_tasks = @active_tasks,
+          worker_version = @worker_version,
+          node_version = @node_version,
           updated_at = @updated_at
         WHERE worker_id = @worker_id
       `);

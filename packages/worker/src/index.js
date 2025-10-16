@@ -11,7 +11,8 @@ const WorkerRegistration = require('./communication/registration');
 const HeartbeatSender = require('./communication/heartbeat');
 const TaskRunner = require('./handlers/task-runner');
 const { getBrowserManager, getArchitectureInfo } = require('./config/browser-config');
-const DouyinLoginHandler = require('./browser/douyin-login-handler');
+const WorkerBridge = require('./platforms/base/worker-bridge');
+const PlatformManager = require('./platform-manager');
 const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE } = require('@hiscrm-im/shared/protocol/messages');
 
 // 初始化logger
@@ -29,7 +30,8 @@ let workerRegistration;
 let heartbeatSender;
 let taskRunner;
 let browserManager;
-let loginHandler;
+let workerBridge;
+let platformManager;
 
 /**
  * 启动Worker
@@ -57,18 +59,14 @@ async function start() {
     await socketClient.connect();
     logger.info('✓ Connected to master');
 
-    // 2. 注册Worker
-    workerRegistration = new WorkerRegistration(socketClient, WORKER_ID, {
-      host: '127.0.0.1',
-      port: WORKER_PORT,
-      version: '1.0.0',
-      capabilities: ['douyin'],
-      maxAccounts: 10,
+    // 2. 初始化浏览器管理器（在注册前初始化）
+    browserManager = getBrowserManager(WORKER_ID, {
+      headless: process.env.HEADLESS !== 'false',
+      dataDir: `./data/browser/${WORKER_ID}`,
     });
+    logger.info('✓ Browser manager initialized');
 
-    const assignedAccounts = await workerRegistration.register();
-    logger.info(`✓ Registered with master (${assignedAccounts.length} accounts assigned)`);
-
+    // 3. 初始化 Worker Bridge
     // 3. 启动心跳发送器
     heartbeatSender = new HeartbeatSender(socketClient, WORKER_ID);
     heartbeatSender.start();
@@ -82,12 +80,31 @@ async function start() {
     // 不立即启动浏览器，等到需要时再启动
     logger.info('✓ Browser manager initialized');
 
-    // 5. 初始化登录处理器
-    loginHandler = new DouyinLoginHandler(browserManager, socketClient.socket);
-    logger.info('✓ Login handler initialized');
+    // 5. 初始化 Worker Bridge
+    workerBridge = new WorkerBridge(socketClient, WORKER_ID);
+    logger.info('✓ Worker bridge initialized');
 
-    // 6. 启动任务执行器
-    taskRunner = new TaskRunner(socketClient, heartbeatSender);
+    // 6. 初始化平台管理器并加载平台脚本
+    platformManager = new PlatformManager(workerBridge, browserManager);
+    await platformManager.loadPlatforms();
+    
+    const supportedPlatforms = platformManager.getSupportedPlatforms();
+    logger.info(`✓ Platform manager initialized with platforms: ${supportedPlatforms.join(', ')}`);
+
+    // 7. 注册Worker（使用动态加载的平台能力）
+    workerRegistration = new WorkerRegistration(socketClient, WORKER_ID, {
+      host: '127.0.0.1',
+      port: WORKER_PORT,
+      version: '1.0.0',
+      capabilities: supportedPlatforms, // 动态获取支持的平台
+      maxAccounts: 10,
+    });
+
+    const assignedAccounts = await workerRegistration.register();
+    logger.info(`✓ Registered with master (${assignedAccounts.length} accounts assigned)`);
+
+    // 8. 启动任务执行器（传入 platformManager）
+    taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager);
     taskRunner.start();
     logger.info('✓ Task runner started');
 
@@ -109,6 +126,11 @@ async function start() {
     // 9. 监听登录请求
     socketClient.socket.on('master:login:start', (data) => {
       handleLoginRequest(data);
+    });
+
+    // 10. 监听用户输入（用于短信验证码等场景）
+    socketClient.socket.on('master:login:user_input', (data) => {
+      handleUserInput(data);
     });
 
     logger.info('╔═══════════════════════════════════════════╗');
@@ -160,22 +182,53 @@ function handleTaskRevoke(msg) {
  * @param {object} data - 登录请求数据
  */
 async function handleLoginRequest(data) {
-  const { account_id, session_id, proxy } = data;
+  const { account_id, session_id, platform, proxy } = data;
 
   try {
-    logger.info(`Received login request for account ${account_id}, session ${session_id}`);
+    logger.info(`Received login request for account ${account_id}, platform ${platform}, session ${session_id}`);
 
     // 如果有代理配置，记录日志
     if (proxy) {
       logger.info(`Using proxy for account ${account_id}: ${proxy.server}`);
     }
 
-    // 启动登录流程（传递代理配置）
-    await loginHandler.startLogin(account_id, session_id, proxy);
+    // 获取对应平台实例
+    const platformInstance = platformManager.getPlatform(platform);
+    if (!platformInstance) {
+      throw new Error(`Platform ${platform} not supported or not loaded`);
+    }
 
-    logger.info(`Login process started for account ${account_id}`);
+    // 启动登录流程（传递代理配置）
+    await platformInstance.startLogin({
+      accountId: account_id,
+      sessionId: session_id,
+      proxy,
+    });
+
+    logger.info(`Login process started for account ${account_id} on platform ${platform}`);
   } catch (error) {
     logger.error(`Failed to handle login request for account ${account_id}:`, error);
+    // 发送登录失败事件
+    workerBridge.sendLoginStatus(data.account_id, data.session_id, 'failed', error.message);
+  }
+}
+
+/**
+ * 处理用户输入（短信验证码等）
+ * @param {object} data - 用户输入数据
+ */
+function handleUserInput(data) {
+  const { session_id, input_type, value } = data;
+
+  try {
+    logger.info(`Received user input for session ${session_id}, type: ${input_type}`);
+
+    // 触发 WorkerBridge 的用户输入回调
+    workerBridge.triggerUserInput(session_id, input_type, value);
+
+    logger.info(`User input handled for session ${session_id}`);
+  } catch (error) {
+    logger.error(`Failed to handle user input for session ${session_id}:`, error);
   }
 }
 
@@ -197,10 +250,10 @@ async function shutdown(signal) {
     logger.info('Heartbeat sender stopped');
   }
 
-  // 关闭浏览器
+  // 关闭所有浏览器实例
   if (browserManager) {
-    await browserManager.close();
-    logger.info('Browser closed');
+    await browserManager.closeAll();
+    logger.info('All browsers closed');
   }
 
   // 断开Socket连接

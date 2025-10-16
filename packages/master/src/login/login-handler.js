@@ -122,11 +122,13 @@ class LoginHandler {
   /**
    * 处理登录成功
    * @param {string} sessionId - 会话ID
-   * @param {Object} cookies - 登录后的 cookies (可选)
+   * @param {Object} cookies - 登录后的 cookies 数组 (可选)
    * @param {number} cookiesValidUntil - Cookies 有效期时间戳 (可选)
    * @param {string} realAccountId - 从平台获取的真实账户ID (可选)
+   * @param {Object} userInfo - 用户信息 (昵称、头像、抖音号等) (可选)
+   * @param {Object} fingerprint - 浏览器指纹配置 (可选)
    */
-  handleLoginSuccess(sessionId, cookies = null, cookiesValidUntil = null, realAccountId = null) {
+  handleLoginSuccess(sessionId, cookies = null, cookiesValidUntil = null, realAccountId = null, userInfo = null, fingerprint = null) {
     try {
       const session = this.getSession(sessionId);
       if (!session) {
@@ -148,19 +150,23 @@ class LoginHandler {
       const account = this.db.prepare(`SELECT account_id FROM accounts WHERE id = ?`).get(session.account_id);
       const isTemporaryId = account && account.account_id.startsWith('temp_');
 
-      // 更新账户登录状态和凭证
+      // 构建更新 SQL
       let updateSql = `
         UPDATE accounts
         SET login_status = 'logged_in',
             last_login_time = ?,
             cookies_valid_until = ?,
-            credentials = ?
+            credentials = ?,
+            user_info = ?,
+            fingerprint = ?
       `;
 
       const params = [
         now,
         cookiesValidUntil || now + 86400 * 7,
-        cookies ? JSON.stringify({ cookies }) : '{}'
+        cookies ? JSON.stringify({ cookies }) : '{}',
+        userInfo ? JSON.stringify(userInfo) : null,
+        fingerprint ? JSON.stringify(fingerprint) : null,
       ];
 
       // 如果提供了真实ID且当前是临时ID，则更新 account_id
@@ -181,6 +187,7 @@ class LoginHandler {
       session.logged_in_at = now;
 
       logger.info(`Login success for session ${sessionId}, account ${session.account_id}`);
+      logger.info(`Saved: ${cookies ? cookies.length : 0} cookies, user_info: ${userInfo ? userInfo.nickname || 'unknown' : 'null'}, fingerprint: ${fingerprint ? 'yes' : 'no'}`);
 
       // 推送给管理员
       if (this.adminNamespace) {
@@ -189,6 +196,7 @@ class LoginHandler {
           account_id: session.account_id,
           worker_id: session.worker_id,
           logged_in_at: now,
+          user_info: userInfo,  // 包含用户信息
           timestamp: Date.now(),
         });
       }

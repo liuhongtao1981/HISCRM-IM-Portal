@@ -1,14 +1,11 @@
 {
   "name": "@hiscrm-im/shared",
   "version": "1.0.0",
-  "description": "共享代码 - 协议定义、模型、工具函数",
+  "description": "Shared utilities and models for HISCRM-IM",
   "main": "index.js",
   "scripts": {
     "test": "jest"
   },
-  "keywords": ["shared", "protocol", "models"],
-  "author": "",
-  "license": "MIT",
   "dependencies": {
     "uuid": "^9.0.1",
     "winston": "^3.11.0"

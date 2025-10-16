@@ -171,8 +171,16 @@ function initAdminNamespace(io, masterServer) {
 
         logger.info(`Admin ${socket.id} requested login for account ${account_id}, worker ${worker_id}, session ${session_id}`);
 
-        // 创建登录会话记录
+        // 查询账户信息获取平台
         const db = masterServer.db;
+        const account = db.prepare('SELECT platform FROM accounts WHERE id = ?').get(account_id);
+        
+        if (!account) {
+          socket.emit('admin:error', { error: 'Account not found' });
+          return;
+        }
+
+        // 创建登录会话记录
         const now = Math.floor(Date.now() / 1000);
         const expiresAt = now + 300; // 5 分钟
 
@@ -185,23 +193,25 @@ function initAdminNamespace(io, masterServer) {
         // 更新账户状态为 pending_login
         db.prepare('UPDATE accounts SET login_status = ? WHERE id = ?').run('pending_login', account_id);
 
-        // 查询账户的代理配置
-        const account = db.prepare(`
-          SELECT a.*, p.server, p.protocol, p.username, p.password
-          FROM accounts a
-          LEFT JOIN proxies p ON a.proxy_id = p.id
-          WHERE a.id = ?
-        `).get(account_id);
+        // 查询 Worker 的代理配置（从 worker_configs 表获取）
+        const workerConfig = db.prepare(`
+          SELECT wc.proxy_id, p.server, p.protocol, p.username, p.password, p.name
+          FROM worker_configs wc
+          LEFT JOIN proxies p ON wc.proxy_id = p.id
+          WHERE wc.worker_id = ?
+        `).get(worker_id);
 
         let proxyConfig = null;
-        if (account && account.server) {
+        if (workerConfig && workerConfig.server) {
           proxyConfig = {
-            server: account.server,
-            protocol: account.protocol,
-            username: account.username || undefined,
-            password: account.password || undefined,
+            server: workerConfig.server,
+            protocol: workerConfig.protocol,
+            username: workerConfig.username || undefined,
+            password: workerConfig.password || undefined,
           };
-          logger.info(`Using proxy for account ${account_id}: ${account.server}`);
+          logger.info(`Using proxy for worker ${worker_id}: ${workerConfig.name || workerConfig.server}`);
+        } else {
+          logger.info(`No proxy configured for worker ${worker_id}`);
         }
 
         // 转发到 Worker (通过 /worker 命名空间)
@@ -215,10 +225,11 @@ function initAdminNamespace(io, masterServer) {
             workerSocket.emit('master:login:start', {
               account_id,
               session_id,
+              platform: account.platform,  // 添加平台参数
               proxy: proxyConfig,  // 添加代理配置
             });
             sent = true;
-            logger.info(`Login request sent to worker ${worker_id}`);
+            logger.info(`Login request sent to worker ${worker_id} for platform ${account.platform}`);
             break;
           }
         }
@@ -248,6 +259,74 @@ function initAdminNamespace(io, masterServer) {
         logger.error('Error starting login:', error);
         socket.emit('admin:error', {
           error: 'Failed to start login',
+          message: error.message,
+        });
+      }
+    });
+
+    /**
+     * 事件: master:login:user_input - 用户输入（手机号、验证码等）
+     * Admin Web 发送用户输入 → Master → Worker
+     */
+    socket.on('master:login:user_input', async (data) => {
+      try {
+        if (!socket.authenticated) {
+          socket.emit('admin:error', { error: 'Not authenticated' });
+          return;
+        }
+
+        const { session_id, input_type, value } = data;
+
+        logger.info(`Admin ${socket.id} submitted user input for session ${session_id}, type: ${input_type}`);
+
+        // 查询登录会话获取 worker_id
+        const db = masterServer.db;
+        const session = db.prepare('SELECT worker_id, account_id FROM login_sessions WHERE id = ?').get(session_id);
+
+        if (!session) {
+          socket.emit('admin:error', { error: 'Login session not found' });
+          logger.warn(`Login session not found: ${session_id}`);
+          return;
+        }
+
+        // 转发到对应的 Worker
+        const workerNamespace = io.of('/worker');
+        const workerSockets = await workerNamespace.fetchSockets();
+
+        let sent = false;
+        for (const workerSocket of workerSockets) {
+          if (workerSocket.workerId === session.worker_id) {
+            workerSocket.emit('master:login:user_input', {
+              session_id,
+              input_type,
+              value,
+            });
+            sent = true;
+            logger.info(`User input forwarded to worker ${session.worker_id} for session ${session_id}`);
+            break;
+          }
+        }
+
+        if (!sent) {
+          logger.warn(`Worker ${session.worker_id} not found or offline for session ${session_id}`);
+          socket.emit('admin:error', {
+            error: 'Worker not available',
+            message: `Worker ${session.worker_id} is offline`,
+          });
+        } else {
+          // 通知 Admin 输入已接收
+          socket.emit('admin:login:user_input:ack', {
+            session_id,
+            input_type,
+            status: 'received',
+            timestamp: Date.now(),
+          });
+        }
+
+      } catch (error) {
+        logger.error('Error handling user input:', error);
+        socket.emit('admin:error', {
+          error: 'Failed to handle user input',
           message: error.message,
         });
       }

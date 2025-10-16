@@ -186,20 +186,86 @@ class BrowserManagerV2 {
   }
 
   /**
-   * 为账户启动独立的Browser实例
-   * @param {string} accountId - 账户ID
-   * @param {Object} options - 启动选项
-   * @returns {Browser}
+   * 为账户启动独立的Browser实例（已废弃，使用 launchPersistentContextForAccount 代替）
+   * @deprecated
    */
   async launchBrowserForAccount(accountId, options = {}) {
+    // 直接调用 launchPersistentContextForAccount
+    const context = await this.launchPersistentContextForAccount(accountId, options);
+    // 返回 context 的 browser 以保持兼容性
+    return context.browser();
+  }
+
+  /**
+   * 检查浏览器上下文是否有效
+   * @param {string} accountId - 账户ID
+   * @returns {Promise<boolean>}
+   */
+  async isBrowserContextValid(accountId) {
     try {
-      // 检查是否已启动
-      if (this.browsers.has(accountId)) {
-        logger.warn(`Browser already launched for account ${accountId}`);
-        return this.browsers.get(accountId);
+      const context = this.contexts.get(accountId);
+      if (!context) {
+        return false;
       }
 
-      logger.info(`Launching browser for account ${accountId}...`);
+      // 检查 browser 是否连接
+      const browser = context.browser();
+      if (!browser || !browser.isConnected()) {
+        logger.warn(`Browser disconnected for account ${accountId}`);
+        return false;
+      }
+
+      // 尝试获取页面列表（这会失败如果 context 已关闭）
+      await context.pages();
+      return true;
+
+    } catch (error) {
+      logger.warn(`Browser context invalid for account ${accountId}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 强制清理无效的浏览器上下文
+   * @param {string} accountId - 账户ID
+   */
+  async forceCleanupContext(accountId) {
+    try {
+      logger.info(`Force cleaning up invalid context for account ${accountId}...`);
+
+      // 移除引用
+      this.contexts.delete(accountId);
+      this.browsers.delete(accountId);
+
+      logger.info(`Cleaned up context references for account ${accountId}`);
+    } catch (error) {
+      logger.error(`Failed to force cleanup context for account ${accountId}:`, error);
+    }
+  }
+
+  /**
+   * 为账户启动 PersistentContext（推荐方法）
+   * 使用 launchPersistentContext 可以直接指定 userDataDir，无需通过 args
+   * @param {string} accountId - 账户ID
+   * @param {Object} options - 启动选项
+   * @returns {BrowserContext}
+   */
+  async launchPersistentContextForAccount(accountId, options = {}) {
+    try {
+      // 检查是否已启动且有效
+      if (this.contexts.has(accountId)) {
+        const isValid = await this.isBrowserContextValid(accountId);
+        if (isValid) {
+          logger.info(`Reusing valid context for account ${accountId}`);
+          return this.contexts.get(accountId);
+        } else {
+          // 浏览器已关闭，需要重启
+          logger.warn(`Context exists but invalid for account ${accountId}, restarting...`);
+          await this.forceCleanupContext(accountId);
+        }
+      }
+
+      logger.info(`Launching persistent context for account ${accountId}...`);
 
       // 获取或生成指纹配置
       const fingerprint = this.getOrCreateFingerprintConfig(accountId);
@@ -210,27 +276,37 @@ class BrowserManagerV2 {
         fs.mkdirSync(userDataDir, { recursive: true });
       }
 
-      // 配置Browser启动参数
+      // 配置启动参数
       const launchOptions = {
         headless: this.config.headless,
         slowMo: this.config.slowMo,
         devtools: this.config.devtools,
 
-        // ⭐ 关键:每个账户使用独立的用户数据目录
-        // 这样可以完全隔离Browser实例,实现真正的指纹独立
+        // 使用指纹配置
+        userAgent: fingerprint.userAgent,
+        viewport: fingerprint.viewport,
+        locale: fingerprint.locale,
+        timezoneId: fingerprint.timezone,
+        colorScheme: 'light',
+        deviceScaleFactor: fingerprint.screen.pixelRatio,
+
+        // 安全和反检测参数
         args: [
-          `--user-data-dir=${userDataDir}`,
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-blink-features=AutomationControlled',
-
+          
           // 根据指纹配置设置窗口大小
           `--window-size=${fingerprint.viewport.width},${fingerprint.viewport.height}`,
 
           // 禁用WebRTC(防止IP泄露)
           options.disableWebRTC ? '--disable-webrtc' : '',
         ].filter(Boolean),
+
+        // 其他选项
+        bypassCSP: options.bypassCSP || false,
+        ignoreHTTPSErrors: options.ignoreHTTPSErrors || true,
       };
 
       // 如果指定了代理
@@ -243,21 +319,39 @@ class BrowserManagerV2 {
         logger.info(`Using proxy for account ${accountId}: ${options.proxy.server}`);
       }
 
-      // 启动Browser
-      const browser = await chromium.launch(launchOptions);
+      // 启动 PersistentContext（会自动创建并管理 Browser）
+      const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
+
+      // 注入指纹脚本
+      await this.applyFingerprintScripts(context, fingerprint);
+
+      // 反检测措施
+      await this.applyAntiDetection(context);
+
+      // 监听浏览器关闭事件
+      const browser = context.browser();
+      browser.on('disconnected', () => {
+        logger.warn(`Browser disconnected for account ${accountId}, cleaning up...`);
+        this.contexts.delete(accountId);
+        this.browsers.delete(accountId);
+      });
+
+      // 保存引用
+      this.contexts.set(accountId, context);
       this.browsers.set(accountId, browser);
 
-      logger.info(`Browser launched successfully for account ${accountId}`);
-      return browser;
+      logger.info(`Persistent context launched successfully for account ${accountId}`);
+      return context;
 
     } catch (error) {
-      logger.error(`Failed to launch browser for account ${accountId}:`, error);
+      logger.error(`Failed to launch persistent context for account ${accountId}:`, error);
       throw error;
     }
   }
 
   /**
    * 为账户创建Context
+   * 使用 launchPersistentContext，context 已经在启动时创建
    * @param {string} accountId - 账户ID
    * @param {Object} options - Context选项
    * @returns {BrowserContext}
@@ -266,62 +360,14 @@ class BrowserManagerV2 {
     try {
       // 检查是否已有Context
       if (this.contexts.has(accountId)) {
-        logger.warn(`Context already exists for account ${accountId}`);
+        logger.info(`Reusing existing context for account ${accountId}`);
         return this.contexts.get(accountId);
       }
 
       logger.info(`Creating context for account ${accountId}...`);
 
-      // 确保Browser已启动
-      let browser = this.browsers.get(accountId);
-      if (!browser) {
-        browser = await this.launchBrowserForAccount(accountId, options);
-      }
-
-      // 获取指纹配置
-      const fingerprint = this.getOrCreateFingerprintConfig(accountId);
-
-      // 配置Context
-      const contextOptions = {
-        // 使用指纹配置
-        userAgent: fingerprint.userAgent,
-        viewport: fingerprint.viewport,
-        locale: fingerprint.locale,
-        timezoneId: fingerprint.timezone,
-
-        // 颜色方案
-        colorScheme: 'light',
-
-        // 权限
-        permissions: options.permissions || [],
-
-        // 其他选项
-        bypassCSP: options.bypassCSP || false,
-        ignoreHTTPSErrors: options.ignoreHTTPSErrors || true,
-
-        // 设备像素比
-        deviceScaleFactor: fingerprint.screen.pixelRatio,
-      };
-
-      // 加载已保存的storage state
-      const storageStatePath = this.getStorageStatePath(accountId);
-      if (fs.existsSync(storageStatePath)) {
-        contextOptions.storageState = storageStatePath;
-        logger.info(`Loading storage state for account ${accountId}`);
-      }
-
-      // 创建Context
-      const context = await browser.newContext(contextOptions);
-
-      // 注入指纹脚本
-      await this.applyFingerprintScripts(context, fingerprint);
-
-      // 反检测措施
-      await this.applyAntiDetection(context);
-
-      // 保存Context引用
-      this.contexts.set(accountId, context);
-      this.storageStatePaths.set(accountId, storageStatePath);
+      // 使用 launchPersistentContext 直接创建带 userDataDir 的 context
+      const context = await this.launchPersistentContextForAccount(accountId, options);
 
       logger.info(`Context created successfully for account ${accountId}`);
       return context;
@@ -463,6 +509,17 @@ class BrowserManagerV2 {
     try {
       let context = this.contexts.get(accountId);
 
+      // 检查 context 是否存在且有效
+      if (context) {
+        const isValid = await this.isBrowserContextValid(accountId);
+        if (!isValid) {
+          logger.warn(`Context invalid for account ${accountId}, recreating...`);
+          await this.forceCleanupContext(accountId);
+          context = null;
+        }
+      }
+
+      // 如果没有 context 或 context 无效，创建新的
       if (!context) {
         context = await this.createContextForAccount(accountId, options);
       }
@@ -474,6 +531,22 @@ class BrowserManagerV2 {
 
     } catch (error) {
       logger.error(`Failed to create page for account ${accountId}:`, error);
+
+      // 如果是 "Target closed" 或 "Browser has been closed" 错误，尝试重新创建
+      if (error.message.includes('closed') || error.message.includes('disconnected')) {
+        logger.warn(`Browser closed detected, attempting to recreate context for account ${accountId}...`);
+        try {
+          await this.forceCleanupContext(accountId);
+          const newContext = await this.createContextForAccount(accountId, options);
+          const page = await newContext.newPage();
+          logger.info(`Successfully recreated context and page for account ${accountId}`);
+          return page;
+        } catch (retryError) {
+          logger.error(`Failed to recreate context for account ${accountId}:`, retryError);
+          throw retryError;
+        }
+      }
+
       throw error;
     }
   }

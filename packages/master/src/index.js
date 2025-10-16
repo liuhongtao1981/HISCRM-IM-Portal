@@ -3,7 +3,31 @@
  * 负责Worker管理、任务调度、客户端通信
  */
 
+const path = require('path');
+const fs = require('fs');
+
+// 确保必要的目录存在
+const dataDir = path.join(__dirname, '../data');
+const logsDir = path.join(__dirname, '../logs');
+
+if (!fs.existsSync(dataDir)) {
+  fs.mkdirSync(dataDir, { recursive: true });
+  console.log(`Created data directory: ${dataDir}`);
+}
+
+if (!fs.existsSync(logsDir)) {
+  fs.mkdirSync(logsDir, { recursive: true });
+  console.log(`Created logs directory: ${logsDir}`);
+}
+
+// 加载环境变量
 require('dotenv').config();
+
+// 验证关键环境变量
+if (!process.env.PORT) {
+  console.log('Using default PORT=3000');
+}
+
 const express = require('express');
 const http = require('http');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -244,7 +268,17 @@ async function start() {
     };
 
     tempHandlers.onLoginSuccess = (data) => {
-      loginHandler.handleLoginSuccess(data.session_id, null, data.cookies_valid_until);
+      // 提取真实的账户ID (从 user_info.uid 或 user_info.douyin_id)
+      const realAccountId = data.user_info ? (data.user_info.uid || data.user_info.douyin_id) : null;
+
+      loginHandler.handleLoginSuccess(
+        data.session_id,
+        data.cookies,           // Cookie 数组
+        data.cookies_valid_until,
+        realAccountId,          // 真实账户ID
+        data.user_info,         // 用户信息
+        data.fingerprint        // 浏览器指纹
+      );
     };
 
     tempHandlers.onLoginFailed = (data) => {
@@ -315,7 +349,7 @@ async function start() {
     app.use('/api/v1/worker-configs', createWorkerConfigsRouter(workerConfigDAO));
 
     const createWorkerLifecycleRouter = require('./api/routes/worker-lifecycle');
-    app.use('/api/v1/worker-lifecycle', createWorkerLifecycleRouter(workerLifecycleManager));
+    app.use('/api/v1/worker-lifecycle', createWorkerLifecycleRouter(workerLifecycleManager, workerConfigDAO));
 
     logger.info('API routes mounted');
 
@@ -337,63 +371,133 @@ async function start() {
     const shutdown = async (signal) => {
       if (isShuttingDown) {
         logger.warn('Shutdown already in progress');
+        // 如果是重复的信号，直接返回，不要再次启动强制退出
         return;
       }
       isShuttingDown = true;
 
       logger.info(`${signal} received, shutting down gracefully`);
 
-      // 启动强制退出超时（只在 shutdown 时启动）
+      // 启动强制退出超时（缩短到5秒）
       forceShutdownTimer = setTimeout(() => {
         logger.error('Forced shutdown after timeout');
         process.exit(1);
-      }, 10000);
+      }, 5000);
 
       try {
         // 停止调度器和监控（阻止新任务）
         logger.info('Stopping schedulers and monitors...');
-        if (taskScheduler) taskScheduler.stop();
-        if (heartbeatMonitor) heartbeatMonitor.stop();
-        if (notificationQueue) notificationQueue.stop();
-        if (loginHandler) loginHandler.stopCleanupTimer();
+        try {
+          if (taskScheduler) taskScheduler.stop();
+          if (heartbeatMonitor) heartbeatMonitor.stop();
+          if (notificationQueue) notificationQueue.stop();
+          if (loginHandler) loginHandler.stopCleanupTimer();
+        } catch (error) {
+          logger.warn('Error stopping schedulers:', error.message);
+        }
 
         // 停止所有由 Master 管理的 Worker 进程
-        if (workerLifecycleManager) {
-          logger.info('Stopping worker lifecycle manager...');
-          await workerLifecycleManager.cleanup();
-          logger.info('Worker lifecycle manager stopped');
+        try {
+          if (workerLifecycleManager) {
+            logger.info('Stopping worker lifecycle manager...');
+            await workerLifecycleManager.cleanup();
+            logger.info('Worker lifecycle manager stopped');
+          }
+        } catch (error) {
+          logger.warn('Error stopping worker lifecycle manager:', error.message);
         }
 
         // 等待一小段时间让当前任务完成
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 200));
 
         // 关闭 Socket.IO 服务器
         logger.info('Closing Socket.IO connections...');
-        if (workerNamespace) {
-          workerNamespace.disconnectSockets(true);
-        }
-        if (clientNamespace) {
-          clientNamespace.disconnectSockets(true);
-        }
-        if (adminNamespace) {
-          adminNamespace.disconnectSockets(true);
+        try {
+          // 首先断开所有连接
+          if (workerNamespace) {
+            await new Promise(resolve => {
+              try {
+                workerNamespace.disconnectSockets();
+                setTimeout(resolve, 100); // 给时间让连接断开
+              } catch (err) {
+                resolve(); // 即使出错也继续
+              }
+            });
+          }
+          if (clientNamespace) {
+            await new Promise(resolve => {
+              try {
+                clientNamespace.disconnectSockets();
+                setTimeout(resolve, 100);
+              } catch (err) {
+                resolve();
+              }
+            });
+          }
+          if (adminNamespace) {
+            await new Promise(resolve => {
+              try {
+                adminNamespace.disconnectSockets();
+                setTimeout(resolve, 100);
+              } catch (err) {
+                resolve();
+              }
+            });
+          }
+          
+          // 关闭整个 Socket.IO 服务器
+          if (io) {
+            await new Promise((resolve) => {
+              const timeout = setTimeout(() => {
+                logger.warn('Socket.IO close timeout, forcing close');
+                resolve();
+              }, 1000);
+
+              try {
+                io.close(() => {
+                  clearTimeout(timeout);
+                  logger.info('Socket.IO server closed');
+                  resolve();
+                });
+              } catch (err) {
+                clearTimeout(timeout);
+                logger.warn('Error closing Socket.IO:', err.message);
+                resolve();
+              }
+            });
+          }
+        } catch (error) {
+          logger.warn('Error closing Socket.IO connections:', error.message);
         }
 
         // 关闭HTTP服务器
-        logger.info('Closing HTTP server...');
-        await new Promise((resolve, reject) => {
-          server.close((err) => {
-            if (err) reject(err);
-            else resolve();
+        try {
+          logger.info('Closing HTTP server...');
+          await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+              reject(new Error('HTTP server close timeout'));
+            }, 2000);
+
+            server.close((err) => {
+              clearTimeout(timeout);
+              if (err) reject(err);
+              else resolve();
+            });
           });
-        });
-        logger.info('HTTP server closed');
+          logger.info('HTTP server closed');
+        } catch (error) {
+          logger.warn('Error closing HTTP server:', error.message);
+        }
 
         // 关闭数据库
-        if (db) {
-          logger.info('Closing database...');
-          db.close();
-          logger.info('Database closed');
+        try {
+          if (db) {
+            logger.info('Closing database...');
+            db.close();
+            logger.info('Database closed');
+          }
+        } catch (error) {
+          logger.warn('Error closing database:', error.message);
         }
 
         // 清除强制退出定时器
@@ -409,10 +513,11 @@ async function start() {
       }
     };
 
+    // 设置信号处理器
     process.on('SIGTERM', () => shutdown('SIGTERM'));
     process.on('SIGINT', () => shutdown('SIGINT'));
 
-    // Windows 兼容性：监听 Ctrl+C
+    // Windows 兼容性：监听 Ctrl+C（避免重复处理）
     if (process.platform === 'win32') {
       const readline = require('readline');
       const rl = readline.createInterface({
@@ -420,6 +525,10 @@ async function start() {
         output: process.stdout
       });
 
+      // 在 Windows 上，我们优先使用 readline 的 SIGINT 处理
+      // 先移除默认的 SIGINT 处理器
+      process.removeAllListeners('SIGINT');
+      
       rl.on('SIGINT', () => {
         logger.info('Received SIGINT from readline (Windows)');
         shutdown('SIGINT (Windows)');
