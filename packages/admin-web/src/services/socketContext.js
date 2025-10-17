@@ -100,14 +100,15 @@ export const SocketProvider = ({ children }) => {
             qr_code_data: extraData.qr_code_data ? 'PRESENT' : 'MISSING',
             expires_at: extraData.expires_at,
           });
-          setLoginModalData({
+          setLoginModalData(prev => ({
+            ...prev,  // 保留之前设置的账号和 Worker 信息
             visible: true,
             session_id,
             account_id,
             login_method: 'qrcode',
             qr_code_data: extraData.qr_code_data,
             expires_at: extraData.expires_at,
-          });
+          }));
           message.success('二维码已加载，请使用抖音 App 扫码');
           break;
 
@@ -126,7 +127,8 @@ export const SocketProvider = ({ children }) => {
 
         case 'sms_input_required':
           // 需要用户输入（手机号或验证码）
-          setLoginModalData({
+          setLoginModalData(prev => ({
+            ...prev,  // 保留之前设置的账号和 Worker 信息
             visible: true,
             session_id,
             account_id,
@@ -134,7 +136,7 @@ export const SocketProvider = ({ children }) => {
             step: extraData.step, // 'phone_number' | 'verification_code'
             message: extraData.message,
             phone_number: extraData.phone_number,
-          });
+          }));
           if (extraData.step === 'phone_number') {
             message.info('请输入手机号');
           } else if (extraData.step === 'verification_code') {
@@ -212,6 +214,34 @@ export const SocketProvider = ({ children }) => {
       message.error('错误: ' + data.error);
     });
 
+    // 通知推送
+    socketInstance.on('notification:new', (notification) => {
+      console.log('🔔 New notification received:', notification);
+
+      // 根据通知类型显示不同的消息
+      if (notification.type === 'comment') {
+        message.info({
+          content: `💬 新评论: ${notification.content?.substring(0, 50) || '无内容'}`,
+          duration: 5,
+        });
+      } else if (notification.type === 'direct_message') {
+        message.info({
+          content: `📩 新私信: ${notification.content?.substring(0, 50) || '无内容'}`,
+          duration: 5,
+        });
+      } else if (notification.type === 'system') {
+        message.success({
+          content: notification.content || '系统通知',
+          duration: 5,
+        });
+      } else {
+        message.info({
+          content: `🔔 新通知: ${notification.type}`,
+          duration: 5,
+        });
+      }
+    });
+
     setSocket(socketInstance);
 
     // 清理
@@ -235,7 +265,7 @@ export const SocketProvider = ({ children }) => {
   }, [socket]);
 
   // 启动登录流程
-  const startLogin = useCallback((accountId, workerId) => {
+  const startLogin = useCallback((accountId, workerId, accountInfo = {}) => {
     if (socket) {
       // 创建会话ID
       const sessionId = `session-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -246,6 +276,19 @@ export const SocketProvider = ({ children }) => {
         worker_id: workerId,
         session_id: sessionId,
       });
+
+      // 预设登录模态框数据（包含账号和 Worker 信息）
+      setLoginModalData(prev => ({
+        ...prev,
+        visible: true,
+        session_id: sessionId,
+        account_id: accountId,
+        worker_id: workerId,
+        account_name: accountInfo.account_name,
+        platform: accountInfo.platform,
+        worker_host: accountInfo.worker_host,
+        worker_port: accountInfo.worker_port,
+      }));
 
       message.info('正在启动登录流程...');
       return sessionId;

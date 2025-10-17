@@ -62,6 +62,17 @@ function initAdminNamespace(io, masterServer) {
           timestamp: Date.now(),
         });
         logger.info(`Admin authenticated: ${userId} (socket: ${socket.id})`);
+
+        // 发送测试通知，验证推送功能
+        setTimeout(() => {
+          socket.emit('notification:new', {
+            id: `test-${Date.now()}`,
+            type: 'system',
+            content: '🎉 连接成功！通知推送功能正常工作',
+            timestamp: Date.now(),
+          });
+          logger.info(`✅ Test notification sent to admin ${userId} (socket: ${socket.id})`);
+        }, 500); // 延迟500ms发送，确保客户端已准备好接收
       } else {
         socket.authenticated = false;
         socket.emit('admin:auth:failed', {
@@ -84,24 +95,78 @@ function initAdminNamespace(io, masterServer) {
 
         const db = masterServer.db;
 
-        // 查询系统状态
-        const workersCount = db.prepare('SELECT COUNT(*) as count FROM workers WHERE status = ?').get('online').count;
-        const accountsCount = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
-        const activeAccountsCount = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE status = ?').get('active').count;
-        const loginSessionsCount = db.prepare('SELECT COUNT(*) as count FROM login_sessions WHERE status = ?').get('pending').count;
+        // Workers 统计 - 只统计在 worker_configs 中配置的 worker
+        const totalWorkers = db.prepare('SELECT COUNT(*) as count FROM worker_configs').get().count;
+        const onlineWorkers = db.prepare(`
+          SELECT COUNT(*) as count
+          FROM workers w
+          INNER JOIN worker_configs wc ON w.id = wc.worker_id
+          WHERE w.status = ?
+        `).get('online').count;
+        const offlineWorkers = totalWorkers - onlineWorkers;
+
+        // 账户统计
+        const totalAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
+        const activeAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE status = ?').get('active').count;
+        const loggedInAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE login_status = ?').get('logged_in').count;
+        const notLoggedInAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE login_status = ?').get('not_logged_in').count;
+        const loginFailedAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE login_status = ?').get('login_failed').count;
+
+        // 按 worker_status 统计账户
+        const onlineAccountsCount = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE worker_status = ?').get('online').count;
+        const offlineAccountsCount = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE worker_status = ?').get('offline').count;
+        const errorAccountsCount = db.prepare('SELECT COUNT(*) as count FROM accounts WHERE worker_status = ?').get('error').count;
+
+        // 运行时统计
+        const totalComments = db.prepare('SELECT SUM(total_comments) as sum FROM accounts').get().sum || 0;
+        const totalWorks = db.prepare('SELECT SUM(total_works) as sum FROM accounts').get().sum || 0;
+        const totalFollowers = db.prepare('SELECT SUM(total_followers) as sum FROM accounts').get().sum || 0;
+
+        // 登录会话统计
+        const pendingLoginSessions = db.prepare('SELECT COUNT(*) as count FROM login_sessions WHERE status IN (?, ?)').get('pending', 'scanning').count;
+        const successLoginSessions = db.prepare('SELECT COUNT(*) as count FROM login_sessions WHERE status = ?').get('success').count;
+        const failedLoginSessions = db.prepare('SELECT COUNT(*) as count FROM login_sessions WHERE status = ?').get('failed').count;
+
+        // 平台统计
+        const platformStats = db.prepare(`
+          SELECT platform, COUNT(*) as count
+          FROM accounts
+          GROUP BY platform
+        `).all();
 
         const status = {
           workers: {
-            online: workersCount,
-            total: db.prepare('SELECT COUNT(*) as count FROM workers').get().count,
+            total: totalWorkers,
+            online: onlineWorkers,
+            offline: offlineWorkers,
           },
           accounts: {
-            total: accountsCount,
-            active: activeAccountsCount,
+            total: totalAccounts,
+            active: activeAccounts,
+            inactive: totalAccounts - activeAccounts,
+            loggedIn: loggedInAccounts,
+            notLoggedIn: notLoggedInAccounts,
+            loginFailed: loginFailedAccounts,
+            // 按 worker_status 分类
+            onlineStatus: onlineAccountsCount,
+            offlineStatus: offlineAccountsCount,
+            errorStatus: errorAccountsCount,
+          },
+          runtime: {
+            totalComments,
+            totalWorks,
+            totalFollowers,
           },
           loginSessions: {
-            pending: loginSessionsCount,
+            pending: pendingLoginSessions,
+            success: successLoginSessions,
+            failed: failedLoginSessions,
+            total: pendingLoginSessions + successLoginSessions + failedLoginSessions,
           },
+          platforms: platformStats.reduce((acc, item) => {
+            acc[item.platform] = item.count;
+            return acc;
+          }, {}),
           timestamp: Date.now(),
         };
 

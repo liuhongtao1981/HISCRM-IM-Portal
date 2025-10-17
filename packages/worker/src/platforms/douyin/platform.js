@@ -5,20 +5,23 @@
 
 const PlatformBase = require('../base/platform-base');
 const DouyinLoginHandler = require('../../browser/douyin-login-handler');
-const DouyinCrawler = require('../../crawlers/douyin-crawler');
+const IncrementalCrawlService = require('../../services/incremental-crawl-service');
+const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { v4: uuidv4 } = require('uuid');
 
 const logger = createLogger('douyin-platform');
+const cacheManager = getCacheManager();
 
 class DouyinPlatform extends PlatformBase {
   constructor(config, workerBridge, browserManager) {
     super(config, workerBridge, browserManager);
-    
+
     // 复用现有的登录处理器（传入 bridge 的 socket）
     this.loginHandler = new DouyinLoginHandler(browserManager, workerBridge.socket);
-    
-    // 复用现有的爬虫
-    this.crawler = new DouyinCrawler();
+
+    // 爬虫状态
+    this.currentPage = null;
   }
 
   /**
@@ -27,13 +30,10 @@ class DouyinPlatform extends PlatformBase {
    */
   async initialize(account) {
     logger.info(`Initializing Douyin platform for account ${account.id}`);
-    
+
     // 调用基类初始化（创建上下文、加载指纹）
     await super.initialize(account);
-    
-    // 初始化爬虫
-    await this.crawler.initialize(account);
-    
+
     logger.info(`Douyin platform initialized for account ${account.id}`);
   }
 
@@ -541,19 +541,351 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 爬取评论
+   * 爬取评论 - 使用"点击+拦截"策略
+   * 导航到评论管理页面,点击视频选择器,拦截评论API获取数据
    * @param {Object} account - 账户对象
-   * @returns {Promise<Array>} 评论数据
+   * @param {Object} options - 选项
+   * @param {number} options.maxVideos - 最多爬取的作品数量（默认全部）
+   * @returns {Promise<Object>} { comments: Array, videos: Array, newComments: Array, stats: Object }
    */
-  async crawlComments(account) {
+  async crawlComments(account, options = {}) {
+    const { maxVideos = null } = options;
+
     try {
-      logger.info(`Crawling comments for account ${account.id}`);
-      
-      // 使用现有的爬虫
-      const comments = await this.crawler.crawlComments(account);
-      
-      logger.info(`Crawled ${comments.length} comments for account ${account.id}`);
-      return comments;
+      logger.info(`Crawling comments for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
+
+      // 确保账号有 platform_user_id
+      if (!account.platform_user_id) {
+        throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
+      }
+
+      // 1. 获取或创建页面
+      const page = await this.getOrCreatePage(account.id);
+
+      // 2. 设置全局API拦截器 - 持续监听所有评论API
+      const allApiResponses = [];
+      const commentApiPattern = /comment.*list/i;
+
+      page.on('response', async (response) => {
+        const url = response.url();
+        const contentType = response.headers()['content-type'] || '';
+
+        if (commentApiPattern.test(url) && contentType.includes('application/json')) {
+          try {
+            const json = await response.json();
+
+            if (json.comment_info_list && Array.isArray(json.comment_info_list)) {
+              const itemId = this.extractItemId(url);
+              const cursor = this.extractCursor(url);
+
+              allApiResponses.push({
+                timestamp: Date.now(),
+                url: url,
+                item_id: itemId,
+                cursor: cursor,
+                data: json,
+              });
+
+              logger.debug(`Intercepted comment API: cursor=${cursor}, comments=${json.comment_info_list.length}, has_more=${json.has_more}`);
+            }
+          } catch (error) {
+            // JSON解析失败,忽略
+          }
+        }
+      });
+
+      logger.info('API interceptor enabled');
+
+      // 3. 导航到评论管理页面
+      await this.navigateToCommentManage(page);
+      await page.waitForTimeout(3000);
+
+      // 4. 点击"选择作品"按钮打开模态框
+      logger.info('Opening video selector modal');
+      try {
+        await page.click('span:has-text("选择作品")', { timeout: 5000 });
+        await page.waitForTimeout(2000);
+      } catch (error) {
+        logger.warn('Failed to open video selector, videos may already be visible');
+      }
+
+      // 5. 获取所有视频元素
+      const videoElements = await page.evaluate(() => {
+        const containers = document.querySelectorAll('.container-Lkxos9');
+        const videos = [];
+
+        containers.forEach((container, idx) => {
+          const titleEl = container.querySelector('.title-LUOP3b');
+          const commentCountEl = container.querySelector('.right-os7ZB9 > div:last-child');
+
+          if (titleEl) {
+            videos.push({
+              index: idx,
+              title: titleEl.innerText?.trim() || '',
+              commentCountText: commentCountEl?.innerText?.trim() || '0',
+            });
+          }
+        });
+
+        return videos;
+      });
+
+      logger.info(`Found ${videoElements.length} video elements`);
+
+      // 筛选有评论的视频
+      const videosToClick = videoElements.filter(v => parseInt(v.commentCountText) > 0);
+      logger.info(`Videos with comments: ${videosToClick.length}`);
+
+      if (videosToClick.length === 0) {
+        logger.warn('No videos with comments found');
+        return {
+          comments: [],
+          videos: [],
+          newComments: [],
+          stats: { recent_comments_count: 0, total_videos: 0, new_comments_count: 0 },
+        };
+      }
+
+      // 限制处理的视频数量
+      const maxToProcess = maxVideos ? Math.min(maxVideos, videosToClick.length) : videosToClick.length;
+
+      // 6. 批量点击所有视频
+      logger.info(`Clicking ${maxToProcess} videos to trigger comment loading`);
+      for (let i = 0; i < maxToProcess; i++) {
+        const video = videosToClick[i];
+        logger.info(`[${i + 1}/${maxToProcess}] Clicking: ${video.title.substring(0, 50)}...`);
+
+        try {
+          // 使用JavaScript直接点击(避免被遮挡)
+          await page.evaluate((idx) => {
+            const containers = document.querySelectorAll('.container-Lkxos9');
+            if (idx < containers.length) {
+              containers[idx].click();
+            }
+          }, video.index);
+
+          // 等待API响应
+          await page.waitForTimeout(2000);
+
+          // 重新打开模态框以便点击下一个
+          if (i < maxToProcess - 1) {
+            await page.click('span:has-text("选择作品")', { timeout: 5000 });
+            await page.waitForTimeout(1000);
+          }
+        } catch (error) {
+          logger.error(`Failed to click video ${i}: ${error.message}`);
+        }
+      }
+
+      logger.info('Finished clicking all videos, waiting for final API responses');
+      await page.waitForTimeout(2000);
+
+      // 7. 第二轮: 处理需要分页的视频 (has_more: true)
+      logger.info('Checking for videos that need pagination...');
+
+      // 按item_id分组当前已拦截的响应
+      let currentResponsesByItemId = this.groupResponsesByItemId(allApiResponses);
+
+      // 检查哪些视频需要加载更多
+      const videosNeedMore = [];
+      for (const [itemId, responses] of Object.entries(currentResponsesByItemId)) {
+        const latestResponse = responses[responses.length - 1];
+        if (latestResponse.data.has_more) {
+          const totalCount = latestResponse.data.total_count || 0;
+          const loadedCount = responses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
+          videosNeedMore.push({
+            itemId,
+            totalCount,
+            loadedCount,
+            nextCursor: latestResponse.data.cursor,
+          });
+        }
+      }
+
+      if (videosNeedMore.length > 0) {
+        logger.info(`Found ${videosNeedMore.length} videos that need pagination`);
+        videosNeedMore.forEach(v => {
+          logger.debug(`  - item_id: ${v.itemId.substring(0, 30)}... (loaded ${v.loadedCount}/${v.totalCount})`);
+        });
+
+        // 对于需要分页的视频，尝试加载更多评论
+        for (const videoInfo of videosNeedMore) {
+          logger.info(`Processing pagination for item_id: ${videoInfo.itemId.substring(0, 30)}...`);
+
+          // 查找对应的视频元素
+          const videoElement = videosToClick.find(v => {
+            // 通过评论数量匹配（不完美，但可用）
+            return parseInt(v.commentCountText) === videoInfo.totalCount;
+          });
+
+          if (!videoElement) {
+            logger.warn(`  Could not find matching video element, skipping pagination`);
+            continue;
+          }
+
+          try {
+            // 重新打开模态框
+            await page.click('span:has-text("选择作品")', { timeout: 5000 });
+            await page.waitForTimeout(1000);
+
+            // 点击该视频
+            await page.evaluate((idx) => {
+              const containers = document.querySelectorAll('.container-Lkxos9');
+              if (idx < containers.length) {
+                containers[idx].click();
+              }
+            }, videoElement.index);
+
+            logger.info(`  Clicked video, attempting to load more comments`);
+            await page.waitForTimeout(2000);
+
+            // 尝试滚动加载更多评论
+            const beforeCount = allApiResponses.length;
+            let scrollAttempts = 0;
+            const maxScrolls = 10;
+
+            while (scrollAttempts < maxScrolls) {
+              // 查找并点击"加载更多"按钮或滚动到底部
+              const hasLoadMore = await page.evaluate(() => {
+                // 查找包含"加载更多"、"查看更多"等文本的按钮
+                const buttons = Array.from(document.querySelectorAll('button, div[class*="load"], div[class*="more"]'));
+                for (const btn of buttons) {
+                  const text = btn.innerText || '';
+                  if (text.includes('更多') || text.includes('加载')) {
+                    btn.click();
+                    return true;
+                  }
+                }
+
+                // 或者滚动评论列表到底部
+                const commentContainer = document.querySelector('[class*="comment"]');
+                if (commentContainer) {
+                  commentContainer.scrollTo(0, commentContainer.scrollHeight);
+                  return true;
+                }
+
+                return false;
+              });
+
+              if (hasLoadMore) {
+                await page.waitForTimeout(2000);
+                scrollAttempts++;
+
+                // 检查是否有新的API响应
+                if (allApiResponses.length > beforeCount) {
+                  logger.debug(`  Loaded more comments (attempt ${scrollAttempts}/${maxScrolls})`);
+                }
+              } else {
+                logger.debug(`  No "load more" button found or unable to scroll`);
+                break;
+              }
+
+              // 检查当前视频是否已加载完成
+              const updatedResponses = this.groupResponsesByItemId(allApiResponses)[videoInfo.itemId] || [];
+              const currentLoaded = updatedResponses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
+
+              // 检查最新响应是否 has_more = false
+              const latestResp = updatedResponses[updatedResponses.length - 1];
+              if (!latestResp.data.has_more || currentLoaded >= videoInfo.totalCount) {
+                logger.info(`  Finished loading all comments (${currentLoaded}/${videoInfo.totalCount})`);
+                break;
+              }
+            }
+
+          } catch (error) {
+            logger.error(`  Failed to load more comments: ${error.message}`);
+          }
+        }
+
+        logger.info('Pagination round completed, waiting for final API responses');
+        await page.waitForTimeout(2000);
+      } else {
+        logger.info('No videos need pagination (all have has_more: false or ≤10 comments)');
+      }
+
+      // 8. 解析所有拦截到的评论
+      logger.info(`Processing ${allApiResponses.length} intercepted API responses`);
+
+      // 按item_id分组响应
+      const responsesByItemId = this.groupResponsesByItemId(allApiResponses);
+
+      const allComments = [];
+      const allNewComments = [];
+      const videosWithComments = [];
+
+      for (const [itemId, responses] of Object.entries(responsesByItemId)) {
+        const totalCount = responses[0].data.total_count || 0;
+        const comments = [];
+
+        // 合并所有分页的评论
+        responses.forEach(resp => {
+          resp.data.comment_info_list.forEach(c => {
+            comments.push({
+              platform_comment_id: c.comment_id,
+              content: c.text,
+              author_name: c.user_info?.screen_name || '匿名',
+              author_id: c.user_info?.user_id || '',
+              author_avatar: c.user_info?.avatar_url || '',
+              create_time: parseInt(c.create_time),
+              create_time_formatted: new Date(parseInt(c.create_time) * 1000).toLocaleString('zh-CN'),
+              like_count: parseInt(c.digg_count) || 0,
+              reply_count: parseInt(c.reply_count) || 0,
+              detected_at: Math.floor(Date.now() / 1000),
+            });
+          });
+        });
+
+        // 去重 (通过platform_comment_id)
+        const uniqueComments = Array.from(
+          new Map(comments.map(c => [c.platform_comment_id, c])).values()
+        );
+
+        // 匹配视频信息
+        const videoInfo = videosToClick.find(v => v.commentCountText == totalCount.toString()) || {
+          title: '未知作品',
+          index: -1,
+        };
+
+        // 为评论添加视频信息
+        uniqueComments.forEach(comment => {
+          comment.post_title = videoInfo.title;
+          comment.post_id = itemId; // 使用item_id作为post_id
+        });
+
+        allComments.push(...uniqueComments);
+
+        videosWithComments.push({
+          aweme_id: itemId,  // 修正: 使用 aweme_id 而不是 item_id
+          item_id: itemId,   // 保留 item_id 作为兼容字段
+          title: videoInfo.title,
+          total_count: totalCount,
+          actual_count: uniqueComments.length,
+          comment_count: uniqueComments.length,
+        });
+
+        logger.info(`Video "${videoInfo.title.substring(0, 30)}...": ${uniqueComments.length}/${totalCount} comments`);
+      }
+
+      logger.info(`Total: ${allComments.length} comments from ${videosWithComments.length} videos`);
+
+      // 构建统计数据
+      const stats = {
+        recent_comments_count: allComments.length,
+        new_comments_count: allComments.length, // 暂时全部标记为新评论
+        total_videos: videoElements.length,
+        processed_videos: videosWithComments.length,
+        crawl_time: Math.floor(Date.now() / 1000),
+      };
+
+      // 发送数据到 Master
+      await this.sendCommentsToMaster(account, allComments, videosWithComments);
+
+      return {
+        comments: allComments,
+        videos: videosWithComments,
+        newComments: allComments, // TODO: 实现增量更新
+        stats,
+      };
     } catch (error) {
       logger.error(`Failed to crawl comments for account ${account.id}:`, error);
       throw error;
@@ -561,22 +893,950 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 爬取私信
+   * 从URL提取item_id参数
+   * @param {string} url - API URL
+   * @returns {string|null} item_id
+   */
+  extractItemId(url) {
+    const match = url.match(/item_id=([^&]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+  }
+
+  /**
+   * 从URL提取cursor参数
+   * @param {string} url - API URL
+   * @returns {number} cursor值
+   */
+  extractCursor(url) {
+    const match = url.match(/cursor=(\d+)/);
+    return match ? parseInt(match[1]) : 0;
+  }
+
+  /**
+   * 按item_id分组API响应
+   * @param {Array} responses - API响应数组
+   * @returns {Object} 按item_id分组的响应
+   */
+  groupResponsesByItemId(responses) {
+    const grouped = {};
+    responses.forEach(resp => {
+      if (resp.item_id) {
+        if (!grouped[resp.item_id]) {
+          grouped[resp.item_id] = [];
+        }
+        grouped[resp.item_id].push(resp);
+      }
+    });
+
+    // 按cursor排序
+    for (const itemId in grouped) {
+      grouped[itemId].sort((a, b) => a.cursor - b.cursor);
+    }
+
+    return grouped;
+  }
+
+  /**
+   * 爬取私信 - 导航到 互动管理 - 私信管理 页面，通过拦截API获取数据
    * @param {Object} account - 账户对象
-   * @returns {Promise<Array>} 私信数据
+   * @returns {Promise<Object>} { directMessages: Array, stats: Object }
    */
   async crawlDirectMessages(account) {
     try {
-      logger.info(`Crawling direct messages for account ${account.id}`);
-      
-      // 使用现有的爬虫
-      const directMessages = await this.crawler.crawlDirectMessages(account);
-      
-      logger.info(`Crawled ${directMessages.length} direct messages for account ${account.id}`);
-      return directMessages;
+      logger.info(`[crawlDirectMessages] Starting for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
+
+      // 确保账号有 platform_user_id
+      if (!account.platform_user_id) {
+        logger.error(`[crawlDirectMessages] Account ${account.id} missing platform_user_id`);
+        throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
+      }
+
+      // 1. 获取或创建页面
+      logger.debug(`[crawlDirectMessages] Step 1: Getting or creating page for account ${account.id}`);
+      const page = await this.getOrCreatePage(account.id);
+      logger.info(`[crawlDirectMessages] Page created/retrieved successfully`);
+
+      // 2. 设置API拦截器，捕获私信数据
+      logger.debug(`[crawlDirectMessages] Step 2: Setting up API interceptor for message API`);
+      const apiResponses = [];
+      await page.route('**/message/get_by_user_init**', async (route) => {
+        try {
+          logger.debug('[crawlDirectMessages] API interceptor triggered');
+          // 继续请求，不阻断
+          const response = await route.fetch();
+
+          // 检查响应的 Content-Type
+          const contentType = response.headers()['content-type'] || '';
+          logger.debug(`[crawlDirectMessages] API response Content-Type: ${contentType}`);
+
+          // 尝试解析为JSON，如果失败则记录并跳过
+          try {
+            const body = await response.json();
+            logger.info(`[crawlDirectMessages] Intercepted JSON message API response: ${JSON.stringify(body).substring(0, 200)}...`);
+            apiResponses.push(body);
+          } catch (jsonError) {
+            // 响应不是JSON格式（可能是protobuf或其他二进制格式）
+            logger.warn(`[crawlDirectMessages] API response is not JSON (likely protobuf), skipping: ${jsonError.message}`);
+            const bodyText = await response.text();
+            logger.debug(`[crawlDirectMessages] Response preview (first 100 bytes): ${bodyText.substring(0, 100)}`);
+          }
+
+          // 继续正常响应
+          await route.fulfill({ response });
+        } catch (error) {
+          logger.error('[crawlDirectMessages] Error in API interceptor:', error);
+          try {
+            await route.continue();
+          } catch (continueError) {
+            logger.error('[crawlDirectMessages] Failed to continue route:', continueError);
+          }
+        }
+      });
+      logger.info(`[crawlDirectMessages] API interceptor set up successfully`);
+
+      // 3. 导航到私信管理页面 (互动管理 - 私信管理)
+      logger.debug(`[crawlDirectMessages] Step 3: Navigating to message management page`);
+      await this.navigateToMessageManage(page);
+      logger.info(`[crawlDirectMessages] Navigation completed`);
+
+      // 4. 等待页面加载和API请求完成
+      logger.debug(`[crawlDirectMessages] Step 4: Waiting for page load and API requests (3s)`);
+      await page.waitForTimeout(3000);
+      logger.info(`[crawlDirectMessages] Initial wait completed, ${apiResponses.length} API responses captured`);
+
+      // 5. 尝试滚动私信列表以触发分页加载
+      logger.debug(`[crawlDirectMessages] Step 5: Scrolling message list to load more messages (pagination)`);
+      await this.scrollMessageListToLoadMore(page, apiResponses);
+      logger.info(`[crawlDirectMessages] Scrolling completed, total ${apiResponses.length} API responses`);
+
+      // 6. 从拦截的API响应中提取私信
+      logger.debug(`[crawlDirectMessages] Step 6: Parsing ${apiResponses.length} API responses`);
+      const rawMessages = this.parseMessagesFromAPI(apiResponses);
+      logger.info(`[crawlDirectMessages] Parsed ${rawMessages.length} messages from ${apiResponses.length} API responses`);
+
+      // 7. 如果API拦截没有数据，回退到DOM提取
+      if (rawMessages.length === 0) {
+        logger.warn('[crawlDirectMessages] No messages from API, falling back to DOM extraction');
+        const domMessages = await this.extractDirectMessages(page);
+        logger.info(`[crawlDirectMessages] DOM extraction returned ${domMessages.length} messages`);
+        rawMessages.push(...domMessages);
+      }
+
+      // 8. 添加必要字段（account_id, platform_user_id）
+      logger.debug(`[crawlDirectMessages] Step 8: Adding account fields to ${rawMessages.length} raw messages`);
+      const directMessages = rawMessages.map((msg) => ({
+        id: uuidv4(),
+        account_id: account.id,
+        platform_user_id: account.platform_user_id,
+        ...msg,
+        is_read: false,
+        created_at: Math.floor(Date.now() / 1000),
+      }));
+      logger.info(`[crawlDirectMessages] Prepared ${directMessages.length} direct messages with account fields`);
+
+      // 9. 发送私信数据到 Master
+      logger.debug(`[crawlDirectMessages] Step 9: Sending ${directMessages.length} messages to Master`);
+      await this.sendMessagesToMaster(account, directMessages);
+      logger.info(`[crawlDirectMessages] Messages sent to Master successfully`);
+
+      // 构建统计数据
+      const stats = {
+        recent_dms_count: directMessages.length,
+        crawl_time: Math.floor(Date.now() / 1000),
+      };
+
+      logger.info(`[crawlDirectMessages] ✅ Completed successfully: ${directMessages.length} messages, ${apiResponses.length} API responses`);
+      return {
+        directMessages,
+        stats,
+      };
     } catch (error) {
-      logger.error(`Failed to crawl direct messages for account ${account.id}:`, error);
+      logger.error(`[crawlDirectMessages] ❌ FATAL ERROR for account ${account.id}:`, error);
+      logger.error(`[crawlDirectMessages] Error stack:`, error.stack);
       throw error;
+    }
+  }
+
+  // ==================== 爬虫辅助方法 ====================
+
+  /**
+   * 获取或创建页面
+   * @param {string} accountId - 账户ID
+   * @returns {Promise<Page>}
+   */
+  async getOrCreatePage(accountId) {
+    if (this.currentPage && !this.currentPage.isClosed()) {
+      return this.currentPage;
+    }
+
+    const context = await this.ensureAccountContext(accountId);
+    this.currentPage = await context.newPage();
+    logger.info(`Created new page for crawling account ${accountId}`);
+
+    return this.currentPage;
+  }
+
+  /**
+   * 导航到评论管理页面 (互动管理 - 评论管理)
+   * @param {Page} page
+   */
+  async navigateToCommentManage(page) {
+    logger.info('Navigating to comment management page (互动管理 - 评论管理)');
+
+    const currentUrl = page.url();
+
+    // 如果已经在评论管理页面，直接返回
+    if (currentUrl.includes('/interactive/comment')) {
+      logger.info('Already on comment management page');
+      return;
+    }
+
+    // 导航到创作者中心首页
+    if (!currentUrl.includes('creator.douyin.com')) {
+      await page.goto('https://creator.douyin.com/', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+      await this.randomDelay(1000, 2000);
+    }
+
+    // 导航到评论管理页面
+    // 路径: 互动管理 - 评论管理
+    // URL: https://creator.douyin.com/creator-micro/interactive/comment
+    try {
+      await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+      await this.randomDelay(2000, 3000);
+      logger.info('Navigated to comment management page');
+    } catch (error) {
+      logger.error('Failed to navigate to comment management page:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 导航到私信管理页面 (互动管理 - 私信管理)
+   * @param {Page} page
+   */
+  async navigateToMessageManage(page) {
+    logger.info('[navigateToMessageManage] Starting navigation to message management page');
+
+    const currentUrl = page.url();
+    logger.debug(`[navigateToMessageManage] Current URL: ${currentUrl}`);
+
+    // 如果已经在私信管理页面，直接返回
+    if (currentUrl.includes('/data/following/chat')) {
+      logger.info('[navigateToMessageManage] Already on message management page, skipping navigation');
+      return;
+    }
+
+    // 导航到私信管理页面
+    // 路径: 互动管理 - 私信管理
+    // URL: https://creator.douyin.com/creator-micro/data/following/chat
+    try {
+      logger.debug('[navigateToMessageManage] Navigating to https://creator.douyin.com/creator-micro/data/following/chat');
+      await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
+        waitUntil: 'networkidle',
+        timeout: 30000,
+      });
+      logger.debug('[navigateToMessageManage] Page loaded, adding random delay');
+      await this.randomDelay(2000, 3000);
+      logger.info('[navigateToMessageManage] ✅ Successfully navigated to message management page');
+    } catch (error) {
+      logger.error('[navigateToMessageManage] ❌ FAILED to navigate:', error);
+      logger.error('[navigateToMessageManage] Error stack:', error.stack);
+      throw error;
+    }
+  }
+
+  /**
+   * 从评论管理页面获取作品列表
+   * @param {Page} page
+   * @returns {Promise<Array>} 作品列表
+   */
+  async getVideoListFromCommentPage(page) {
+    logger.info('Getting video list from comment management page');
+
+    try {
+      // 方法1: 尝试从页面DOM中提取作品信息
+      const videos = await page.evaluate(() => {
+        const videoList = [];
+
+        // 查找作品卡片（顶部显示的当前作品）
+        const videoCard = document.querySelector('[class*="video-card"], [class*="work-card"], [class*="content-card"]');
+        if (videoCard) {
+          // 提取作品ID（从data属性或链接中）
+          const awemeId = videoCard.getAttribute('data-aweme-id') ||
+                         videoCard.getAttribute('data-video-id') ||
+                         videoCard.querySelector('[data-aweme-id]')?.getAttribute('data-aweme-id');
+
+          // 提取标题
+          const titleEl = videoCard.querySelector('[class*="title"], [class*="content-title"]');
+          const title = titleEl ? titleEl.textContent.trim() : '';
+
+          // 提取封面
+          const coverEl = videoCard.querySelector('img');
+          const cover = coverEl ? coverEl.src : '';
+
+          // 提取发布时间
+          const timeEl = videoCard.querySelector('[class*="time"], [class*="date"]');
+          const publishTime = timeEl ? timeEl.textContent.trim() : '';
+
+          if (awemeId) {
+            videoList.push({ aweme_id: awemeId, title, cover, publish_time: publishTime });
+          }
+        }
+
+        // 查找作品选择器/列表（可能在侧边栏或下拉菜单）
+        const videoItems = document.querySelectorAll('[class*="video-item"], [class*="work-item"], [class*="content-item"]');
+        videoItems.forEach((item) => {
+          const awemeId = item.getAttribute('data-aweme-id') ||
+                         item.getAttribute('data-video-id') ||
+                         item.querySelector('[data-aweme-id]')?.getAttribute('data-aweme-id');
+
+          const titleEl = item.querySelector('[class*="title"]');
+          const title = titleEl ? titleEl.textContent.trim() : '';
+
+          const coverEl = item.querySelector('img');
+          const cover = coverEl ? coverEl.src : '';
+
+          if (awemeId && !videoList.find(v => v.aweme_id === awemeId)) {
+            videoList.push({ aweme_id: awemeId, title, cover, publish_time: '' });
+          }
+        });
+
+        return videoList;
+      });
+
+      // 方法2: 如果DOM提取失败，通过拦截作品列表API获取
+      if (videos.length === 0) {
+        logger.warn('No videos found from DOM, trying to intercept video list API');
+        // 这里可以添加拦截 /aweme/v1/creator/item/list API 的逻辑
+      }
+
+      logger.info(`Found ${videos.length} videos from comment page`);
+      return videos;
+    } catch (error) {
+      logger.error('Failed to get video list:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 在评论管理页面点击选择作品
+   * @param {Page} page
+   * @param {Object} video - 作品对象
+   * @param {number} index - 作品索引
+   */
+  async clickVideoInCommentPage(page, video, index) {
+    logger.info(`Clicking video: ${video.title || video.aweme_id}`);
+
+    try {
+      // 方法1: 通过aweme_id点击
+      if (video.aweme_id) {
+        const clicked = await page.evaluate((awemeId) => {
+          const videoElement = document.querySelector(`[data-aweme-id="${awemeId}"]`);
+          if (videoElement) {
+            videoElement.click();
+            return true;
+          }
+          return false;
+        }, video.aweme_id);
+
+        if (clicked) {
+          logger.info('Clicked video by aweme_id');
+          return;
+        }
+      }
+
+      // 方法2: 通过索引点击
+      const clickedByIndex = await page.evaluate((idx) => {
+        const videoItems = document.querySelectorAll('[class*="video-item"], [class*="work-item"], [class*="content-item"]');
+        if (videoItems[idx]) {
+          videoItems[idx].click();
+          return true;
+        }
+        return false;
+      }, index);
+
+      if (clickedByIndex) {
+        logger.info('Clicked video by index');
+        return;
+      }
+
+      logger.warn('Failed to click video, it may already be selected');
+    } catch (error) {
+      logger.error('Failed to click video:', error);
+    }
+  }
+
+  /**
+   * 滚动评论列表以加载更多评论
+   * @param {Page} page
+   */
+  async scrollCommentList(page) {
+    logger.info('Scrolling comment list to load more comments');
+
+    try {
+      // 查找评论列表容器并滚动
+      await page.evaluate(() => {
+        const commentContainer = document.querySelector('[class*="comment-list"], [class*="comment-container"]');
+        if (commentContainer) {
+          // 滚动到底部
+          commentContainer.scrollTop = commentContainer.scrollHeight;
+        } else {
+          // 如果没有找到容器，滚动整个页面
+          window.scrollTo(0, document.body.scrollHeight);
+        }
+      });
+
+      await page.waitForTimeout(1000);
+
+      // 滚动回顶部
+      await page.evaluate(() => {
+        const commentContainer = document.querySelector('[class*="comment-list"], [class*="comment-container"]');
+        if (commentContainer) {
+          commentContainer.scrollTop = 0;
+        } else {
+          window.scrollTo(0, 0);
+        }
+      });
+
+      await page.waitForTimeout(500);
+    } catch (error) {
+      logger.warn('Failed to scroll comment list:', error.message);
+    }
+  }
+
+  /**
+   * 从评论管理页面提取评论列表（DOM回退方案）
+   * @param {Page} page
+   * @returns {Promise<Array>}
+   */
+  async extractComments(page) {
+    logger.info('Extracting comments from comment management page (DOM fallback)');
+
+    try {
+      // 从页面提取评论列表 (使用 evaluate 在浏览器上下文中执行)
+      const comments = await page.evaluate(() => {
+        const commentElements = document.querySelectorAll(
+          '[class*="comment-item"], [class*="comment-list"] > div, .semi-table-row'
+        );
+        const commentList = [];
+
+        commentElements.forEach((el) => {
+          // 提取评论者昵称
+          const authorEl = el.querySelector(
+            '[class*="nickname"], [class*="author"], [class*="username"], [class*="user-name"]'
+          );
+          const authorName = authorEl ? authorEl.textContent.trim() : '匿名用户';
+
+          // 提取评论内容
+          const contentEl = el.querySelector(
+            '[class*="comment-content"], [class*="text-content"], [class*="content-text"], [class*="comment-text"]'
+          );
+          const content = contentEl ? contentEl.textContent.trim() : '';
+
+          // 提取评论时间
+          const timeEl = el.querySelector('[class*="time"], [class*="date"], [class*="timestamp"]');
+          const timeText = timeEl ? timeEl.textContent.trim() : '';
+
+          // 提取作品标题 (如果有)
+          const postEl = el.querySelector('[class*="post-title"], [class*="video-title"], [class*="title"]');
+          const postTitle = postEl ? postEl.textContent.trim() : '';
+
+          // 只添加有内容的评论
+          if (content) {
+            commentList.push({
+              platform_comment_id: `douyin-comment-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+              content,
+              author_name: authorName,
+              author_id: `user-${Math.random().toString(36).substring(2, 11)}`,
+              post_title: postTitle,
+              post_id: '',
+              detected_at: Math.floor(Date.now() / 1000),
+              time: timeText,
+            });
+          }
+        });
+
+        return commentList;
+      });
+
+      logger.info(`Extracted ${comments.length} comments from page`);
+      return comments;
+    } catch (error) {
+      logger.error('Failed to extract comments:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 从私信管理页面提取私信列表
+   * @param {Page} page
+   * @returns {Promise<Array>}
+   */
+  async extractDirectMessages(page) {
+    logger.info('Extracting direct messages from message management page');
+
+    try {
+      // 从页面提取私信列表
+      const messages = await page.evaluate(() => {
+        // 使用更精确的选择器 - 基于测试结果
+        const messageElements = document.querySelectorAll('.semi-list-item');
+        const messageList = [];
+
+        console.log(`[extractDirectMessages] Found ${messageElements.length} semi-list-item elements`);
+
+        messageElements.forEach((el, index) => {
+          const textContent = el.textContent || '';
+
+          // 跳过空元素和导航菜单项（这些不包含日期）
+          if (!textContent.trim()) {
+            console.log(`[extractDirectMessages] Skipping empty element ${index}`);
+            return;
+          }
+
+          // 检查是否是私信元素（包含日期格式 MM-DD）
+          const hasDatePattern = /\d{2}-\d{2}/.test(textContent);
+          if (!hasDatePattern) {
+            console.log(`[extractDirectMessages] Skipping element ${index}: no date pattern`);
+            return;
+          }
+
+          // 提取日期
+          const dateMatch = textContent.match(/(\d{2}-\d{2})/);
+          const date = dateMatch ? dateMatch[1] : '';
+
+          // 提取消息内容（日期后面的文本，去除"置顶"、"已读"、"删除"等操作按钮）
+          let content = textContent;
+          if (dateMatch) {
+            // 从日期后开始提取
+            content = textContent.substring(textContent.indexOf(dateMatch[0]) + dateMatch[0].length);
+          }
+          // 移除操作按钮文本
+          content = content.replace(/置顶|已读|删除/g, '').trim();
+
+          // 提取发送者信息（通常在头像附近）
+          const avatarEl = el.querySelector('.semi-avatar');
+          let senderName = '未知用户';
+          if (avatarEl && avatarEl.parentElement) {
+            // 查找头像附近的文本
+            const nameEl = avatarEl.parentElement.querySelector('span, div');
+            if (nameEl && nameEl.textContent && !nameEl.textContent.includes('置顶')) {
+              senderName = nameEl.textContent.trim();
+            }
+          }
+
+          // 只添加有效的私信（有内容且内容长度 > 10）
+          if (content && content.length > 10) {
+            console.log(`[extractDirectMessages] Found message ${index}: ${content.substring(0, 50)}...`);
+            messageList.push({
+              platform_message_id: `douyin-msg-dom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+              content,
+              sender_name: senderName,
+              sender_id: `user-${Math.random().toString(36).substr(2, 9)}`,
+              direction: 'inbound',
+              detected_at: Math.floor(Date.now() / 1000),
+              create_time: Math.floor(Date.now() / 1000),
+              time: date,
+            });
+          } else {
+            console.log(`[extractDirectMessages] Skipping element ${index}: content too short (${content.length} chars)`);
+          }
+        });
+
+        console.log(`[extractDirectMessages] Extracted ${messageList.length} messages total`);
+        return messageList;
+      });
+
+      logger.info(`Extracted ${messages.length} direct messages from page`);
+      return messages;
+    } catch (error) {
+      logger.error('Failed to extract direct messages:', error);
+      return [];
+    }
+  }
+
+  /**
+   * 滚动页面以触发懒加载和更多API请求
+   * @param {Page} page
+   */
+  async scrollPageToLoadMore(page) {
+    try {
+      logger.info('Scrolling page to trigger lazy loading...');
+
+      // 滚动到页面底部
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight);
+      });
+      await page.waitForTimeout(1000);
+
+      // 滚动回顶部
+      await page.evaluate(() => {
+        window.scrollTo(0, 0);
+      });
+      await page.waitForTimeout(500);
+
+      // 再次滚动到中间
+      await page.evaluate(() => {
+        window.scrollTo(0, document.body.scrollHeight / 2);
+      });
+      await page.waitForTimeout(500);
+
+      logger.info('Scrolling completed');
+    } catch (error) {
+      logger.warn('Failed to scroll page:', error.message);
+    }
+  }
+
+  /**
+   * 滚动私信列表以触发分页加载
+   * @param {Page} page - Playwright页面对象
+   * @param {Array} apiResponses - API响应数组（用于监控加载进度）
+   */
+  async scrollMessageListToLoadMore(page, apiResponses) {
+    try {
+      logger.info('[scrollMessageListToLoadMore] Starting pagination scroll for private messages');
+
+      const initialResponseCount = apiResponses.length;
+      const maxScrollAttempts = 10; // 最多滚动10次
+      let scrollAttempt = 0;
+      let noNewDataCount = 0; // 连续无新数据的次数
+
+      while (scrollAttempt < maxScrollAttempts && noNewDataCount < 3) {
+        scrollAttempt++;
+        const beforeScrollCount = apiResponses.length;
+
+        logger.debug(`[scrollMessageListToLoadMore] Scroll attempt ${scrollAttempt}/${maxScrollAttempts}`);
+
+        // 尝试查找并滚动私信列表容器
+        const scrolled = await page.evaluate(() => {
+          // 查找私信列表容器（抖音使用 semi-list 组件）
+          const messageListSelectors = [
+            '.semi-list',                    // Semi Design 列表组件
+            '[class*="message-list"]',       // 消息列表
+            '[class*="conversation-list"]',  // 会话列表
+            '.chat-content',                 // 聊天内容区域
+          ];
+
+          for (const selector of messageListSelectors) {
+            const container = document.querySelector(selector);
+            if (container) {
+              const scrollBefore = container.scrollTop;
+
+              // 滚动到容器底部
+              container.scrollTop = container.scrollHeight;
+
+              const scrollAfter = container.scrollTop;
+
+              console.log(`[scrollMessageListToLoadMore] Found container: ${selector}`);
+              console.log(`[scrollMessageListToLoadMore] Scrolled from ${scrollBefore} to ${scrollAfter} (height: ${container.scrollHeight})`);
+
+              // 如果成功滚动（scrollTop 发生变化），返回 true
+              if (scrollAfter > scrollBefore) {
+                return true;
+              }
+            }
+          }
+
+          // 如果没有找到特定容器，尝试滚动整个页面
+          const pageBefore = window.scrollY;
+          window.scrollTo(0, document.body.scrollHeight);
+          const pageAfter = window.scrollY;
+
+          console.log(`[scrollMessageListToLoadMore] Fallback: scrolled page from ${pageBefore} to ${pageAfter}`);
+          return pageAfter > pageBefore;
+        });
+
+        if (!scrolled) {
+          logger.debug(`[scrollMessageListToLoadMore] No more content to scroll (reached bottom)`);
+          break;
+        }
+
+        // 等待新数据加载
+        await page.waitForTimeout(2000);
+
+        // 检查是否有新的API响应
+        const afterScrollCount = apiResponses.length;
+        const newResponses = afterScrollCount - beforeScrollCount;
+
+        if (newResponses > 0) {
+          logger.info(`[scrollMessageListToLoadMore] ✅ Loaded ${newResponses} new API responses (total: ${afterScrollCount})`);
+          noNewDataCount = 0; // 重置计数器
+        } else {
+          noNewDataCount++;
+          logger.debug(`[scrollMessageListToLoadMore] No new data after scroll (${noNewDataCount}/3)`);
+        }
+      }
+
+      const totalNewResponses = apiResponses.length - initialResponseCount;
+      logger.info(`[scrollMessageListToLoadMore] ✅ Pagination complete: loaded ${totalNewResponses} new responses in ${scrollAttempt} scrolls`);
+
+    } catch (error) {
+      logger.error('[scrollMessageListToLoadMore] Failed to scroll message list:', error);
+    }
+  }
+
+  /**
+   * 从API响应中解析评论数据
+   * @param {Array} apiResponses - API响应数组
+   * @returns {Array} 评论列表
+   */
+  parseCommentsFromAPI(apiResponses) {
+    const allComments = [];
+
+    try {
+      apiResponses.forEach((response) => {
+        const comments = response.comments || [];
+
+        comments.forEach((comment) => {
+          allComments.push({
+            platform_comment_id: comment.cid || `douyin-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+            content: comment.text || '',
+            author_name: comment.user?.nickname || '未知用户',
+            author_id: comment.user?.uid || comment.user?.sec_uid || '',
+            author_avatar: comment.user?.avatar_thumb?.url_list?.[0] || '',
+            post_title: '', // API响应中没有作品标题，需要从其他地方获取
+            post_id: comment.aweme_id || '',
+            reply_to_comment_id: comment.reply_id || null,
+            like_count: comment.digg_count || 0,
+            detected_at: Math.floor(Date.now() / 1000),
+            create_time: comment.create_time || Math.floor(Date.now() / 1000),
+            ip_label: comment.ip_label || '',
+          });
+        });
+      });
+
+      logger.info(`Parsed ${allComments.length} comments from ${apiResponses.length} API responses`);
+    } catch (error) {
+      logger.error('Failed to parse comments from API:', error);
+    }
+
+    return allComments;
+  }
+
+  /**
+   * 从API响应中解析私信数据
+   * @param {Array} apiResponses - API响应数组
+   * @returns {Array} 私信列表
+   */
+  parseMessagesFromAPI(apiResponses) {
+    const allMessages = [];
+
+    try {
+      logger.info(`[parseMessagesFromAPI] Processing ${apiResponses.length} API responses`);
+
+      apiResponses.forEach((response, idx) => {
+        logger.debug(`[parseMessagesFromAPI] Processing response ${idx + 1}/${apiResponses.length}`);
+        logger.debug(`[parseMessagesFromAPI] Response structure: ${JSON.stringify(Object.keys(response))}`);
+
+        // 私信API的数据结构需要根据实际响应调整
+        const conversations = response.data?.conversations || response.conversations || [];
+        logger.debug(`[parseMessagesFromAPI] Found ${conversations.length} conversations in response ${idx + 1}`);
+
+        conversations.forEach((conversation, convIdx) => {
+          const lastMessage = conversation.last_message || {};
+          logger.debug(`[parseMessagesFromAPI] Conversation ${convIdx + 1}: user=${conversation.user?.nickname}, msg_id=${lastMessage.msg_id}`);
+
+          allMessages.push({
+            platform_message_id: lastMessage.msg_id || `douyin-msg-${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
+            content: lastMessage.content || lastMessage.text || '',
+            sender_name: conversation.user?.nickname || lastMessage.sender?.nickname || '未知用户',
+            sender_id: conversation.user?.uid || lastMessage.sender?.uid || '',
+            sender_avatar: conversation.user?.avatar_thumb?.url_list?.[0] || '',
+            conversation_id: conversation.conversation_id || conversation.conv_id || '',
+            direction: lastMessage.from_uid === conversation.owner_uid ? 'outbound' : 'inbound',
+            detected_at: Math.floor(Date.now() / 1000),
+            create_time: lastMessage.create_time || Math.floor(Date.now() / 1000),
+            message_type: lastMessage.msg_type || 'text',
+          });
+        });
+      });
+
+      logger.info(`[parseMessagesFromAPI] ✅ Parsed ${allMessages.length} messages from ${apiResponses.length} API responses`);
+    } catch (error) {
+      logger.error('[parseMessagesFromAPI] ❌ Failed to parse messages from API:', error);
+      logger.error('[parseMessagesFromAPI] Error stack:', error.stack);
+    }
+
+    return allMessages;
+  }
+
+  /**
+   * 随机延迟 (模拟人类操作)
+   * @param {number} min - 最小延迟(ms)
+   * @param {number} max - 最大延迟(ms)
+   */
+  async randomDelay(min, max) {
+    const delay = min + Math.random() * (max - min);
+    await new Promise((resolve) => setTimeout(resolve, delay));
+  }
+
+  /**
+   * 获取历史评论ID（通过 Worker Bridge 请求 Master）
+   * @param {string} awemeId - 作品ID
+   * @param {Object} options - 选项
+   * @returns {Promise<Array<string>>} 评论ID列表
+   */
+  async getExistingCommentIds(awemeId, options = {}) {
+    try {
+      logger.debug(`Requesting existing comment IDs for video ${awemeId}`);
+
+      // 通过 Worker Bridge 发送请求到 Master
+      const response = await this.bridge.request('worker:get_comment_ids', {
+        aweme_id: awemeId,
+        options,
+      });
+
+      if (response.success) {
+        logger.debug(`Received ${response.comment_ids.length} existing comment IDs for video ${awemeId}`);
+        return response.comment_ids;
+      } else {
+        logger.warn(`Failed to get existing comment IDs: ${response.error}`);
+        return [];
+      }
+    } catch (error) {
+      logger.error(`Failed to get existing comment IDs for video ${awemeId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 发送评论数据到 Master
+   * @param {Object} account - 账户对象
+   * @param {Array} comments - 评论列表
+   * @param {Array} videos - 视频列表
+   */
+  async sendCommentsToMaster(account, comments, videos) {
+    try {
+      logger.info(`Processing ${comments.length} comments for account ${account.id}`);
+
+      // 🔥 使用缓存管理器过滤新评论
+      const newComments = cacheManager.filterNewComments(account.id, comments);
+
+      if (newComments.length === 0) {
+        logger.info(`No new comments to send (all ${comments.length} comments are duplicates)`);
+
+        // 即使没有新评论，也发送视频信息更新
+        for (const video of videos) {
+          this.bridge.socket.emit('worker:upsert_video', {
+            account_id: account.id,
+            platform_user_id: account.platform_user_id,
+            aweme_id: video.aweme_id,
+            title: video.title,
+            cover: video.cover,
+            publish_time: video.publish_time,
+            total_comment_count: video.comment_count || 0,
+          });
+        }
+
+        return;
+      }
+
+      logger.info(`Sending ${newComments.length} NEW comments (filtered from ${comments.length} total) and ${videos.length} videos to Master`);
+
+      // 发送视频信息（upsert）
+      for (const video of videos) {
+        this.bridge.socket.emit('worker:upsert_video', {
+          account_id: account.id,
+          platform_user_id: account.platform_user_id,
+          aweme_id: video.aweme_id,
+          title: video.title,
+          cover: video.cover,
+          publish_time: video.publish_time,
+          total_comment_count: video.comment_count || 0,
+        });
+      }
+
+      // 🔥 只发送新评论
+      this.bridge.socket.emit('worker:bulk_insert_comments', {
+        account_id: account.id,
+        platform_user_id: account.platform_user_id,
+        comments: newComments,
+      });
+
+      logger.info(`✅ Successfully sent ${newComments.length} new comments and ${videos.length} videos to Master`);
+    } catch (error) {
+      logger.error('Failed to send comments to Master:', error);
+    }
+  }
+
+  /**
+   * 发送新评论通知
+   * @param {Object} account - 账户对象
+   * @param {Array} newComments - 新评论列表
+   * @param {Array} videos - 视频列表
+   */
+  async sendNewCommentNotifications(account, newComments, videos) {
+    try {
+      logger.info(`Generating notifications for ${newComments.length} new comments`);
+
+      // 按视频分组新评论
+      const commentsByVideo = {};
+      newComments.forEach((comment) => {
+        if (!commentsByVideo[comment.post_id]) {
+          commentsByVideo[comment.post_id] = [];
+        }
+        commentsByVideo[comment.post_id].push(comment);
+      });
+
+      // 为每个视频生成通知
+      for (const [awemeId, comments] of Object.entries(commentsByVideo)) {
+        const video = videos.find((v) => v.aweme_id === awemeId) || { title: '未知作品' };
+
+        const notifications = IncrementalCrawlService.generateCommentNotifications(
+          comments,
+          video,
+          account.id
+        );
+
+        // 发送通知到 Master
+        for (const notification of notifications) {
+          await this.bridge.pushNotification({
+            ...notification,
+            platform_user_id: account.platform_user_id,
+          });
+        }
+      }
+
+      logger.info(`Sent ${Object.keys(commentsByVideo).length} notification groups to Master`);
+    } catch (error) {
+      logger.error('Failed to send new comment notifications:', error);
+    }
+  }
+
+  /**
+   * 发送私信数据到 Master
+   * @param {Object} account - 账户对象
+   * @param {Array} messages - 私信列表
+   */
+  async sendMessagesToMaster(account, messages) {
+    try {
+      logger.info(`Processing ${messages.length} direct messages for account ${account.id}`);
+
+      // 🔥 使用缓存管理器过滤新私信
+      const newMessages = cacheManager.filterNewDirectMessages(account.id, messages);
+
+      if (newMessages.length === 0) {
+        logger.info(`No new direct messages to send (all ${messages.length} messages are duplicates)`);
+        return;
+      }
+
+      logger.info(`Sending ${newMessages.length} NEW direct messages (filtered from ${messages.length} total) to Master`);
+
+      // 🔥 只发送新私信
+      this.bridge.socket.emit('worker:bulk_insert_messages', {
+        account_id: account.id,
+        platform_user_id: account.platform_user_id,
+        messages: newMessages,
+      });
+
+      logger.info(`✅ Successfully sent ${newMessages.length} new messages to Master`);
+    } catch (error) {
+      logger.error('Failed to send messages to Master:', error);
     }
   }
 
@@ -613,17 +1873,20 @@ class DouyinPlatform extends PlatformBase {
    */
   async cleanup(accountId) {
     logger.info(`Cleaning up Douyin platform for account ${accountId}`);
-    
-    // 清理爬虫资源
-    try {
-      await this.crawler.cleanup();
-    } catch (error) {
-      logger.error(`Failed to cleanup crawler for account ${accountId}:`, error);
+
+    // 清理当前页面
+    if (this.currentPage) {
+      try {
+        await this.currentPage.close();
+        this.currentPage = null;
+      } catch (error) {
+        logger.error(`Failed to close page for account ${accountId}:`, error);
+      }
     }
-    
+
     // 调用基类清理（清理浏览器上下文等）
     await super.cleanup(accountId);
-    
+
     logger.info(`Douyin platform cleaned up for account ${accountId}`);
   }
 }

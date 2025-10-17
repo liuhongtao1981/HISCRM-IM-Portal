@@ -9,7 +9,10 @@
   ],
   "urls": {
     "home": "https://www.douyin.com/",
-    "login": "https://www.douyin.com/"
+    "login": "https://www.douyin.com/",
+    "creatorCenter": "https://creator.douyin.com/",
+    "commentManagement": "https://creator.douyin.com/creator-micro/interactive/comment",
+    "messageManagement": "https://creator.douyin.com/creator-micro/data/following/chat"
   },
   "selectors": {
     "loginButton": "text=登录",

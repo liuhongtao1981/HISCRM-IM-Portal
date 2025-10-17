@@ -296,9 +296,12 @@ class BrowserManagerV2 {
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
           '--disable-blink-features=AutomationControlled',
-          
+
           // 根据指纹配置设置窗口大小
           `--window-size=${fingerprint.viewport.width},${fingerprint.viewport.height}`,
+
+          // 强制窗口显示在主屏幕左上角(避免在外接显示器上)
+          '--window-position=100,100',
 
           // 禁用WebRTC(防止IP泄露)
           options.disableWebRTC ? '--disable-webrtc' : '',

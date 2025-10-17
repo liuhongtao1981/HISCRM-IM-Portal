@@ -83,6 +83,85 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
       }
     });
 
+    // 监听 Worker 推送的通知消息
+    socket.on('worker:notification:push', async (data) => {
+      logger.info(`Worker ${socket.id} notification push:`, data);
+      if (handlers.onNotificationPush) {
+        try {
+          await handlers.onNotificationPush(data, socket);
+        } catch (error) {
+          logger.error('Failed to handle notification push:', error);
+        }
+      }
+    });
+
+    // 监听获取评论ID请求（用于增量爬取）
+    socket.on('worker:get_comment_ids', async (data, callback) => {
+      logger.debug(`Worker ${socket.id} requesting comment IDs for video ${data.aweme_id}`);
+      if (handlers.onGetCommentIds) {
+        try {
+          const result = await handlers.onGetCommentIds(data, socket);
+          if (callback) callback(result);
+        } catch (error) {
+          logger.error('Failed to get comment IDs:', error);
+          if (callback) callback({ success: false, error: error.message });
+        }
+      }
+    });
+
+    // 监听获取历史数据ID列表（用于缓存预加载）
+    socket.on('worker:get_history_ids', async (data, callback) => {
+      logger.info(`Worker ${socket.id} requesting history IDs for account ${data.account_id}`);
+      if (handlers.onGetHistoryIds) {
+        try {
+          const result = await handlers.onGetHistoryIds(data, socket);
+          if (callback) callback(result);
+        } catch (error) {
+          logger.error('Failed to get history IDs:', error);
+          if (callback) callback({ success: false, error: error.message });
+        }
+      } else {
+        logger.warn('No handler for onGetHistoryIds');
+        if (callback) callback({ success: false, error: 'Handler not implemented' });
+      }
+    });
+
+    // 监听视频信息更新
+    socket.on('worker:upsert_video', async (data) => {
+      logger.debug(`Worker ${socket.id} upserting video ${data.aweme_id}`);
+      if (handlers.onUpsertVideo) {
+        try {
+          await handlers.onUpsertVideo(data, socket);
+        } catch (error) {
+          logger.error('Failed to upsert video:', error);
+        }
+      }
+    });
+
+    // 监听批量插入评论
+    socket.on('worker:bulk_insert_comments', async (data) => {
+      logger.info(`Worker ${socket.id} bulk inserting ${data.comments?.length || 0} comments`);
+      if (handlers.onBulkInsertComments) {
+        try {
+          await handlers.onBulkInsertComments(data, socket);
+        } catch (error) {
+          logger.error('Failed to bulk insert comments:', error);
+        }
+      }
+    });
+
+    // 监听批量插入私信
+    socket.on('worker:bulk_insert_messages', async (data) => {
+      logger.info(`Worker ${socket.id} bulk inserting ${data.messages?.length || 0} messages`);
+      if (handlers.onBulkInsertMessages) {
+        try {
+          await handlers.onBulkInsertMessages(data, socket);
+        } catch (error) {
+          logger.error('Failed to bulk insert messages:', error);
+        }
+      }
+    });
+
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
       try {
@@ -167,7 +246,8 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
   // Admin命名空间（可选，用于管理平台）
   let adminNamespaceInstance = null;
   if (masterServer) {
-    adminNamespaceInstance = initAdminNamespace(io, masterServer);
+    const adminResult = initAdminNamespace(io, masterServer);
+    adminNamespaceInstance = adminResult.namespace; // 提取真正的 Socket.IO Namespace
     logger.info('Socket.IO admin namespace initialized');
   }
 

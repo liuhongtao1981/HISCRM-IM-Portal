@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Image, Input, Button, Form, Typography, Space, Progress, Alert, Statistic } from 'antd';
-import { QrcodeOutlined, MobileOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { Modal, Image, Input, Button, Form, Typography, Space, Progress, Alert, Statistic, Descriptions, Tag } from 'antd';
+import { QrcodeOutlined, MobileOutlined, ClockCircleOutlined, UserOutlined, CloudServerOutlined } from '@ant-design/icons';
 
 const { Text, Title } = Typography;
 const { Countdown } = Statistic;
@@ -23,6 +23,11 @@ const LoginModal = ({ visible, onCancel, loginData, onSubmitInput }) => {
     phone_number,
     session_id,
     account_id,
+    account_name,
+    platform,
+    worker_id,
+    worker_host,
+    worker_port,
   } = loginData || {};
 
   // 倒计时逻辑
@@ -65,6 +70,54 @@ const LoginModal = ({ visible, onCancel, loginData, onSubmitInput }) => {
     }
   };
 
+  // 渲染账号和 Worker 信息
+  const renderAccountInfo = () => {
+    if (!account_name && !worker_id) return null;
+
+    return (
+      <Alert
+        type="info"
+        style={{ marginBottom: 16 }}
+        message={
+          <Space direction="vertical" size={4} style={{ width: '100%' }}>
+            {account_name && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <UserOutlined />
+                  <Text strong>账号:</Text>
+                </Space>
+                <Space>
+                  <Text>{account_name}</Text>
+                  {platform && (
+                    <Tag color={platform === 'douyin' ? 'blue' : 'green'}>
+                      {platform === 'douyin' ? '抖音' : platform}
+                    </Tag>
+                  )}
+                </Space>
+              </div>
+            )}
+            {worker_id && (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Space>
+                  <CloudServerOutlined />
+                  <Text strong>Worker:</Text>
+                </Space>
+                <Space>
+                  <Tag color="blue">{worker_id}</Tag>
+                  {worker_host && worker_port && (
+                    <Text type="secondary" style={{ fontSize: 12 }}>
+                      {worker_host}:{worker_port}
+                    </Text>
+                  )}
+                </Space>
+              </div>
+            )}
+          </Space>
+        }
+      />
+    );
+  };
+
   // 二维码登录界面
   if (login_method === 'qrcode') {
     return (
@@ -72,71 +125,76 @@ const LoginModal = ({ visible, onCancel, loginData, onSubmitInput }) => {
         visible={visible}
         onCancel={onCancel}
         footer={null}
-        width={440}
+        width={500}
         centered
         title={
           <Space>
             <QrcodeOutlined style={{ fontSize: 20, color: '#1890ff' }} />
-            <span>扫码登录抖音账户</span>
+            <span>扫码登录</span>
           </Space>
         }
       >
-        <div style={{ textAlign: 'center', padding: '20px 0' }}>
+        <div style={{ padding: '20px 0' }}>
+          {/* 账号和 Worker 信息 */}
+          {renderAccountInfo()}
+
           {/* 二维码图片 */}
-          <div style={{ 
-            display: 'inline-block',
-            padding: 16,
-            background: '#f5f5f5',
-            borderRadius: 8,
-            marginBottom: 20
-          }}>
-            <Image
-              src={qr_code_data}
-              alt="登录二维码"
-              width={280}
-              height={280}
-              preview={false}
-              style={{ display: 'block' }}
-            />
-          </div>
-
-          {/* 提示文字 */}
-          <Space direction="vertical" size={12} style={{ width: '100%' }}>
-            <Alert
-              message="请使用抖音 App 扫描二维码登录"
-              type="info"
-              showIcon
-              style={{ marginBottom: 8 }}
-            />
-
-            {/* 倒计时 */}
-            {expires_at && timeLeft > 0 && (
-              <div>
-                <Space>
-                  <ClockCircleOutlined />
-                  <Text type="secondary">
-                    二维码有效期：{Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
-                  </Text>
-                </Space>
-                <Progress
-                  percent={(timeLeft / 300) * 100}
-                  strokeColor={getProgressColor()}
-                  showInfo={false}
-                  style={{ marginTop: 8 }}
-                />
-              </div>
-            )}
-
-            {/* 过期提示 */}
-            {timeLeft === 0 && (
-              <Alert
-                message="二维码已过期"
-                description="请关闭此窗口并重新登录"
-                type="warning"
-                showIcon
+          <div style={{ textAlign: 'center' }}>
+            <div style={{
+              display: 'inline-block',
+              padding: 16,
+              background: '#f5f5f5',
+              borderRadius: 8,
+              marginBottom: 20
+            }}>
+              <Image
+                src={qr_code_data}
+                alt="登录二维码"
+                width={280}
+                height={280}
+                preview={false}
+                style={{ display: 'block' }}
               />
-            )}
-          </Space>
+            </div>
+
+            {/* 提示文字 */}
+            <Space direction="vertical" size={12} style={{ width: '100%' }}>
+              <Alert
+                message="请使用抖音 App 扫描二维码登录"
+                type="info"
+                showIcon
+                style={{ marginBottom: 8 }}
+              />
+
+              {/* 倒计时 */}
+              {expires_at && timeLeft > 0 && (
+                <div>
+                  <Space>
+                    <ClockCircleOutlined />
+                    <Text type="secondary">
+                      二维码有效期：{Math.floor(timeLeft / 60)}:{String(timeLeft % 60).padStart(2, '0')}
+                    </Text>
+                  </Space>
+                  <Progress
+                    percent={(timeLeft / 300) * 100}
+                    strokeColor={getProgressColor()}
+                    showInfo={false}
+                    style={{ marginTop: 8 }}
+                  />
+                </div>
+              )}
+
+              {/* 过期提示 */}
+              {timeLeft === 0 && (
+                <Alert
+                  message="二维码已过期"
+                  description="请关闭此窗口并重新登录"
+                  type="warning"
+                  showIcon
+                />
+              )}
+            </Space>
+          </div>
         </div>
       </Modal>
     );
@@ -161,6 +219,9 @@ const LoginModal = ({ visible, onCancel, loginData, onSubmitInput }) => {
           }
         >
           <div style={{ padding: '20px 0' }}>
+            {/* 账号和 Worker 信息 */}
+            {renderAccountInfo()}
+
             <Alert
               message="请输入抖音账户绑定的手机号"
               type="info"

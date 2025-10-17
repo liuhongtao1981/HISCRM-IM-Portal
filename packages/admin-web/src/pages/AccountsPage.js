@@ -49,9 +49,16 @@ const AccountsPage = () => {
   const handleOpenModal = (account = null) => {
     setEditingAccount(account);
     if (account) {
-      form.setFieldsValue(account);
+      // 处理 assigned_worker_id: null 转换为 'auto' 用于显示
+      const formValues = {
+        ...account,
+        assigned_worker_id: account.assigned_worker_id || 'auto'
+      };
+      form.setFieldsValue(formValues);
     } else {
       form.resetFields();
+      // 新建时默认选择自动分配
+      form.setFieldsValue({ assigned_worker_id: 'auto' });
     }
     setModalVisible(true);
   };
@@ -67,6 +74,11 @@ const AccountsPage = () => {
   const handleSubmit = async () => {
     try {
       const values = await form.validateFields();
+
+      // 处理 assigned_worker_id: 'auto' 转换为 null
+      if (values.assigned_worker_id === 'auto') {
+        values.assigned_worker_id = null;
+      }
 
       if (editingAccount) {
         // 更新账户
@@ -112,26 +124,41 @@ const AccountsPage = () => {
       return;
     }
 
+    // 查找 Worker 信息
+    const worker = workers.find(w => w.id === account.assigned_worker_id);
+
     // 直接启动登录流程，LoginModal 会自动弹出
-    startLogin(account.id, account.assigned_worker_id);
+    startLogin(account.id, account.assigned_worker_id, {
+      account_name: account.account_name,
+      platform: account.platform,
+      worker_host: worker?.host,
+      worker_port: worker?.port,
+    });
   };
 
   // 解析并展示用户信息和 Cookie 状态
   const renderUserInfo = (record) => {
     try {
       const userInfo = record.user_info ? JSON.parse(record.user_info) : null;
-      if (!userInfo) return '-';
+      if (!userInfo) return <span style={{ color: '#999' }}>未登录</span>;
 
       return (
-        <Space>
-          {userInfo.avatar && (
-            <img
-              src={userInfo.avatar}
-              alt="avatar"
-              style={{ width: 24, height: 24, borderRadius: '50%' }}
-            />
+        <Space direction="vertical" size={0}>
+          <Space>
+            {userInfo.avatar && (
+              <img
+                src={userInfo.avatar}
+                alt="avatar"
+                style={{ width: 24, height: 24, borderRadius: '50%' }}
+              />
+            )}
+            <span>{userInfo.nickname || '-'}</span>
+          </Space>
+          {userInfo.douyin_id && (
+            <span style={{ fontSize: 12, color: '#999' }}>
+              抖音号: {userInfo.douyin_id}
+            </span>
           )}
-          <span>{userInfo.nickname || userInfo.douyin_id || '-'}</span>
         </Space>
       );
     } catch (e) {
@@ -241,8 +268,26 @@ const AccountsPage = () => {
       title: '分配 Worker',
       dataIndex: 'assigned_worker_id',
       key: 'assigned_worker_id',
-      width: 120,
-      ellipsis: true,
+      width: 150,
+      render: (workerId) => {
+        if (!workerId) {
+          return <Tag color="orange">自动分配</Tag>;
+        }
+        const worker = workers.find(w => w.id === workerId);
+        const isOnline = worker && worker.status === 'online';
+        return (
+          <Space direction="vertical" size={0}>
+            <Tag color={isOnline ? 'blue' : 'red'}>
+              {workerId}
+            </Tag>
+            {!isOnline && (
+              <span style={{ fontSize: 12, color: '#ff4d4f' }}>
+                Worker 离线
+              </span>
+            )}
+          </Space>
+        );
+      },
     },
     {
       title: '操作',
@@ -344,6 +389,30 @@ const AccountsPage = () => {
 
           <Form.Item name="monitor_interval" label="监控间隔（秒）" initialValue={30}>
             <Input type="number" placeholder="监控间隔" />
+          </Form.Item>
+
+          <Form.Item
+            name="assigned_worker_id"
+            label="Worker 分配"
+            tooltip="选择自动分配由系统分配到负载最低的 Worker，或手动指定特定 Worker"
+          >
+            <Select
+              placeholder="请选择 Worker"
+              allowClear
+              showSearch
+              optionFilterProp="children"
+            >
+              <Option value="auto" key="auto">
+                <Tag color="orange">自动分配</Tag>
+              </Option>
+              {workers
+                .filter(w => w.status === 'online')
+                .map(worker => (
+                  <Option key={worker.id} value={worker.id}>
+                    {worker.id} (负载: {worker.assigned_accounts || 0})
+                  </Option>
+                ))}
+            </Select>
           </Form.Item>
         </Form>
       </Modal>

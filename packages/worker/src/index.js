@@ -13,7 +13,10 @@ const TaskRunner = require('./handlers/task-runner');
 const { getBrowserManager, getArchitectureInfo } = require('./config/browser-config');
 const WorkerBridge = require('./platforms/base/worker-bridge');
 const PlatformManager = require('./platform-manager');
-const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE } = require('@hiscrm-im/shared/protocol/messages');
+const AccountInitializer = require('./handlers/account-initializer');
+const AccountStatusReporter = require('./handlers/account-status-reporter');
+const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE, MASTER_ACCOUNT_LOGOUT, WORKER_ACCOUNT_LOGOUT_ACK, createMessage } = require('@hiscrm-im/shared/protocol/messages');
+const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
 
 // 初始化logger
 const logger = createLogger('worker', './logs');
@@ -32,6 +35,8 @@ let taskRunner;
 let browserManager;
 let workerBridge;
 let platformManager;
+let accountInitializer;
+let accountStatusReporter;
 
 /**
  * 启动Worker
@@ -91,7 +96,11 @@ async function start() {
     const supportedPlatforms = platformManager.getSupportedPlatforms();
     logger.info(`✓ Platform manager initialized with platforms: ${supportedPlatforms.join(', ')}`);
 
-    // 7. 注册Worker（使用动态加载的平台能力）
+    // 7. 初始化账号初始化器
+    accountInitializer = new AccountInitializer(browserManager, platformManager);
+    logger.info('✓ Account initializer created');
+
+    // 8. 注册Worker（使用动态加载的平台能力）
     workerRegistration = new WorkerRegistration(socketClient, WORKER_ID, {
       host: '127.0.0.1',
       port: WORKER_PORT,
@@ -103,16 +112,43 @@ async function start() {
     const assignedAccounts = await workerRegistration.register();
     logger.info(`✓ Registered with master (${assignedAccounts.length} accounts assigned)`);
 
-    // 8. 启动任务执行器（传入 platformManager）
-    taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager);
+    // 9. 为所有分配的账号初始化浏览器环境
+    logger.info(`Initializing browsers for ${assignedAccounts.length} accounts...`);
+    const initResults = await accountInitializer.initializeAccounts(assignedAccounts);
+    const successCount = initResults.filter(r => r.success).length;
+    logger.info(`✓ Browsers initialized: ${successCount}/${assignedAccounts.length} succeeded`);
+
+    // 10. 初始化账号状态上报器（在 TaskRunner 之前创建）
+    accountStatusReporter = new AccountStatusReporter(socketClient.socket, WORKER_ID);
+
+    // 11. 启动任务执行器（传入 platformManager 和 accountStatusReporter）
+    taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager, accountStatusReporter);
     taskRunner.start();
     logger.info('✓ Task runner started');
 
-    // 7. 添加分配的账户到任务执行器
+    // 12. 添加已成功初始化的账户到任务执行器
+    let addedTasksCount = 0;
     for (const account of assignedAccounts) {
-      taskRunner.addTask(account);
+      if (accountInitializer.isInitialized(account.id)) {
+        taskRunner.addTask(account);
+        addedTasksCount++;
+      } else {
+        logger.warn(`Skipping task for account ${account.id} (browser initialization failed)`);
+      }
     }
-    logger.info(`✓ Added ${assignedAccounts.length} monitoring tasks`);
+    logger.info(`✓ Added ${addedTasksCount} monitoring tasks`);
+
+    // 13. 为所有账号设置初始在线状态（在启动前设置）
+    for (const account of assignedAccounts) {
+      if (accountInitializer.isInitialized(account.id)) {
+        accountStatusReporter.setAccountOnline(account.id);
+        logger.info(`Set account ${account.id} status to online`);
+      }
+    }
+
+    // 14. 启动上报器（此时已有账号状态数据）
+    accountStatusReporter.start();
+    logger.info('✓ Account status reporter started')
 
     // 8. 监听任务分配消息
     socketClient.onMessage(MASTER_TASK_ASSIGN, (msg) => {
@@ -121,6 +157,10 @@ async function start() {
 
     socketClient.onMessage(MASTER_TASK_REVOKE, (msg) => {
       handleTaskRevoke(msg);
+    });
+
+    socketClient.onMessage(MASTER_ACCOUNT_LOGOUT, (msg) => {
+      handleAccountLogout(msg);
     });
 
     // 9. 监听登录请求
@@ -146,35 +186,67 @@ async function start() {
  * 处理任务分配
  * @param {object} msg - 任务分配消息
  */
-function handleTaskAssign(msg) {
+async function handleTaskAssign(msg) {
   const { payload } = msg;
-  logger.info(`Received task assignment for account ${payload.account_id}`);
+  logger.info(`Received task assignment for account ${payload.id || payload.account_id}`);
 
-  const account = {
-    id: payload.account_id,
-    platform: payload.platform,
-    credentials: payload.account_credentials,
-    monitor_interval: payload.monitor_interval,
-  };
+  try {
+    // payload 现在包含完整的账号数据
+    const account = {
+      id: payload.id || payload.account_id,
+      platform: payload.platform,
+      account_id: payload.account_id,
+      account_name: payload.account_name,
+      credentials: payload.credentials,
+      monitor_interval: payload.monitor_interval,
+      status: payload.status,
+      login_status: payload.login_status,
+      cookies_valid_until: payload.cookies_valid_until,
+      user_info: payload.user_info,
+      last_check_time: payload.last_check_time,
+      last_login_time: payload.last_login_time,
+    };
 
-  workerRegistration.addAccount(account);
-  taskRunner.addTask(account);
+    // 1. 初始化浏览器环境
+    logger.info(`Initializing browser for newly assigned account ${account.id}...`);
+    await accountInitializer.initializeAccount(account);
 
-  logger.info(`Added monitoring task for account ${payload.account_id}`);
+    // 2. 添加到注册表
+    workerRegistration.addAccount(account);
+
+    // 3. 添加到任务执行器
+    taskRunner.addTask(account);
+
+    logger.info(`✓ Successfully added monitoring task for account ${account.id}`);
+
+  } catch (error) {
+    logger.error(`Failed to handle task assignment for account ${payload.id || payload.account_id}:`, error);
+  }
 }
 
 /**
  * 处理任务撤销
  * @param {object} msg - 任务撤销消息
  */
-function handleTaskRevoke(msg) {
+async function handleTaskRevoke(msg) {
   const { payload } = msg;
   logger.info(`Received task revoke for account ${payload.account_id}`);
 
-  workerRegistration.removeAccount(payload.account_id);
-  taskRunner.removeTask(payload.account_id);
+  try {
+    // 1. 从任务执行器移除
+    taskRunner.removeTask(payload.account_id);
 
-  logger.info(`Removed monitoring task for account ${payload.account_id}`);
+    // 2. 从注册表移除
+    workerRegistration.removeAccount(payload.account_id);
+
+    // 3. 关闭浏览器并清理资源
+    await accountInitializer.removeAccount(payload.account_id);
+
+    logger.info(`✓ Successfully removed monitoring task for account ${payload.account_id}`);
+
+  } catch (error) {
+    logger.error(`Failed to handle task revoke for account ${payload.account_id}:`, error);
+  }
 }
 
 /**
@@ -233,6 +305,49 @@ function handleUserInput(data) {
 }
 
 /**
+ * 处理账号退出请求
+ * @param {object} msg - 退出请求消息
+ */
+async function handleAccountLogout(msg) {
+  const { payload } = msg;
+  const { account_id } = payload;
+
+  try {
+    logger.info(`Received logout request for account ${account_id}`);
+
+    // TODO: 实现退出登录逻辑
+    // 1. 获取对应的平台实例
+    // 2. 调用平台的退出登录方法（清除 cookies、session 等）
+    // 3. 关闭对应账号的浏览器实例
+    // 4. 更新账号状态为未登录
+
+    logger.info(`[TODO] Logout logic not implemented yet for account ${account_id}`);
+
+    // 发送确认消息
+    const ackMessage = createMessage(WORKER_ACCOUNT_LOGOUT_ACK, {
+      success: true,
+      account_id,
+      message: 'Logout request received (not yet implemented)',
+    });
+
+    socketClient.socket.emit(MESSAGE, ackMessage);
+    logger.info(`Sent logout ACK for account ${account_id}`);
+
+  } catch (error) {
+    logger.error(`Failed to handle logout request for account ${account_id}:`, error);
+
+    // 发送失败确认
+    const ackMessage = createMessage(WORKER_ACCOUNT_LOGOUT_ACK, {
+      success: false,
+      account_id,
+      error: error.message,
+    });
+
+    socketClient.socket.emit(MESSAGE, ackMessage);
+  }
+}
+
+/**
  * 优雅关闭
  */
 async function shutdown(signal) {
@@ -248,6 +363,12 @@ async function shutdown(signal) {
   if (heartbeatSender) {
     heartbeatSender.stop();
     logger.info('Heartbeat sender stopped');
+  }
+
+  // 停止账号状态上报器
+  if (accountStatusReporter) {
+    accountStatusReporter.stop();
+    logger.info('Account status reporter stopped');
   }
 
   // 关闭所有浏览器实例

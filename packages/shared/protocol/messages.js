@@ -13,6 +13,9 @@ const WORKER_HEARTBEAT = 'worker:heartbeat';
 const WORKER_HEARTBEAT_ACK = 'worker:heartbeat:ack';
 const WORKER_MESSAGE_DETECTED = 'worker:message:detected';
 const WORKER_MESSAGE_ACK = 'worker:message:ack';
+const WORKER_ACCOUNT_STATUS = 'worker:account:status';  // Worker上报账号状态
+const WORKER_ACCOUNT_STATUS_ACK = 'worker:account:status:ack';
+const WORKER_ACCOUNT_LOGOUT_ACK = 'worker:account:logout:ack';  // Worker退出账号确认
 const WORKER_ERROR = 'worker:error';
 
 // ============================================
@@ -22,6 +25,7 @@ const WORKER_ERROR = 'worker:error';
 const MASTER_TASK_ASSIGN = 'master:task:assign';
 const MASTER_TASK_ASSIGN_ACK = 'master:task:assign:ack';
 const MASTER_TASK_REVOKE = 'master:task:revoke';
+const MASTER_ACCOUNT_LOGOUT = 'master:account:logout';  // Master请求退出账号
 const MASTER_SHUTDOWN = 'master:shutdown';
 
 // ============================================
@@ -92,12 +96,16 @@ module.exports = {
   WORKER_HEARTBEAT_ACK,
   WORKER_MESSAGE_DETECTED,
   WORKER_MESSAGE_ACK,
+  WORKER_ACCOUNT_STATUS,
+  WORKER_ACCOUNT_STATUS_ACK,
+  WORKER_ACCOUNT_LOGOUT_ACK,
   WORKER_ERROR,
 
   // Master → Worker
   MASTER_TASK_ASSIGN,
   MASTER_TASK_ASSIGN_ACK,
   MASTER_TASK_REVOKE,
+  MASTER_ACCOUNT_LOGOUT,
   MASTER_SHUTDOWN,
 
   // Client → Master

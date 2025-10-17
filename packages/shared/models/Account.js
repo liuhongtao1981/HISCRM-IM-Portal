@@ -78,11 +78,18 @@ class Account {
     this.account_id = data.account_id;
     this.credentials = data.credentials; // 未加密的凭证对象
     this.status = data.status || 'active';
+    this.login_status = data.login_status || 'not_logged_in';
     this.monitor_interval = data.monitor_interval || 30;
     this.last_check_time = data.last_check_time || null;
+    this.last_login_time = data.last_login_time || null;
+    this.cookies_valid_until = data.cookies_valid_until || null;
     this.assigned_worker_id = data.assigned_worker_id || null;
     this.created_at = data.created_at || Math.floor(Date.now() / 1000);
     this.updated_at = data.updated_at || Math.floor(Date.now() / 1000);
+    this.user_info = data.user_info || null;
+    this.fingerprint = data.fingerprint || null;
+    this.platform_user_id = data.platform_user_id || null;
+    this.platform_username = data.platform_username || null;
   }
 
   /**
@@ -173,12 +180,19 @@ class Account {
       account_name: this.account_name,
       account_id: this.account_id,
       status: this.status,
+      login_status: this.login_status,
       monitor_interval: this.monitor_interval,
       last_check_time: this.last_check_time,
+      last_login_time: this.last_login_time,
+      cookies_valid_until: this.cookies_valid_until,
       assigned_worker_id: this.assigned_worker_id,
       created_at: this.created_at,
       updated_at: this.updated_at,
-      // 注意: 不包含credentials
+      user_info: this.user_info,
+      credentials: this.credentials, // Include credentials for Cookie status display
+      platform_user_id: this.platform_user_id,
+      platform_username: this.platform_username,
+      // 注意: 包含 credentials 用于 Cookie 状态显示，但不包含明文密码
     };
   }
 

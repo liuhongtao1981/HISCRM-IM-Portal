@@ -698,6 +698,21 @@ class PlatformBase {
   }
 
   /**
+   * 推送实时通知消息
+   * @param {Object} notification - 通知对象
+   * @param {string} notification.type - 通知类型: 'comment' | 'direct_message' | 'system' | 'account_status'
+   * @param {string} notification.accountId - 关联账户 ID
+   * @param {string} notification.title - 通知标题
+   * @param {string} notification.content - 通知内容
+   * @param {Object} notification.data - 附加数据 (评论/私信原始数据)
+   * @param {string} notification.relatedId - 关联的评论/私信 ID
+   * @param {string} notification.priority - 优先级: 'low' | 'normal' | 'high' | 'urgent'
+   */
+  async pushNotification(notification) {
+    return await this.bridge.pushNotification(notification);
+  }
+
+  /**
    * 更新心跳统计
    * @param {Object} stats - 统计数据
    */

@@ -38,12 +38,14 @@ const WorkerRegistry = require('./worker_manager/registration');
 const HeartbeatMonitor = require('./monitor/heartbeat');
 const TaskScheduler = require('./scheduler/task-scheduler');
 const AccountAssigner = require('./worker_manager/account-assigner');
+const AccountStatusUpdater = require('./worker_manager/account-status-updater');
 const MessageReceiver = require('./communication/message-receiver');
 const SessionManager = require('./communication/session-manager');
 const NotificationBroadcaster = require('./communication/notification-broadcaster');
 const NotificationQueue = require('./communication/notification-queue');
+const NotificationHandler = require('./notification/notification-handler');
 const LoginHandler = require('./login/login-handler');
-const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
+const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, WORKER_ACCOUNT_STATUS, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
 
 // 初始化logger
 const logger = createLogger('master', './logs');
@@ -71,10 +73,12 @@ let workerRegistry;
 let heartbeatMonitor;
 let taskScheduler;
 let accountAssigner;
+let accountStatusUpdater;
 let messageReceiver;
 let sessionManager;
 let notificationBroadcaster;
 let notificationQueue;
+let notificationHandler;
 let workerNamespace;
 let clientNamespace;
 let adminNamespace;
@@ -160,6 +164,57 @@ function handleClientDisconnect(socket) {
 }
 
 /**
+ * 处理 Worker 上报的账号状态
+ */
+function handleAccountStatus(socket, message) {
+  const { worker_id, account_statuses } = message.payload;
+
+  try {
+    logger.debug(`Received account status from worker ${worker_id}`, {
+      accountCount: account_statuses?.length,
+    });
+
+    if (!Array.isArray(account_statuses)) {
+      throw new Error('account_statuses must be an array');
+    }
+
+    // 批量更新账号状态
+    const result = accountStatusUpdater.batchUpdateAccountStatuses(
+      account_statuses.map(item => ({
+        account_id: item.account_id,
+        status: item.status,
+      }))
+    );
+
+    // 发送确认消息
+    const { createMessage, WORKER_ACCOUNT_STATUS_ACK } = require('@hiscrm-im/shared/protocol/messages');
+    const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
+
+    const ackMessage = createMessage(WORKER_ACCOUNT_STATUS_ACK, {
+      success: true,
+      updated: result.successCount,
+      failed: result.failureCount,
+    });
+
+    socket.emit(MESSAGE, ackMessage);
+
+    logger.info(`Updated ${result.successCount} account statuses from worker ${worker_id}`);
+  } catch (error) {
+    logger.error(`Failed to handle account status from worker ${worker_id}:`, error);
+
+    const { createMessage, WORKER_ACCOUNT_STATUS_ACK } = require('@hiscrm-im/shared/protocol/messages');
+    const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
+
+    const errorMessage = createMessage(WORKER_ACCOUNT_STATUS_ACK, {
+      success: false,
+      error: error.message,
+    });
+
+    socket.emit(MESSAGE, errorMessage);
+  }
+}
+
+/**
  * 处理客户端同步请求
  */
 function handleClientSync(socket, message) {
@@ -241,6 +296,7 @@ async function start() {
       [WORKER_REGISTER]: (socket, msg) => workerRegistry.handleRegistration(socket, msg),
       [WORKER_HEARTBEAT]: (socket, msg) => heartbeatMonitor.handleHeartbeat(socket, msg),
       [WORKER_MESSAGE_DETECTED]: (socket, msg) => messageReceiver.handleMessageDetected(socket, msg),
+      [WORKER_ACCOUNT_STATUS]: (socket, msg) => handleAccountStatus(socket, msg),
       [CLIENT_SYNC_REQUEST]: (socket, msg) => handleClientSync(socket, msg),
       onWorkerDisconnect: (socket) => workerRegistry.handleDisconnect(socket),
       onClientConnect: (socket) => handleClientConnect(socket),
@@ -252,10 +308,138 @@ async function start() {
       tempHandlers,
       masterServer
     );
+
+    // 将 socketNamespaces 传递给 masterServer
+    masterServer.workerNamespace = socketNamespaces.workerNamespace;
+    masterServer.clientNamespace = socketNamespaces.clientNamespace;
+    masterServer.adminNamespace = socketNamespaces.adminNamespace;
     workerNamespace = socketNamespaces.workerNamespace;
     clientNamespace = socketNamespaces.clientNamespace;
     adminNamespace = socketNamespaces.adminNamespace;
     logger.info('Socket.IO server initialized');
+
+    // 4.2 初始化 NotificationHandler（在 Socket.IO 之后）
+    notificationHandler = new NotificationHandler(db, socketNamespaces);
+    logger.info('Notification handler initialized');
+
+    // 4.3 添加通知推送处理器
+    tempHandlers.onNotificationPush = async (data, socket) => {
+      try {
+        await notificationHandler.handleWorkerNotification(data);
+      } catch (error) {
+        logger.error('Failed to handle notification push:', error);
+      }
+    };
+
+    // 4.4 添加爬虫相关处理器
+    const CommentsDAO = require('./database/comments-dao');
+    const DouyinVideoDAO = require('./database/douyin-video-dao');
+    const DirectMessagesDAO = require('./database/messages-dao');
+
+    const commentsDAO = new CommentsDAO(db);
+    const douyinVideoDAO = new DouyinVideoDAO(db);
+    const directMessagesDAO = new DirectMessagesDAO(db);
+
+    // 获取评论ID（用于增量爬取）
+    tempHandlers.onGetCommentIds = async (data, socket) => {
+      try {
+        const { aweme_id, options } = data;
+        const commentIds = commentsDAO.getCommentIdsByPostId(aweme_id, options || {});
+        return {
+          success: true,
+          comment_ids: commentIds,
+        };
+      } catch (error) {
+        logger.error('Failed to get comment IDs:', error);
+        return {
+          success: false,
+          error: error.message,
+          comment_ids: [],
+        };
+      }
+    };
+
+    // 获取历史数据ID列表（用于Worker启动时预加载缓存）
+    tempHandlers.onGetHistoryIds = async (data, socket) => {
+      try {
+        const { account_id } = data;
+        logger.info(`Getting history IDs for account ${account_id}`);
+
+        // 获取该账号的所有历史评论ID
+        const commentIds = commentsDAO.findAll({ account_id }).map(c => c.id);
+
+        // 获取该账号的所有历史视频ID
+        const videoIds = douyinVideoDAO.getAllVideoIds(account_id);
+
+        // 获取该账号的所有历史私信ID
+        const messageIds = directMessagesDAO.findAll({ account_id }).map(m => m.id);
+
+        logger.info(`Returning ${commentIds.length} comment IDs, ${videoIds.length} video IDs, ${messageIds.length} message IDs for account ${account_id}`);
+
+        return {
+          success: true,
+          commentIds,
+          videoIds,
+          messageIds,
+        };
+      } catch (error) {
+        logger.error('Failed to get history IDs:', error);
+        return {
+          success: false,
+          error: error.message,
+          commentIds: [],
+          videoIds: [],
+          messageIds: [],
+        };
+      }
+    };
+
+    // 更新/插入视频信息
+    tempHandlers.onUpsertVideo = async (data, socket) => {
+      try {
+        const { account_id, platform_user_id, aweme_id, title, cover, publish_time, total_comment_count } = data;
+
+        douyinVideoDAO.upsertVideo({
+          account_id,
+          platform_user_id,
+          aweme_id,
+          title,
+          cover,
+          publish_time,
+          total_comment_count: total_comment_count || 0,
+        });
+
+        logger.debug(`Video upserted: ${aweme_id}`);
+      } catch (error) {
+        logger.error('Failed to upsert video:', error);
+      }
+    };
+
+    // 批量插入评论
+    tempHandlers.onBulkInsertComments = async (data, socket) => {
+      try {
+        const { account_id, platform_user_id, comments } = data;
+
+        const result = commentsDAO.bulkInsert(comments);
+
+        logger.info(`Bulk inserted comments: ${result.inserted} inserted, ${result.skipped} skipped`);
+      } catch (error) {
+        logger.error('Failed to bulk insert comments:', error);
+      }
+    };
+
+    // 批量插入私信
+    tempHandlers.onBulkInsertMessages = async (data, socket) => {
+      try {
+        const { account_id, platform_user_id, messages } = data;
+
+        const result = directMessagesDAO.bulkInsert(messages);
+
+        logger.info(`Bulk inserted messages: ${result.inserted} inserted, ${result.skipped} skipped`);
+      } catch (error) {
+        logger.error('Failed to bulk insert messages:', error);
+      }
+    };
 
     // 5. 初始化登录管理器
     loginHandler = new LoginHandler(db, adminNamespace);
@@ -290,7 +474,7 @@ async function start() {
     };
 
     // 6. 初始化通知系统
-    notificationBroadcaster = new NotificationBroadcaster(sessionManager, clientNamespace);
+    notificationBroadcaster = new NotificationBroadcaster(sessionManager, clientNamespace, adminNamespace);
     logger.info('Notification broadcaster initialized');
 
     notificationQueue = new NotificationQueue(db, notificationBroadcaster);
@@ -314,6 +498,10 @@ async function start() {
     // 10. 初始化账户分配器
     accountAssigner = new AccountAssigner(db, workerRegistry, taskScheduler);
     logger.info('Account assigner initialized');
+
+    // 10.1 初始化账号状态更新器
+    accountStatusUpdater = new AccountStatusUpdater(db);
+    logger.info('Account status updater initialized');
 
     // 10.1 初始化 Worker 生命周期管理器
     const WorkerConfigDAO = require('./database/worker-config-dao');

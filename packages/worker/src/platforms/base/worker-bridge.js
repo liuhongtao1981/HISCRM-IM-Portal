@@ -220,6 +220,59 @@ class WorkerBridge {
   }
 
   /**
+   * 推送实时通知消息到 Master
+   * @param {Object} notification - 通知对象
+   * @param {string} notification.type - 通知类型: 'comment' | 'direct_message' | 'system' | 'account_status'
+   * @param {string} notification.accountId - 关联账户 ID
+   * @param {string} notification.title - 通知标题
+   * @param {string} notification.content - 通知内容
+   * @param {Object} notification.data - 附加数据
+   * @param {string} notification.relatedId - 关联的评论/私信 ID
+   * @param {string} notification.priority - 优先级: 'low' | 'normal' | 'high' | 'urgent'
+   */
+  async pushNotification(notification) {
+    if (!this.socket) {
+      logger.error('Socket not connected');
+      return;
+    }
+
+    try {
+      const {
+        type,
+        accountId,
+        title,
+        content,
+        data = {},
+        relatedId = null,
+        priority = 'normal',
+      } = notification;
+
+      // 验证必填字段
+      if (!type || !title || !content) {
+        throw new Error('Missing required notification fields: type, title, content');
+      }
+
+      // 发送通知到 Master
+      this.socket.emit('worker:notification:push', {
+        type,
+        account_id: accountId,
+        title,
+        content,
+        data: JSON.stringify(data),
+        related_id: relatedId,
+        priority,
+        worker_id: this.workerId,
+        timestamp: Date.now(),
+      });
+
+      logger.info(`Notification pushed: [${type}] ${title} for account ${accountId}`);
+    } catch (error) {
+      logger.error('Failed to push notification:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 设置 Socket 实例
    * @param {Socket} socket - Socket.IO 客户端实例
    */
