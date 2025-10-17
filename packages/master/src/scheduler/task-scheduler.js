@@ -57,18 +57,18 @@ class TaskScheduler {
         return;
       }
 
-      // 获取所有活跃账户
+      // 获取所有活跃账户（只处理未手动指定 Worker 的账户）
       const activeAccounts = this.db
-        .prepare("SELECT * FROM accounts WHERE status = 'active'")
+        .prepare("SELECT * FROM accounts WHERE status = 'active' AND assigned_worker_id IS NULL")
         .all();
 
       if (activeAccounts.length === 0) {
-        logger.info('No active accounts to schedule');
+        logger.info('No active accounts to schedule (all accounts are either inactive or manually assigned)');
         return;
       }
 
       logger.info(
-        `Scheduling ${activeAccounts.length} accounts to ${onlineWorkers.length} workers`
+        `Scheduling ${activeAccounts.length} auto-assign accounts to ${onlineWorkers.length} workers`
       );
 
       // 负载均衡: 轮询分配
@@ -154,16 +154,62 @@ class TaskScheduler {
     }
 
     for (const account of accounts) {
-      const message = createMessage(MASTER_TASK_ASSIGN, {
-        account_id: account.id,
-        platform: account.platform,
-        account_credentials: account.credentials, // 加密的凭证
-        monitor_interval: account.monitor_interval,
-      });
+      // 解析完整账号数据
+      const accountData = this._formatAccountData(account);
+
+      const message = createMessage(MASTER_TASK_ASSIGN, accountData);
 
       socket.emit('message', message);
       logger.debug(`Sent task assignment to worker ${workerId} for account ${account.id}`);
     }
+  }
+
+  /**
+   * 格式化账号数据(包含完整配置)
+   * @param {Object} account - 账号对象
+   * @returns {Object} 格式化后的数据
+   */
+  _formatAccountData(account) {
+    // 解析 credentials
+    let credentials = {};
+    try {
+      credentials = typeof account.credentials === 'string'
+        ? JSON.parse(account.credentials)
+        : account.credentials || {};
+    } catch (error) {
+      logger.error(`Failed to parse credentials for account ${account.id}:`, error);
+    }
+
+    // 解析 user_info
+    let userInfo = null;
+    try {
+      userInfo = account.user_info
+        ? (typeof account.user_info === 'string' ? JSON.parse(account.user_info) : account.user_info)
+        : null;
+    } catch (error) {
+      logger.debug(`No user_info for account ${account.id}`);
+    }
+
+    return {
+      id: account.id,
+      platform: account.platform,
+      account_id: account.account_id,
+      account_name: account.account_name,
+      monitor_interval: account.monitor_interval || 30,
+      status: account.status,
+      login_status: account.login_status,
+      credentials: {
+        cookies: credentials.cookies || [],
+        fingerprint: credentials.fingerprint || null,
+        localStorage: credentials.localStorage || {},
+      },
+      cookies_valid_until: account.cookies_valid_until,
+      user_info: userInfo,
+      last_check_time: account.last_check_time,
+      last_login_time: account.last_login_time,
+      platform_user_id: account.platform_user_id,
+      platform_username: account.platform_username,
+    };
   }
 
   /**
@@ -179,20 +225,31 @@ class TaskScheduler {
         return;
       }
 
-      // 计算负载差异
-      const loads = onlineWorkers.map((w) => w.assigned_accounts);
-      const maxLoad = Math.max(...loads);
-      const minLoad = Math.min(...loads);
+      // 计算负载差异（只计算自动分配的账号）
+      const autoAssignedCounts = onlineWorkers.map(w => {
+        const count = this.db
+          .prepare('SELECT COUNT(*) as count FROM accounts WHERE assigned_worker_id = ? AND status = ?')
+          .get(w.id, 'active').count;
+        return count;
+      });
+
+      const maxLoad = Math.max(...autoAssignedCounts);
+      const minLoad = Math.min(...autoAssignedCounts);
 
       // 如果负载差异超过阈值 (例如3个账户)，重新平衡
       if (maxLoad - minLoad > 3) {
         logger.info(`Rebalancing tasks (max: ${maxLoad}, min: ${minLoad})`);
 
-        const allAccounts = this.db
-          .prepare("SELECT * FROM accounts WHERE status = 'active'")
+        // 只重新分配未手动指定 Worker 的账号
+        const autoAssignAccounts = this.db
+          .prepare("SELECT * FROM accounts WHERE status = 'active' AND assigned_worker_id IS NULL")
           .all();
 
-        this.distributeAccountsToWorkers(allAccounts, onlineWorkers);
+        if (autoAssignAccounts.length > 0) {
+          this.distributeAccountsToWorkers(autoAssignAccounts, onlineWorkers);
+        } else {
+          logger.debug('No auto-assign accounts to rebalance');
+        }
       }
     } catch (error) {
       logger.error('Error rebalancing tasks:', error);

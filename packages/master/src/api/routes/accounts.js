@@ -82,7 +82,7 @@ function createAccountsRouter(db, accountAssigner) {
    */
   router.post('/', async (req, res) => {
     try {
-      const { platform, account_name, account_id, credentials, monitor_interval } = req.body;
+      const { platform, account_name, account_id, credentials, monitor_interval, assigned_worker_id } = req.body;
 
       // 验证必填字段（只需要 platform 和 account_name）
       if (!platform || !account_name) {
@@ -90,6 +90,23 @@ function createAccountsRouter(db, accountAssigner) {
           success: false,
           error: 'Missing required fields: platform, account_name',
         });
+      }
+
+      // 如果指定了 Worker，验证 Worker 是否存在且在线
+      if (assigned_worker_id) {
+        const worker = db.prepare('SELECT * FROM workers WHERE id = ?').get(assigned_worker_id);
+        if (!worker) {
+          return res.status(400).json({
+            success: false,
+            error: `Worker not found: ${assigned_worker_id}`,
+          });
+        }
+        if (worker.status !== 'online') {
+          return res.status(400).json({
+            success: false,
+            error: `Worker is not online: ${assigned_worker_id} (status: ${worker.status})`,
+          });
+        }
       }
 
       // 如果没有提供 account_id，自动生成临时ID
@@ -104,6 +121,7 @@ function createAccountsRouter(db, accountAssigner) {
         credentials: credentials || {},  // 默认空对象，登录后更新
         monitor_interval: monitor_interval || 30,
         status: 'active',
+        assigned_worker_id: assigned_worker_id || null,  // 手动指定 Worker 或 null（自动分配）
       });
 
       // 验证
@@ -120,7 +138,13 @@ function createAccountsRouter(db, accountAssigner) {
 
       // T040: 触发账户分配逻辑
       if (accountAssigner) {
-        accountAssigner.assignNewAccount(createdAccount);
+        // 如果手动指定了 Worker，直接分配并发送任务
+        if (assigned_worker_id) {
+          accountAssigner.assignToSpecificWorker(createdAccount, assigned_worker_id);
+        } else {
+          // 自动分配到负载最低的 Worker
+          accountAssigner.assignNewAccount(createdAccount);
+        }
       }
 
       res.status(201).json({
@@ -154,6 +178,7 @@ function createAccountsRouter(db, accountAssigner) {
         'credentials',
         'status',
         'monitor_interval',
+        'assigned_worker_id',  // 允许修改 Worker 分配
       ];
 
       const updates = {};
@@ -170,13 +195,60 @@ function createAccountsRouter(db, accountAssigner) {
         });
       }
 
-      const updatedAccount = accountsDAO.update(req.params.id, updates);
+      // 如果要修改 Worker 分配，验证 Worker
+      if ('assigned_worker_id' in updates) {
+        if (updates.assigned_worker_id !== null && updates.assigned_worker_id !== '') {
+          const worker = db.prepare('SELECT * FROM workers WHERE id = ?').get(updates.assigned_worker_id);
+          if (!worker) {
+            return res.status(400).json({
+              success: false,
+              error: `Worker not found: ${updates.assigned_worker_id}`,
+            });
+          }
+          if (worker.status !== 'online') {
+            return res.status(400).json({
+              success: false,
+              error: `Worker is not online: ${updates.assigned_worker_id} (status: ${worker.status})`,
+            });
+          }
+        } else {
+          // 空字符串转为 null（切换到自动分配）
+          updates.assigned_worker_id = null;
+        }
+      }
 
-      if (!updatedAccount) {
+      // 获取原账户信息（用于比较 Worker 是否变化）
+      const oldAccount = accountsDAO.findById(req.params.id);
+      if (!oldAccount) {
         return res.status(404).json({
           success: false,
           error: 'Account not found',
         });
+      }
+
+      const updatedAccount = accountsDAO.update(req.params.id, updates);
+
+      // T040: 处理 Worker 分配变更
+      if (accountAssigner && 'assigned_worker_id' in updates) {
+        const oldWorkerId = oldAccount.assigned_worker_id;
+        const newWorkerId = updates.assigned_worker_id;
+
+        // Worker 发生变化
+        if (oldWorkerId !== newWorkerId) {
+          // 1. 如果之前有分配 Worker，先撤销任务
+          if (oldWorkerId) {
+            accountAssigner.revokeFromWorker(req.params.id, oldWorkerId);
+          }
+
+          // 2. 分配到新 Worker
+          if (newWorkerId) {
+            // 手动指定 Worker
+            accountAssigner.assignToSpecificWorker(updatedAccount, newWorkerId);
+          } else {
+            // 自动分配
+            accountAssigner.assignNewAccount(updatedAccount);
+          }
+        }
       }
 
       // T040: 处理账户状态变更
@@ -230,6 +302,136 @@ function createAccountsRouter(db, accountAssigner) {
       });
     } catch (error) {
       logger.error(`Failed to delete account ${req.params.id}:`, error);
+      res.status(500).json({
+        success: false,
+        error: 'Internal server error',
+      });
+    }
+  });
+
+  /**
+   * GET /api/v1/accounts/status - 获取账户运行状态
+   * 返回账户状态 + Worker 信息 + 运行时统计
+   *
+   * 查询参数:
+   * - worker_status: 过滤 Worker 状态 (online/offline/error)
+   * - login_status: 过滤登录状态 (logged_in/not_logged_in/login_failed)
+   * - platform: 过滤平台 (douyin/xiaohongshu)
+   * - sort: 排序字段 (last_crawl_time/total_comments/total_works)
+   * - order: 排序顺序 (asc/desc)
+   */
+  router.get('/status/all', (req, res) => {
+    try {
+      // 构建查询条件
+      let whereConditions = [];
+      let params = [];
+
+      if (req.query.worker_status) {
+        whereConditions.push('a.worker_status = ?');
+        params.push(req.query.worker_status);
+      }
+
+      if (req.query.login_status) {
+        whereConditions.push('a.login_status = ?');
+        params.push(req.query.login_status);
+      }
+
+      if (req.query.platform) {
+        whereConditions.push('a.platform = ?');
+        params.push(req.query.platform);
+      }
+
+      const whereClause = whereConditions.length > 0
+        ? `WHERE ${whereConditions.join(' AND ')}`
+        : '';
+
+      // 排序逻辑
+      const validSortFields = ['last_crawl_time', 'total_comments', 'total_works', 'last_heartbeat_time'];
+      const sortField = validSortFields.includes(req.query.sort) ? req.query.sort : 'last_heartbeat_time';
+      const sortOrder = req.query.order === 'asc' ? 'ASC' : 'DESC';
+
+      // 查询账户状态 + Worker 信息
+      const query = `
+        SELECT
+          a.id,
+          a.account_name,
+          a.account_id,
+          a.platform,
+          a.status,
+          a.login_status,
+          a.assigned_worker_id,
+          a.worker_status,
+          a.total_comments,
+          a.total_works,
+          a.total_followers,
+          a.total_following,
+          a.recent_comments_count,
+          a.recent_works_count,
+          a.last_crawl_time,
+          a.last_heartbeat_time,
+          a.error_count,
+          a.last_error_message,
+          a.user_info,
+          w.status as worker_online_status,
+          w.host as worker_host,
+          w.port as worker_port
+        FROM accounts a
+        LEFT JOIN workers w ON a.assigned_worker_id = w.id
+        ${whereClause}
+        ORDER BY a.${sortField} ${sortOrder}
+      `;
+
+      const accounts = db.prepare(query).all(...params);
+
+      // 格式化返回数据
+      const formattedAccounts = accounts.map(acc => {
+        // 解析 user_info JSON
+        let userInfo = null;
+        if (acc.user_info) {
+          try {
+            userInfo = JSON.parse(acc.user_info);
+          } catch (e) {
+            logger.warn(`Failed to parse user_info for account ${acc.id}:`, e);
+          }
+        }
+
+        return {
+          id: acc.id,
+          account_name: acc.account_name,
+          account_id: acc.account_id,
+          platform: acc.platform,
+          status: acc.status,
+          login_status: acc.login_status,
+          user_info: userInfo,  // 添加用户信息
+          worker: {
+            id: acc.assigned_worker_id,
+            status: acc.worker_online_status,
+            host: acc.worker_host,
+            port: acc.worker_port,
+          },
+          runtime_stats: {
+            worker_status: acc.worker_status,
+            total_comments: acc.total_comments || 0,
+            total_works: acc.total_works || 0,
+            total_followers: acc.total_followers || 0,
+            total_following: acc.total_following || 0,
+            recent_comments_count: acc.recent_comments_count || 0,
+            recent_works_count: acc.recent_works_count || 0,
+            last_crawl_time: acc.last_crawl_time,
+            last_heartbeat_time: acc.last_heartbeat_time,
+            error_count: acc.error_count || 0,
+            last_error_message: acc.last_error_message,
+          },
+        };
+      });
+
+      res.json({
+        success: true,
+        data: formattedAccounts,
+        count: formattedAccounts.length,
+      });
+    } catch (error) {
+      logger.error('Failed to get account status:', error);
       res.status(500).json({
         success: false,
         error: 'Internal server error',

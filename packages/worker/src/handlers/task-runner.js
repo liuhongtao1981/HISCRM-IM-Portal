@@ -5,14 +5,17 @@
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const MonitorTask = require('./monitor-task');
+const { getCacheManager } = require('../services/cache-manager');
 
 const logger = createLogger('task-runner');
+const cacheManager = getCacheManager();
 
 class TaskRunner {
-  constructor(socketClient, heartbeatSender, platformManager) {
+  constructor(socketClient, heartbeatSender, platformManager, accountStatusReporter = null) {
     this.socketClient = socketClient;
     this.heartbeatSender = heartbeatSender;
     this.platformManager = platformManager;
+    this.accountStatusReporter = accountStatusReporter;
     this.tasks = new Map(); // accountId -> MonitorTask
     this.running = false;
   }
@@ -43,6 +46,50 @@ class TaskRunner {
   }
 
   /**
+   * 预加载账号的缓存数据
+   * @param {string} accountId - 账户ID
+   * @returns {Promise<void>}
+   */
+  async preloadAccountCache(accountId) {
+    try {
+      logger.info(`Preloading cache for account ${accountId}`);
+
+      // 通过 Socket.IO 请求历史数据 ID
+      const result = await new Promise((resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(new Error('Request timeout'));
+        }, 10000);
+
+        this.socketClient.socket.emit(
+          'worker:get_history_ids',
+          { account_id: accountId },
+          (response) => {
+            clearTimeout(timeout);
+            resolve(response);
+          }
+        );
+      });
+
+      if (result.success) {
+        // 预加载到缓存管理器
+        cacheManager.preloadCache(accountId, {
+          commentIds: result.commentIds || [],
+          videoIds: result.videoIds || [],
+          messageIds: result.messageIds || [],
+        });
+
+        logger.info(
+          `Cache preloaded for account ${accountId}: ${result.commentIds?.length || 0} comments, ${result.videoIds?.length || 0} videos, ${result.messageIds?.length || 0} messages`
+        );
+      } else {
+        logger.warn(`Failed to preload cache for account ${accountId}: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error(`Error preloading cache for account ${accountId}:`, error);
+    }
+  }
+
+  /**
    * 添加监控任务
    * @param {object} account - 账户对象
    */
@@ -59,8 +106,18 @@ class TaskRunner {
       interval: account.monitor_interval,
     });
 
-    // 创建并启动监控任务（传入 platformManager）
-    const monitorTask = new MonitorTask(account, this.socketClient, this.platformManager);
+    // 🔥 预加载缓存（异步执行，不阻塞任务启动）
+    this.preloadAccountCache(id).catch((err) => {
+      logger.warn(`Cache preload failed for account ${id}, will continue without cache:`, err);
+    });
+
+    // 创建并启动监控任务（传入 platformManager 和 accountStatusReporter）
+    const monitorTask = new MonitorTask(
+      account,
+      this.socketClient,
+      this.platformManager,
+      this.accountStatusReporter
+    );
     await monitorTask.start();
 
     this.tasks.set(id, monitorTask);

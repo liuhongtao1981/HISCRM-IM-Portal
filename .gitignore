@@ -51,3 +51,4 @@ packages/mobile-client/.expo/
 # Temporary files
 *.tmp
 .cache/
+nul

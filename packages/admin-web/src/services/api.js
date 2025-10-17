@@ -45,7 +45,7 @@ export const accountsAPI = {
   createAccount: (data) => api.post('/accounts', data),
 
   // 更新账户
-  updateAccount: (id, data) => api.put(`/accounts/${id}`, data),
+  updateAccount: (id, data) => api.patch(`/accounts/${id}`, data),
 
   // 删除账户
   deleteAccount: (id) => api.delete(`/accounts/${id}`),

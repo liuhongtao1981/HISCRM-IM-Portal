@@ -9,9 +9,10 @@ const { createMessage, MASTER_NOTIFICATION_PUSH } = require('@hiscrm-im/shared/p
 const logger = createLogger('notification-broadcaster');
 
 class NotificationBroadcaster {
-  constructor(sessionManager, clientNamespace) {
+  constructor(sessionManager, clientNamespace, adminNamespace = null) {
     this.sessionManager = sessionManager;
     this.clientNamespace = clientNamespace;
+    this.adminNamespace = adminNamespace; // Admin namespace for broadcasting to Admin UI
 
     // 广播统计
     this.stats = {
@@ -36,13 +37,8 @@ class NotificationBroadcaster {
       // 获取所有在线的客户端会话
       const onlineSessions = this.sessionManager.getOnlineSessions();
 
-      if (onlineSessions.length === 0) {
-        logger.debug(`No online clients to broadcast ${notifications.length} notifications`);
-        return false; // 没有在线客户端，不标记为已发送
-      }
-
       logger.info(
-        `Broadcasting ${notifications.length} notifications to ${onlineSessions.length} online clients`
+        `Broadcasting ${notifications.length} notifications to ${onlineSessions.length} mobile/desktop clients`
       );
 
       let successCount = 0;
@@ -86,12 +82,33 @@ class NotificationBroadcaster {
         this.stats.failedBroadcasts++;
       }
 
+      // 同时向 Admin UI 广播通知
+      if (this.adminNamespace) {
+        try {
+          const adminClientsCount = this.adminNamespace.sockets.size;
+          logger.info(`🔔 Broadcasting ${notifications.length} notifications to ${adminClientsCount} Admin UI clients`);
+
+          for (const notification of notifications) {
+            const payload = notification.toClientPayload();
+            this.adminNamespace.emit('notification:new', payload);
+            logger.debug(`Sent notification ${notification.id} (${notification.type}) to Admin UI`);
+          }
+
+          logger.info(`✅ Successfully broadcasted ${notifications.length} notifications to Admin UI`);
+        } catch (error) {
+          logger.error('❌ Failed to broadcast to Admin UI:', error);
+        }
+      } else {
+        logger.warn('⚠️  Admin namespace not available for broadcasting');
+      }
+
       logger.info(
         `Broadcast complete: ${successCount} successful, ${failCount} failed (${notifications.length} notifications to ${onlineSessions.length} clients)`
       );
 
       // 只要有一个成功，就认为广播成功
-      return successCount > 0;
+      // 如果没有客户端但有 Admin UI，也认为是成功（Admin UI 收到了）
+      return successCount > 0 || (this.adminNamespace && this.adminNamespace.sockets.size > 0);
     } catch (error) {
       logger.error('Failed to broadcast notifications:', error);
       this.stats.failedBroadcasts++;

@@ -56,6 +56,7 @@ class NotificationsDAO {
    * 查询所有通知
    * @param {Object} filters - 过滤条件
    * @param {string} filters.account_id - 账户ID
+   * @param {string} filters.platform_user_id - 平台用户ID
    * @param {boolean} filters.is_sent - 是否已发送
    * @param {number} filters.since_timestamp - 从哪个时间开始
    * @param {number} filters.limit - 限制数量
@@ -69,6 +70,12 @@ class NotificationsDAO {
       if (filters.account_id) {
         conditions.push('account_id = ?');
         params.push(filters.account_id);
+      }
+
+      // 添加平台用户ID过滤
+      if (filters.platform_user_id) {
+        conditions.push('platform_user_id = ?');
+        params.push(filters.platform_user_id);
       }
 
       if (filters.is_sent !== undefined) {
@@ -132,6 +139,12 @@ class NotificationsDAO {
       if (filters.account_id) {
         conditions.push('account_id = ?');
         params.push(filters.account_id);
+      }
+
+      // 添加平台用户ID过滤
+      if (filters.platform_user_id) {
+        conditions.push('platform_user_id = ?');
+        params.push(filters.platform_user_id);
       }
 
       if (filters.is_sent !== undefined) {

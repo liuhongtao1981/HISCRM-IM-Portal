@@ -61,15 +61,15 @@ class NotificationQueue {
    */
   enqueue(notification) {
     try {
-      // 保存到数据库
-      this.notificationsDAO.create(notification);
+      // 保存到数据库（返回完整的通知对象）
+      const savedNotification = this.notificationsDAO.create(notification);
 
-      // 添加到内存队列
-      this.pendingQueue.push(notification);
+      // 添加到内存队列（使用数据库返回的对象）
+      this.pendingQueue.push(savedNotification);
 
-      logger.debug(`Notification enqueued: ${notification.id} (${notification.type})`);
+      logger.info(`✅ Notification enqueued: ${savedNotification.id} (${savedNotification.type}), queue size: ${this.pendingQueue.length}`);
 
-      return notification;
+      return savedNotification;
     } catch (error) {
       logger.error('Failed to enqueue notification:', error);
       throw error;
@@ -114,17 +114,24 @@ class NotificationQueue {
    * 处理一批通知
    */
   async processBatch() {
-    if (this.isProcessing || this.pendingQueue.length === 0) {
+    if (this.isProcessing) {
+      logger.debug(`Skipping batch processing - already processing`);
+      return;
+    }
+
+    if (this.pendingQueue.length === 0) {
+      // logger.debug(`Notification queue is empty, skipping batch processing`);
       return;
     }
 
     this.isProcessing = true;
+    logger.info(`📥 Starting batch processing, queue size: ${this.pendingQueue.length}`);
 
     try {
       // 取出一批通知
       const batch = this.pendingQueue.splice(0, this.batchSize);
 
-      logger.debug(`Processing batch of ${batch.length} notifications`);
+      logger.info(`🔔 Processing batch of ${batch.length} notifications from queue (remaining: ${this.pendingQueue.length})`);
 
       // 按账户分组
       const byAccount = new Map();

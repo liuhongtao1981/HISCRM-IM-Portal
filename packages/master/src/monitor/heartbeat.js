@@ -142,6 +142,7 @@ class HeartbeatMonitor {
 
   /**
    * 重新分配Worker的账户
+   * 注意：手动指定的账户不会自动转移，只清空 assigned_worker_id，等待用户手动重新分配
    * @param {string} offlineWorkerId - 离线Worker的ID
    */
   reassignWorkerAccounts(offlineWorkerId) {
@@ -155,47 +156,18 @@ class HeartbeatMonitor {
       return;
     }
 
-    logger.info(`Reassigning ${accounts.length} accounts from worker ${offlineWorkerId}`);
+    logger.info(`Processing ${accounts.length} accounts from offline worker ${offlineWorkerId}`);
 
-    // 清除这些账户的assigned_worker_id
     const now = Math.floor(Date.now() / 1000);
+
+    // 清空所有账号的 assigned_worker_id
+    // 用户可以手动重新分配，或者等待自动分配逻辑处理
     this.db
       .prepare('UPDATE accounts SET assigned_worker_id = NULL, updated_at = ? WHERE assigned_worker_id = ?')
       .run(now, offlineWorkerId);
 
-    // 获取其他在线Worker
-    const onlineWorkers = this.workerRegistry.getOnlineWorkers();
-
-    if (onlineWorkers.length === 0) {
-      logger.warn('No online workers available for reassignment');
-      return;
-    }
-
-    // 简单的轮询分配策略
-    let workerIndex = 0;
-    const updateStmt = this.db.prepare(
-      'UPDATE accounts SET assigned_worker_id = ?, updated_at = ? WHERE id = ?'
-    );
-
-    for (const account of accounts) {
-      const targetWorker = onlineWorkers[workerIndex % onlineWorkers.length];
-      updateStmt.run(targetWorker.id, now, account.id);
-
-      logger.debug(`Reassigned account ${account.id} to worker ${targetWorker.id}`);
-
-      workerIndex++;
-    }
-
-    // 更新Worker的assigned_accounts计数
-    for (const worker of onlineWorkers) {
-      const count = this.db
-        .prepare('SELECT COUNT(*) as count FROM accounts WHERE assigned_worker_id = ?')
-        .get(worker.id).count;
-
-      this.db.prepare('UPDATE workers SET assigned_accounts = ? WHERE id = ?').run(count, worker.id);
-    }
-
-    logger.info('Account reassignment completed');
+    logger.info(`Cleared worker assignment for ${accounts.length} accounts. They are now available for reassignment.`);
+    logger.info(`Accounts can be manually reassigned via API or will be auto-assigned when workers register.`);
   }
 
   /**

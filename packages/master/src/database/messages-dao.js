@@ -90,6 +90,18 @@ class DirectMessagesDAO {
         params.push(filters.account_id);
       }
 
+      // 添加平台用户ID过滤
+      if (filters.platform_user_id) {
+        sql += ' AND platform_user_id = ?';
+        params.push(filters.platform_user_id);
+      }
+
+      // 添加会话ID过滤
+      if (filters.conversation_id) {
+        sql += ' AND conversation_id = ?';
+        params.push(filters.conversation_id);
+      }
+
       if (filters.direction) {
         sql += ' AND direction = ?';
         params.push(filters.direction);
@@ -194,6 +206,18 @@ class DirectMessagesDAO {
         params.push(filters.account_id);
       }
 
+      // 添加平台用户ID过滤
+      if (filters.platform_user_id) {
+        sql += ' AND platform_user_id = ?';
+        params.push(filters.platform_user_id);
+      }
+
+      // 添加会话ID过滤
+      if (filters.conversation_id) {
+        sql += ' AND conversation_id = ?';
+        params.push(filters.conversation_id);
+      }
+
       if (filters.direction) {
         sql += ' AND direction = ?';
         params.push(filters.direction);
@@ -234,6 +258,120 @@ class DirectMessagesDAO {
     } catch (error) {
       logger.error('Failed to check direct message existence:', error);
       throw error;
+    }
+  }
+
+  /**
+   * 批量插入私信（用于爬虫）
+   * @param {Array} messages - 私信数组
+   * @returns {Object} 插入结果 { inserted: number, skipped: number }
+   */
+  bulkInsert(messages) {
+    let inserted = 0;
+    let skipped = 0;
+
+    try {
+      const insertStmt = this.db.prepare(`
+        INSERT OR IGNORE INTO direct_messages (
+          id, account_id, platform_user_id, conversation_id, platform_message_id,
+          content, sender_name, sender_id, direction,
+          is_read, detected_at, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const transaction = this.db.transaction((messageList) => {
+        for (const message of messageList) {
+          const result = insertStmt.run(
+            message.id,
+            message.account_id,
+            message.platform_user_id || null,
+            message.conversation_id || null,
+            message.platform_message_id,
+            message.content,
+            message.sender_name,
+            message.sender_id,
+            message.direction,
+            message.is_read !== undefined ? message.is_read : 0,
+            message.detected_at,
+            message.created_at || Math.floor(Date.now() / 1000)
+          );
+
+          if (result.changes > 0) {
+            inserted++;
+          } else {
+            skipped++;
+          }
+        }
+      });
+
+      transaction(messages);
+
+      logger.info(`Bulk insert complete: ${inserted} inserted, ${skipped} skipped`);
+      return { inserted, skipped };
+    } catch (error) {
+      logger.error('Failed to bulk insert direct messages:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取会话列表（按平台用户ID分组）
+   * @param {string} accountId - 账户ID
+   * @param {string} platformUserId - 平台用户ID（可选）
+   * @returns {Array} 会话列表
+   */
+  getConversations(accountId, platformUserId = null) {
+    try {
+      let sql = `
+        SELECT
+          conversation_id,
+          platform_user_id,
+          sender_name,
+          MAX(detected_at) as last_message_time,
+          COUNT(*) as message_count,
+          SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_count
+        FROM direct_messages
+        WHERE account_id = ?
+      `;
+      const params = [accountId];
+
+      if (platformUserId) {
+        sql += ' AND platform_user_id = ?';
+        params.push(platformUserId);
+      }
+
+      sql += ' GROUP BY conversation_id, platform_user_id ORDER BY last_message_time DESC';
+
+      const stmt = this.db.prepare(sql);
+      return stmt.all(...params);
+    } catch (error) {
+      logger.error(`Failed to get conversations for account ${accountId}:`, error);
+      return [];
+    }
+  }
+
+  /**
+   * 获取会话的消息
+   * @param {string} conversationId - 会话ID
+   * @param {Object} options - 查询选项
+   * @returns {Array} 消息列表
+   */
+  getMessagesByConversation(conversationId, options = {}) {
+    try {
+      const { limit = 50, offset = 0 } = options;
+
+      const sql = `
+        SELECT * FROM direct_messages
+        WHERE conversation_id = ?
+        ORDER BY detected_at DESC
+        LIMIT ? OFFSET ?
+      `;
+
+      const rows = this.db.prepare(sql).all(conversationId, limit, offset);
+      return rows.map((row) => DirectMessage.fromDbRow(row));
+    } catch (error) {
+      logger.error(`Failed to get messages for conversation ${conversationId}:`, error);
+      return [];
     }
   }
 }

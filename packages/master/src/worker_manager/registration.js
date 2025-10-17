@@ -105,49 +105,123 @@ class WorkerRegistry {
   }
 
   /**
-   * 分配账户给Worker
+   * 分配账户给Worker（仅分配未手动指定的账户）
    * @param {string} workerId - Worker ID
    * @param {number} maxAccounts - 最大账户数
    * @returns {Array} 分配的账户列表
    */
   assignAccountsToWorker(workerId, maxAccounts = 10) {
-    // 查找未分配或分配给离线Worker的账户
-    const unassignedAccounts = this.db
+    // 1. 先获取已经手动指定给该 Worker 的账户
+    const manuallyAssignedAccounts = this.db
       .prepare(
-        `SELECT a.* FROM accounts a
-         LEFT JOIN workers w ON a.assigned_worker_id = w.id
-         WHERE a.status = 'active'
-         AND (a.assigned_worker_id IS NULL OR w.status = 'offline')
+        `SELECT * FROM accounts
+         WHERE assigned_worker_id = ?
+         AND status = 'active'`
+      )
+      .all(workerId);
+
+    logger.info(`Worker ${workerId} has ${manuallyAssignedAccounts.length} manually assigned accounts`);
+
+    // 2. 计算还能自动分配多少账户
+    const remainingSlots = Math.max(0, maxAccounts - manuallyAssignedAccounts.length);
+
+    logger.info(`Worker ${workerId} can auto-assign ${remainingSlots} more accounts`);
+
+    // 3. 查找未分配的账户（assigned_worker_id IS NULL）
+    const autoAssignAccounts = this.db
+      .prepare(
+        `SELECT * FROM accounts
+         WHERE status = 'active'
+         AND assigned_worker_id IS NULL
          LIMIT ?`
       )
-      .all(maxAccounts);
+      .all(remainingSlots);
 
-    // 更新账户的assigned_worker_id
+    // 4. 更新自动分配账户的 assigned_worker_id
     const updateStmt = this.db.prepare(
       'UPDATE accounts SET assigned_worker_id = ?, updated_at = ? WHERE id = ?'
     );
 
     const now = Math.floor(Date.now() / 1000);
-    const assignedAccounts = [];
+    const newlyAssignedAccounts = [];
 
-    for (const account of unassignedAccounts) {
+    for (const account of autoAssignAccounts) {
       updateStmt.run(workerId, now, account.id);
 
-      assignedAccounts.push({
-        id: account.id,
-        platform: account.platform,
-        account_id: account.account_id,
-        credentials: account.credentials, // 已加密
-        monitor_interval: account.monitor_interval,
-      });
+      newlyAssignedAccounts.push(account); // 保留完整账号数据
     }
 
-    // 更新Worker的assigned_accounts计数
+    logger.info(`Worker ${workerId} auto-assigned ${newlyAssignedAccounts.length} accounts`);
+
+    // 5. 合并手动分配和自动分配的账户，返回给 Worker（包含完整数据）
+    const allAssignedAccounts = [
+      ...manuallyAssignedAccounts.map(acc => this._formatAccountForWorker(acc)),
+      ...newlyAssignedAccounts.map(acc => this._formatAccountForWorker(acc)),
+    ];
+
+    // 6. 更新 Worker 的 assigned_accounts 计数
     this.db
       .prepare('UPDATE workers SET assigned_accounts = ? WHERE id = ?')
-      .run(assignedAccounts.length, workerId);
+      .run(allAssignedAccounts.length, workerId);
 
-    return assignedAccounts;
+    logger.info(`Worker ${workerId} total assigned accounts: ${allAssignedAccounts.length} (${manuallyAssignedAccounts.length} manual + ${newlyAssignedAccounts.length} auto)`);
+
+    return allAssignedAccounts;
+  }
+
+  /**
+   * 格式化账号数据发送给 Worker (包含完整配置信息)
+   * @param {Object} account - 数据库账号记录
+   * @returns {Object} 格式化后的账号数据
+   */
+  _formatAccountForWorker(account) {
+    // 解析 credentials (包含 cookies 和 fingerprint)
+    let parsedCredentials = {};
+    try {
+      parsedCredentials = typeof account.credentials === 'string'
+        ? JSON.parse(account.credentials)
+        : account.credentials || {};
+    } catch (error) {
+      logger.error(`Failed to parse credentials for account ${account.id}:`, error);
+    }
+
+    // 解析 user_info
+    let parsedUserInfo = null;
+    try {
+      parsedUserInfo = account.user_info
+        ? (typeof account.user_info === 'string' ? JSON.parse(account.user_info) : account.user_info)
+        : null;
+    } catch (error) {
+      logger.debug(`No user_info for account ${account.id}`);
+    }
+
+    return {
+      id: account.id,
+      platform: account.platform,
+      account_id: account.account_id,
+      account_name: account.account_name,
+      monitor_interval: account.monitor_interval || 30,
+      status: account.status,
+      login_status: account.login_status,
+      platform_user_id: account.platform_user_id, // 平台用户 ID (douyin_id)
+
+      // 完整的凭证信息 (包含 cookies 和 fingerprint)
+      credentials: {
+        cookies: parsedCredentials.cookies || [],
+        fingerprint: parsedCredentials.fingerprint || null,
+        localStorage: parsedCredentials.localStorage || {},
+      },
+
+      // Cookie 有效期
+      cookies_valid_until: account.cookies_valid_until,
+
+      // 用户信息
+      user_info: parsedUserInfo,
+
+      // 最后检查时间
+      last_check_time: account.last_check_time,
+      last_login_time: account.last_login_time,
+    };
   }
 
   /**

@@ -16,10 +16,11 @@ const logger = createLogger('monitor-task');
  * 管理单个账户的监控任务
  */
 class MonitorTask {
-  constructor(account, socketClient, platformManager) {
+  constructor(account, socketClient, platformManager, accountStatusReporter = null) {
     this.account = account;
     this.socketClient = socketClient;
     this.platformManager = platformManager;
+    this.accountStatusReporter = accountStatusReporter;
 
     // 初始化组件
     // 注意: crawler 将通过 platformManager 获取，不再直接实例化
@@ -32,6 +33,12 @@ class MonitorTask {
     this.isRunning = false;
     this.timeoutId = null;
     this.executionCount = 0;
+
+    // 累计统计
+    this.totalComments = 0;
+    this.totalWorks = 0;
+    this.totalFollowers = 0;
+    this.totalFollowing = 0;
 
     // 随机间隔配置 (15-30秒)
     this.minInterval = 15;  // 最小间隔15秒
@@ -90,10 +97,8 @@ class MonitorTask {
 
     this.isRunning = true;
 
-    // 立即执行第一次
-    await this.execute();
-
-    // 调度下一次执行 (使用随机间隔)
+    // 不阻塞启动流程,直接调度第一次执行
+    // 第一次执行会在随机延迟后自动开始
     this.scheduleNext();
 
     logger.info(`Monitor task started with random interval ${this.minInterval}-${this.maxInterval}s`);
@@ -136,10 +141,24 @@ class MonitorTask {
     logger.info(`Executing monitor task for account ${this.account.id} (count: ${this.executionCount})`);
 
     try {
-      // 1. 爬取评论（通过平台实例）
-      const rawComments = await this.platformInstance.crawlComments({
-        accountId: this.account.id,
-      });
+      // 0. 检查登录状态 - 如果未登录,跳过本次执行
+      if (this.account.login_status !== 'logged_in') {
+        logger.warn(`Account ${this.account.id} is not logged in (status: ${this.account.login_status}), skipping crawl`);
+
+        // 记录到状态报告器
+        if (this.accountStatusReporter) {
+          this.accountStatusReporter.recordError(this.account.id, `Not logged in (${this.account.login_status})`);
+        }
+
+        return;  // 跳过本次执行,等待下次调度
+      }
+
+      logger.info(`Account ${this.account.id} is logged in, starting crawl...`);
+
+      // 1. 爬取评论（通过平台实例）- 返回 { comments, stats }
+      const commentResult = await this.platformInstance.crawlComments(this.account);
+      const rawComments = commentResult.comments || commentResult;  // 兼容旧版本
+      const commentStats = commentResult.stats || {};
 
       // 2. 解析评论
       const parsedComments = this.commentParser.parse(rawComments);
@@ -151,10 +170,10 @@ class MonitorTask {
         'platform_comment_id'
       );
 
-      // 4. 爬取私信（通过平台实例）
-      const rawDMs = await this.platformInstance.crawlDirectMessages({
-        accountId: this.account.id,
-      });
+      // 4. 爬取私信（通过平台实例）- 返回 { directMessages, stats }
+      const dmResult = await this.platformInstance.crawlDirectMessages(this.account);
+      const rawDMs = dmResult.directMessages || dmResult;  // 兼容旧版本
+      const dmStats = dmResult.stats || {};
 
       // 5. 解析私信
       const parsedDMs = this.dmParser.parse(rawDMs);
@@ -174,14 +193,37 @@ class MonitorTask {
         });
       }
 
+      // 8. 更新累计统计
+      this.totalComments += newComments.length;
+      // totalWorks 可以从平台特定的统计中获取（暂时使用 mock 数据）
+      this.totalWorks += Math.floor(Math.random() * 2);  // Mock: 随机0-1个作品
+
+      // 9. 上报爬虫统计到 AccountStatusReporter
+      if (this.accountStatusReporter) {
+        this.accountStatusReporter.recordCrawlComplete(this.account.id, {
+          total_comments: this.totalComments,
+          total_works: this.totalWorks,
+          total_followers: this.totalFollowers,  // 可从 userInfo 获取
+          total_following: this.totalFollowing,  // 可从 userInfo 获取
+          recent_comments_count: commentStats.recent_comments_count || newComments.length,
+          recent_works_count: 0,  // 暂时未实现作品爬取
+        });
+      }
+
       logger.info(`Monitor execution completed`, {
         account_id: this.account.id,
         new_comments: newComments.length,
         new_dms: newDMs.length,
+        total_comments: this.totalComments,
+        total_works: this.totalWorks,
       });
     } catch (error) {
       logger.error('Monitor execution failed:', error);
-      // TODO: T060 - 错误处理逻辑(重试、报警等)
+
+      // 记录错误到 AccountStatusReporter
+      if (this.accountStatusReporter) {
+        this.accountStatusReporter.recordError(this.account.id, error.message);
+      }
     } finally {
       // 执行完成后调度下一次执行 (无论成功或失败)
       this.scheduleNext();

@@ -15,13 +15,22 @@ class AccountAssigner {
   }
 
   /**
-   * 为新创建的账户分配Worker并发送任务
+   * 为新创建的账户分配Worker并发送任务（自动分配模式）
    * @param {Account} account - 新创建的账户
    * @returns {object|null} 分配结果 {worker_id, success}
    */
   assignNewAccount(account) {
     try {
-      logger.info(`Assigning new account ${account.id} (${account.account_name})`);
+      logger.info(`Auto-assigning new account ${account.id} (${account.account_name})`);
+
+      // 如果账户已经指定了 Worker，跳过自动分配
+      if (account.assigned_worker_id) {
+        logger.info(`Account ${account.id} already has assigned worker: ${account.assigned_worker_id}, skipping auto-assignment`);
+        return {
+          worker_id: account.assigned_worker_id,
+          success: true,
+        };
+      }
 
       // 获取在线Worker
       const onlineWorkers = this.workerRegistry.getOnlineWorkers();
@@ -55,7 +64,7 @@ class AccountAssigner {
       this.taskScheduler.sendTaskAssignments(selectedWorker.id, [account]);
 
       logger.info(
-        `Account ${account.id} assigned to worker ${selectedWorker.id} successfully`
+        `Account ${account.id} auto-assigned to worker ${selectedWorker.id} successfully`
       );
 
       return {
@@ -65,6 +74,89 @@ class AccountAssigner {
     } catch (error) {
       logger.error(`Failed to assign account ${account.id}:`, error);
       return null;
+    }
+  }
+
+  /**
+   * 将账户分配到指定的Worker（手动指定模式）
+   * @param {Account} account - 账户对象
+   * @param {string} workerId - 指定的 Worker ID
+   * @returns {object|null} 分配结果 {worker_id, success}
+   */
+  assignToSpecificWorker(account, workerId) {
+    try {
+      logger.info(`Manually assigning account ${account.id} to worker ${workerId}`);
+
+      // 验证 Worker 是否在线
+      const worker = this.db.prepare('SELECT * FROM workers WHERE id = ?').get(workerId);
+      if (!worker) {
+        throw new Error(`Worker not found: ${workerId}`);
+      }
+
+      if (worker.status !== 'online') {
+        throw new Error(`Worker is not online: ${workerId} (status: ${worker.status})`);
+      }
+
+      // 更新账户的 assigned_worker_id（如果还没更新）
+      const now = Math.floor(Date.now() / 1000);
+      this.db
+        .prepare('UPDATE accounts SET assigned_worker_id = ?, updated_at = ? WHERE id = ?')
+        .run(workerId, now, account.id);
+
+      // 重新计算 Worker 的 assigned_accounts 计数
+      const count = this.db
+        .prepare('SELECT COUNT(*) as count FROM accounts WHERE assigned_worker_id = ?')
+        .get(workerId).count;
+
+      this.db
+        .prepare('UPDATE workers SET assigned_accounts = ? WHERE id = ?')
+        .run(count, workerId);
+
+      // 发送任务分配消息给Worker
+      this.taskScheduler.sendTaskAssignments(workerId, [account]);
+
+      logger.info(
+        `Account ${account.id} manually assigned to worker ${workerId} successfully`
+      );
+
+      return {
+        worker_id: workerId,
+        success: true,
+      };
+    } catch (error) {
+      logger.error(`Failed to assign account ${account.id} to worker ${workerId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 从指定 Worker 撤销账户任务
+   * @param {string} accountId - 账户 ID
+   * @param {string} workerId - Worker ID
+   * @returns {boolean} 是否成功
+   */
+  revokeFromWorker(accountId, workerId) {
+    try {
+      logger.info(`Revoking account ${accountId} from worker ${workerId}`);
+
+      // 发送撤销消息
+      this.taskScheduler.revokeTask(workerId, accountId);
+
+      // 重新计算 Worker 的 assigned_accounts 计数
+      const count = this.db
+        .prepare('SELECT COUNT(*) as count FROM accounts WHERE assigned_worker_id = ?')
+        .get(workerId).count;
+
+      this.db
+        .prepare('UPDATE workers SET assigned_accounts = ? WHERE id = ?')
+        .run(count, workerId);
+
+      logger.info(`Account ${accountId} revoked from worker ${workerId} successfully`);
+
+      return true;
+    } catch (error) {
+      logger.error(`Failed to revoke account ${accountId} from worker ${workerId}:`, error);
+      return false;
     }
   }
 
