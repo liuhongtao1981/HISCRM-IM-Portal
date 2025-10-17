@@ -1,0 +1,6 @@
+# 忽略 worker/data 目录下的所有文件和文件夹
+*
+
+# 但保留 .gitkeep 文件（保持目录结构）
+!.gitkeep
+!.gitignore
