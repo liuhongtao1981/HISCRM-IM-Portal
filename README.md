@@ -201,11 +201,23 @@ npm run start:worker
 npm run start:admin
 npm run start:desktop
 
-# 运行测试
+# 运行所有测试
 npm test
 
 # 构建生产版本
 npm run build
+```
+
+**常用开发流程**:
+```bash
+# 第一次启动
+npm run install:all  # 安装所有依赖
+npm run dev:all      # 启动所有服务
+
+# 或者分别在不同终端启动
+npm run start:master
+npm run start:worker
+npm run start:admin
 ```
 
 ### 生产部署
@@ -327,19 +339,34 @@ pm2 logs
 ## 🧪 测试
 
 ```bash
-# 运行所有测试
-pnpm test
+# 运行所有包的测试
+npm test
 
-# 特定包的测试
-pnpm --filter @hiscrm-im/master test
-pnpm --filter @hiscrm-im/worker test
+# 运行特定包的测试
+npm run test --workspace=packages/master
+npm run test --workspace=packages/worker
+npm run test --workspace=packages/shared
+npm run test --workspace=packages/desktop-client
+npm run test --workspace=packages/admin-web
 
-# 生成覆盖率
-pnpm test -- --coverage
+# 进入包目录运行特定测试
+cd packages/master && npm test
+cd packages/worker && npm test
 
-# Watch 模式
-pnpm test -- --watch
+# 生成覆盖率报告
+cd packages/master && npm test -- --coverage
+cd packages/worker && npm test -- --coverage
+
+# Watch 模式（开发时自动重新运行）
+cd packages/master && npm test -- --watch
+cd packages/worker && npm test -- --watch
 ```
+
+**说明**:
+- 根目录 `npm test` 会运行所有 packages 的测试（如果存在 test 脚本）
+- Admin-Web 使用 `react-scripts test` (CRA 测试框架)
+- 其他 packages 使用 `jest` (Jest 测试框架)
+- 使用 `--workspace=packages/xxx` 可以在根目录运行特定包的测试
 
 ## 🔗 相关资源
 
