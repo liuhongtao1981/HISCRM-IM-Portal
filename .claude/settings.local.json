@@ -94,7 +94,13 @@
       "Bash(cmd.exe /c \"taskkill /F /IM node.exe /T 2>&1\")",
       "Bash(lsof -i :3000)",
       "Bash(awk '{print $2}')",
-      "Bash(xargs kill -9)"
+      "Bash(xargs kill -9)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nfeat: 实现消息管理系统、数据推送机制和实时数据处理\n\n主要变更:\n- 添加消息管理页面和管理API端点\n- 实现主从服务器推送处理机制和Socket事件\n- 完善时间解析工具和时间戳转换\n- 重构Douyin平台爬虫和注释/直消息解析器\n- 添加缓存管理和新数据推送系统\n- 优化数据库模式和消息DAO\n- 迁移数据库字段(is_new, push_count)\n- 完整的文档和集成测试\n\nEOF\n)\")",
+      "Bash(git push origin main)",
+      "Bash(for file in API_RESPONSE_FORMAT_FIX.md COLUMN_WIDTH_ADJUSTMENT.md COMMENT_TIMESTAMP_FIX.md COMMENT_TIMESTAMP_QUICK_FIX.md COMMENT_TIMESTAMP_REAL_TIME_FIX.md DAO层platform_user_id支持总结.md DEPLOYMENT_CHECKLIST.md FINAL_SUMMARY.md IMPLEMENTATION_COMPLETE.md is_new字段设计与优化.md MASTER_PUSH_HANDLERS_IMPLEMENTATION.md Master端设计方案.md MIGRATION_GUIDE.md NEW_DATA_PUSH_SYSTEM_OVERVIEW.md QUICK_START_NEW_DATA_PUSH.md REACT_DM_EXTRACTION_SOLUTION.md REACT_ITEM_OBJECT_EXTRACTION.md shared-模块说明.md TIME_PARSING_FIX_SUMMARY.md TIMESTAMP_FIX_SUMMARY.md TIMESTAMP_FORMAT_DIAGNOSIS.md UI_IMPROVEMENTS.md web-平台账户登录流程设计.md worker-平台系统快速参考.md worker-平台系统实施总结.md worker-通用平台脚本系统设计方案.md 测试指南.md 登录流程优化方案.md 登录数据保存功能实现报告.md 抖音创作者中心登录功能实施完成报告.md)",
+      "Bash(do)",
+      "Bash(awk '{print $9, $5}')",
+      "Bash(awk '{print $9, \"\"\"\"=>\"\"\"\", $5}')"
     ],
     "deny": [],
     "ask": []
