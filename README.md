@@ -148,8 +148,7 @@ hiscrm-im/
 │   └── _archived/           # 历史文档（46 份）
 │
 ├── README.md                # 本文件
-├── package.json             # 工作区根配置
-└── pnpm-workspace.yaml      # PNPM 工作区配置
+└── package.json             # NPM 工作区配置 (workspaces)
 ```
 
 ## 🚀 快速开始
@@ -158,59 +157,89 @@ hiscrm-im/
 
 ```bash
 Node.js 18.x LTS
-pnpm 8.x+
+npm 9.x+
 ```
 
 ### 安装和启动
 
 ```bash
-# 1. 安装依赖
-pnpm install
+# 1. 安装依赖（根目录）
+npm install:all
 
 # 2. 启动主控服务 (Terminal 1)
-cd packages/master && npm start
+npm run start:master
 
 # 3. 启动 Worker 进程 (Terminal 2)
-cd packages/worker && WORKER_ID=worker-1 PORT=4001 npm start
+npm run start:worker
 
 # 4. 启动管理后台 (Terminal 3)
-cd packages/admin-web && npm start
+npm run start:admin
 
 # ✅ 系统已就绪，访问: http://localhost:3001
 ```
+
+**说明**:
+- `npm install:all` 会自动安装根目录和所有 packages 的依赖
+- 各服务默认端口: Master (3000)、Admin-Web (3001)、Worker (4001+)
+- 如需自定义 Worker 端口，可在启动时设置：`PORT=4002 npm run start:worker`
 
 ### 开发命令
 
 ```bash
 # 安装所有依赖
-pnpm install
+npm run install:all
 
-# 启动所有服务 (并发)
-pnpm dev
+# 启动 Master + Worker (并发)
+npm run dev
+
+# 启动 Master + Worker + Admin-Web (并发)
+npm run dev:all
 
 # 启动特定服务
-pnpm --filter @hiscrm-im/master dev
-pnpm --filter @hiscrm-im/worker dev
-pnpm --filter @hiscrm-im/admin-web dev
+npm run start:master
+npm run start:worker
+npm run start:admin
+npm run start:desktop
 
 # 运行测试
-pnpm test
+npm test
 
 # 构建生产版本
-pnpm build
+npm run build
 ```
 
 ### 生产部署
 
 ```bash
-# 使用 PM2 启动主控
+# 方式 1: 使用 PM2 启动主控
 pm2 start packages/master/src/index.js --name hiscrm-master
 
-# PM2 会自动启动 Worker（参考 master/src/worker_manager）
+# 方式 2: 启动 Worker 进程
+pm2 start packages/worker/src/index.js --name hiscrm-worker-1 -- --worker-id worker-1 --port 4001
+
+# 使用 npm 脚本启动
+npm run start:master      # Master
+npm run start:worker      # Worker
 
 # 查看状态
 pm2 logs
 pm2 monit
+pm2 list
+```
+
+**推荐配置（多 Worker）**:
+```bash
+# Terminal 1: Master
+pm2 start packages/master/src/index.js --name hiscrm-master
+
+# Terminal 2,3,4: 多个 Worker
+pm2 start packages/worker/src/index.js --name hiscrm-worker-1 -- --worker-id worker-1 --port 4001
+pm2 start packages/worker/src/index.js --name hiscrm-worker-2 -- --worker-id worker-2 --port 4002
+pm2 start packages/worker/src/index.js --name hiscrm-worker-3 -- --worker-id worker-3 --port 4003
+
+# 监控所有进程
+pm2 monit
+pm2 logs
 ```
 
 ## 📚 文档体系
