@@ -818,16 +818,73 @@ class DouyinPlatform extends PlatformBase {
         const comments = [];
 
         // 合并所有分页的评论
-        responses.forEach(resp => {
-          resp.data.comment_info_list.forEach(c => {
+        responses.forEach((resp, respIdx) => {
+          resp.data.comment_info_list.forEach((c, cIdx) => {
+            // DEBUG: 记录第一条评论的完整对象结构，找到真实的时间字段
+            if (respIdx === 0 && cIdx === 0) {
+              logger.info('\n╔════════════════════════════════════════════════════════════╗');
+              logger.info('║  🔍 API Response Comment Object Diagnosis (First Comment)  ║');
+              logger.info('╚════════════════════════════════════════════════════════════╝\n');
+
+              logger.info(`📋 All keys (${Object.keys(c).length}):`, Object.keys(c).sort().join(', '));
+
+              // 列出所有可能的时间相关字段
+              logger.info('\n⏰ Time-related fields:');
+              for (const [key, value] of Object.entries(c)) {
+                if (key.toLowerCase().includes('time') ||
+                    key.toLowerCase().includes('date') ||
+                    key.toLowerCase().includes('create') ||
+                    key.toLowerCase().includes('publish')) {
+                  const valueStr = String(value);
+                  const valueType = typeof value;
+                  logger.info(`   ${key}:`);
+                  logger.info(`      Type: ${valueType}`);
+                  logger.info(`      Value: ${valueStr}`);
+                  logger.info(`      Value length: ${valueStr.length}`);
+                  if (valueType === 'number') {
+                    const asDate = new Date(value * 1000);
+                    const asDateMs = new Date(value);
+                    logger.info(`      As seconds (×1000): ${asDate.toLocaleString('zh-CN')}`);
+                    logger.info(`      As milliseconds: ${asDateMs.toLocaleString('zh-CN')}`);
+                  }
+                  logger.info('');
+                }
+              }
+
+              // 输出完整的第一条评论对象（前3000字符）
+              logger.info('\n📝 Full comment object (first 3000 chars):');
+              logger.info(JSON.stringify(c, null, 2).substring(0, 3000));
+              logger.info('\n');
+            }
+
+            // 获取原始 create_time 值（可能是秒级或毫秒级）
+            const rawCreateTime = c.create_time;
+            let createTimeSeconds = parseInt(rawCreateTime);
+
+            // 诊断: 打印原始值
+            if (respIdx === 0 && cIdx === 0) {
+              logger.info(`🔍 Create time debug:`);
+              logger.info(`   Raw value: ${rawCreateTime} (type: ${typeof rawCreateTime})`);
+              logger.info(`   As seconds: ${createTimeSeconds}`);
+              logger.info(`   Formatted (as seconds): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
+
+              // 检查是否为毫秒级（13位数字）
+              if (createTimeSeconds > 9999999999) {
+                logger.info(`   ⚠️  Detected milliseconds format, converting to seconds`);
+                createTimeSeconds = Math.floor(createTimeSeconds / 1000);
+                logger.info(`   After conversion: ${createTimeSeconds}`);
+                logger.info(`   Formatted (corrected): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
+              }
+            }
+
             comments.push({
               platform_comment_id: c.comment_id,
               content: c.text,
               author_name: c.user_info?.screen_name || '匿名',
               author_id: c.user_info?.user_id || '',
               author_avatar: c.user_info?.avatar_url || '',
-              create_time: parseInt(c.create_time),
-              create_time_formatted: new Date(parseInt(c.create_time) * 1000).toLocaleString('zh-CN'),
+              create_time: createTimeSeconds,
+              create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
               like_count: parseInt(c.digg_count) || 0,
               reply_count: parseInt(c.reply_count) || 0,
               detected_at: Math.floor(Date.now() / 1000),
@@ -1023,16 +1080,41 @@ class DouyinPlatform extends PlatformBase {
       }
 
       // 8. 添加必要字段（account_id, platform_user_id）
+      // 使用 platform_message_id 作为唯一标识，避免重复
       logger.debug(`[crawlDirectMessages] Step 8: Adding account fields to ${rawMessages.length} raw messages`);
-      const directMessages = rawMessages.map((msg) => ({
-        id: uuidv4(),
-        account_id: account.id,
-        platform_user_id: account.platform_user_id,
-        ...msg,
-        is_read: false,
-        created_at: Math.floor(Date.now() / 1000),
-      }));
+
+      const createIsNewFlag = (createdAt) => {
+        const now = Math.floor(Date.now() / 1000);
+        const ageSeconds = now - createdAt;
+        const oneDaySeconds = 24 * 60 * 60;  // 86400
+        return ageSeconds < oneDaySeconds;
+      };
+
+      const directMessages = rawMessages.map((msg) => {
+        let createdAt = msg.create_time || Math.floor(Date.now() / 1000);
+
+        // 检查是否为毫秒级（13位数字）并转换为秒级
+        if (createdAt > 9999999999) {
+          createdAt = Math.floor(createdAt / 1000);
+        }
+
+        return {
+          id: msg.platform_message_id,  // 使用 platform_message_id 作为唯一ID，而不是生成新UUID
+          account_id: account.id,
+          platform_user_id: account.platform_user_id,
+          ...msg,
+          is_read: false,
+          created_at: createdAt,  // 使用提取的时间，如果没有则使用当前时间
+          is_new: createIsNewFlag(createdAt),  // 基于 created_at 计算 is_new
+          push_count: 0,  // 初始推送计数为0
+        };
+      });
       logger.info(`[crawlDirectMessages] Prepared ${directMessages.length} direct messages with account fields`);
+
+      // 将私信添加到缓存管理器（用于 IsNewPushTask）
+      directMessages.forEach(msg => {
+        cacheManager.addMessage(account.id, msg);
+      });
 
       // 9. 发送私信数据到 Master
       logger.debug(`[crawlDirectMessages] Step 9: Sending ${directMessages.length} messages to Master`);
@@ -1374,86 +1456,115 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 从私信管理页面提取私信列表
+   * 从私信管理页面提取私信列表 - 从React虚拟列表中的item对象提取真实数据
    * @param {Page} page
    * @returns {Promise<Array>}
    */
   async extractDirectMessages(page) {
-    logger.info('Extracting direct messages from message management page');
+    logger.info('Extracting direct messages from React virtual list (item objects)');
 
     try {
-      // 从页面提取私信列表
+      // 从页面提取私信列表（通过访问React Fiber中的item对象）
       const messages = await page.evaluate(() => {
-        // 使用更精确的选择器 - 基于测试结果
-        const messageElements = document.querySelectorAll('.semi-list-item');
+        const innerContainer = document.querySelector('.ReactVirtualized__Grid__innerScrollContainer');
+
+        if (!innerContainer || innerContainer.children.length === 0) {
+          console.log('⚠️ 未找到虚拟列表容器');
+          return [];
+        }
+
+        console.log(`✅ Found virtual list container with ${innerContainer.children.length} rows`);
         const messageList = [];
 
-        console.log(`[extractDirectMessages] Found ${messageElements.length} semi-list-item elements`);
+        // 遍历虚拟列表中的所有行
+        Array.from(innerContainer.children).forEach((row, rowIdx) => {
+          try {
+            // 从React Fiber中提取item对象
+            const fiberKey = Object.keys(row).find(k => k.startsWith('__reactFiber'));
 
-        messageElements.forEach((el, index) => {
-          const textContent = el.textContent || '';
-
-          // 跳过空元素和导航菜单项（这些不包含日期）
-          if (!textContent.trim()) {
-            console.log(`[extractDirectMessages] Skipping empty element ${index}`);
-            return;
-          }
-
-          // 检查是否是私信元素（包含日期格式 MM-DD）
-          const hasDatePattern = /\d{2}-\d{2}/.test(textContent);
-          if (!hasDatePattern) {
-            console.log(`[extractDirectMessages] Skipping element ${index}: no date pattern`);
-            return;
-          }
-
-          // 提取日期
-          const dateMatch = textContent.match(/(\d{2}-\d{2})/);
-          const date = dateMatch ? dateMatch[1] : '';
-
-          // 提取消息内容（日期后面的文本，去除"置顶"、"已读"、"删除"等操作按钮）
-          let content = textContent;
-          if (dateMatch) {
-            // 从日期后开始提取
-            content = textContent.substring(textContent.indexOf(dateMatch[0]) + dateMatch[0].length);
-          }
-          // 移除操作按钮文本
-          content = content.replace(/置顶|已读|删除/g, '').trim();
-
-          // 提取发送者信息（通常在头像附近）
-          const avatarEl = el.querySelector('.semi-avatar');
-          let senderName = '未知用户';
-          if (avatarEl && avatarEl.parentElement) {
-            // 查找头像附近的文本
-            const nameEl = avatarEl.parentElement.querySelector('span, div');
-            if (nameEl && nameEl.textContent && !nameEl.textContent.includes('置顶')) {
-              senderName = nameEl.textContent.trim();
+            if (!fiberKey) {
+              return;
             }
-          }
 
-          // 只添加有效的私信（有内容且内容长度 > 10）
-          if (content && content.length > 10) {
-            console.log(`[extractDirectMessages] Found message ${index}: ${content.substring(0, 50)}...`);
+            const fiber = row[fiberKey];
+
+            // 找到包含item的子组件
+            if (!fiber.child || !fiber.child.memoizedProps || !fiber.child.memoizedProps.item) {
+              return;
+            }
+
+            const item = fiber.child.memoizedProps.item;
+
+
+            // 从DOM中提取发送者名
+            const domText = row.textContent.trim();
+            const timeMatch = domText.match(/(星期[一二三四五六日]|[\d]{2}-[\d]{2}|昨天|刚刚)/);
+            let senderName = '未知';
+            if (timeMatch) {
+              const beforeTime = domText.substring(0, domText.indexOf(timeMatch[1]));
+              senderName = beforeTime.replace(/置顶已读|已读|未读|[\d]+/g, '').trim() || '未知';
+            }
+
+            // 从content对象中提取消息文本
+            let messageText = '';
+            if (item.content && item.content.text) {
+              messageText = item.content.text;
+            } else if (item.content && item.content.content_title) {
+              messageText = item.content.content_title;
+            } else if (typeof item.content === 'object') {
+              const textFields = Object.keys(item.content).filter(k =>
+                k.includes('text') || k.includes('content') || k.includes('desc')
+              );
+              if (textFields.length > 0) {
+                messageText = item.content[textFields[0]];
+              }
+            }
+
+            // 确保消息内容是字符串
+            if (typeof messageText !== 'string') {
+              messageText = String(messageText || '（无内容）');
+            }
+
+            // 限制消息长度
+            if (messageText.length > 500) {
+              messageText = messageText.substring(0, 500);
+            }
+
+            // 从item.createdTime提取真实的时间戳（已验证为Date对象）
+            let createdAt = Math.floor(Date.now() / 1000);
+            if (item.createdTime && item.createdTime instanceof Date) {
+              createdAt = Math.floor(item.createdTime.getTime() / 1000);
+              console.log(`Row ${rowIdx}: ✅ Got real timestamp from item.createdTime: ${createdAt}`);
+            }
+
+            // 构建消息对象
             messageList.push({
-              platform_message_id: `douyin-msg-dom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-              content,
+              platform_message_id: item.id || item.shortId || `msg-${rowIdx}-${Math.random().toString(36).substr(2, 9)}`,
+              content: messageText || '（无内容）',
               sender_name: senderName,
-              sender_id: `user-${Math.random().toString(36).substr(2, 9)}`,
+              sender_id: item.coreInfo?.owner || item.secUid || `user-${senderName}`,
               direction: 'inbound',
               detected_at: Math.floor(Date.now() / 1000),
-              create_time: Math.floor(Date.now() / 1000),
-              time: date,
+              create_time: createdAt,  // 真实的消息创建时间
+              sec_uid: item.secUid,
+              is_group_chat: item.isGroupChat || false,
             });
-          } else {
-            console.log(`[extractDirectMessages] Skipping element ${index}: content too short (${content.length} chars)`);
+
+          } catch (error) {
+            console.error(`Error processing row ${rowIdx}:`, error.message);
           }
         });
 
-        console.log(`[extractDirectMessages] Extracted ${messageList.length} messages total`);
+        console.log(`✅ Total extracted: ${messageList.length} messages`);
         return messageList;
       });
 
-      logger.info(`Extracted ${messages.length} direct messages from page`);
+      logger.info(`Extracted ${messages.length} direct messages from React virtual list`);
+      if (messages.length > 0) {
+        logger.debug(`First message: ${JSON.stringify(messages[0])}`);
+      }
       return messages;
+
     } catch (error) {
       logger.error('Failed to extract direct messages:', error);
       return [];
@@ -1712,10 +1823,10 @@ class DouyinPlatform extends PlatformBase {
    */
   async sendCommentsToMaster(account, comments, videos) {
     try {
-      logger.info(`Processing ${comments.length} comments for account ${account.id}`);
+      logger.info(`Processing ${comments.length} comments for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
 
-      // 🔥 使用缓存管理器过滤新评论
-      const newComments = cacheManager.filterNewComments(account.id, comments);
+      // 🔥 使用缓存管理器过滤新评论 (三字段组合去重)
+      const newComments = cacheManager.filterNewComments(account.id, comments, account.platform_user_id);
 
       if (newComments.length === 0) {
         logger.info(`No new comments to send (all ${comments.length} comments are duplicates)`);
@@ -1726,6 +1837,7 @@ class DouyinPlatform extends PlatformBase {
             account_id: account.id,
             platform_user_id: account.platform_user_id,
             aweme_id: video.aweme_id,
+            platform_videos_id: video.aweme_id,  // 使用 aweme_id 作为平台视频ID
             title: video.title,
             cover: video.cover,
             publish_time: video.publish_time,
@@ -1740,10 +1852,12 @@ class DouyinPlatform extends PlatformBase {
 
       // 发送视频信息（upsert）
       for (const video of videos) {
+        // 仅在 Master 发送视频基本信息，is_new 和 push_count 由 Master 负责
         this.bridge.socket.emit('worker:upsert_video', {
           account_id: account.id,
           platform_user_id: account.platform_user_id,
           aweme_id: video.aweme_id,
+          platform_videos_id: video.aweme_id,  // 使用 aweme_id 作为平台视频ID
           title: video.title,
           cover: video.cover,
           publish_time: video.publish_time,
@@ -1751,11 +1865,45 @@ class DouyinPlatform extends PlatformBase {
         });
       }
 
+      // 计算 is_new 标志的辅助函数
+      const createIsNewFlag = (createdAt) => {
+        const now = Math.floor(Date.now() / 1000);
+        const ageSeconds = now - createdAt;
+        const oneDaySeconds = 24 * 60 * 60;  // 86400
+        return ageSeconds < oneDaySeconds;
+      };
+
+      // 为评论添加必需的 id 和 account_id 字段，以及 is_new 和 push_count 字段
+      // 使用 platform_comment_id 作为唯一标识
+      const commentsWithIds = newComments.map((comment) => ({
+        id: comment.platform_comment_id,  // 使用 platform_comment_id 作为唯一ID
+        account_id: account.id,  // 添加账户ID
+        is_new: createIsNewFlag(comment.create_time),  // 基于 create_time 计算 is_new
+        push_count: 0,  // 初始推送计数为0
+        ...comment,
+      }));
+
+      // 诊断：输出第一条评论的所有字段
+      if (commentsWithIds.length > 0) {
+        logger.info('\n🔥 First comment to send to Master:');
+        const firstComment = commentsWithIds[0];
+        logger.info(`   Keys: ${Object.keys(firstComment).join(', ')}`);
+        logger.info(`   create_time: ${firstComment.create_time}`);
+        logger.info(`   created_at: ${firstComment.created_at}`);
+        logger.info(`   detected_at: ${firstComment.detected_at}`);
+        logger.info(`   id: ${firstComment.id}`);
+      }
+
+      // 将评论添加到缓存管理器（用于 IsNewPushTask）
+      commentsWithIds.forEach(comment => {
+        cacheManager.addComment(account.id, comment);
+      });
+
       // 🔥 只发送新评论
       this.bridge.socket.emit('worker:bulk_insert_comments', {
         account_id: account.id,
         platform_user_id: account.platform_user_id,
-        comments: newComments,
+        comments: commentsWithIds,
       });
 
       logger.info(`✅ Successfully sent ${newComments.length} new comments and ${videos.length} videos to Master`);
@@ -1815,10 +1963,10 @@ class DouyinPlatform extends PlatformBase {
    */
   async sendMessagesToMaster(account, messages) {
     try {
-      logger.info(`Processing ${messages.length} direct messages for account ${account.id}`);
+      logger.info(`Processing ${messages.length} direct messages for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
 
-      // 🔥 使用缓存管理器过滤新私信
-      const newMessages = cacheManager.filterNewDirectMessages(account.id, messages);
+      // 🔥 使用缓存管理器过滤新私信 (三字段组合去重)
+      const newMessages = cacheManager.filterNewDirectMessages(account.id, messages, account.platform_user_id);
 
       if (newMessages.length === 0) {
         logger.info(`No new direct messages to send (all ${messages.length} messages are duplicates)`);

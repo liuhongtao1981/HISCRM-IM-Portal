@@ -42,6 +42,8 @@ CREATE TABLE IF NOT EXISTS comments (
   is_read BOOLEAN DEFAULT 0,
   detected_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
+  is_new BOOLEAN DEFAULT 1,
+  push_count INTEGER DEFAULT 0,
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 
@@ -63,6 +65,8 @@ CREATE TABLE IF NOT EXISTS direct_messages (
   is_read BOOLEAN DEFAULT 0,
   detected_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
+  is_new BOOLEAN DEFAULT 1,
+  push_count INTEGER DEFAULT 0,
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
 );
 

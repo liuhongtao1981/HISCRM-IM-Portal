@@ -162,6 +162,52 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
       }
     });
 
+    // 监听新数据推送事件 (IsNewPushTask)
+    socket.on('worker:push_new_comments', async (data) => {
+      logger.info(`Worker ${socket.id} pushing ${data.comments?.length || 0} new comments (request #${data.request_id})`);
+      if (handlers.onPushNewComments) {
+        try {
+          await handlers.onPushNewComments(data, socket);
+        } catch (error) {
+          logger.error('Failed to push new comments:', error);
+          socket.emit(`master:push_new_comments_ack_${data?.request_id}`, {
+            success: false,
+            error: error.message
+          });
+        }
+      }
+    });
+
+    socket.on('worker:push_new_messages', async (data) => {
+      logger.info(`Worker ${socket.id} pushing ${data.messages?.length || 0} new messages (request #${data.request_id})`);
+      if (handlers.onPushNewMessages) {
+        try {
+          await handlers.onPushNewMessages(data, socket);
+        } catch (error) {
+          logger.error('Failed to push new messages:', error);
+          socket.emit(`master:push_new_messages_ack_${data?.request_id}`, {
+            success: false,
+            error: error.message
+          });
+        }
+      }
+    });
+
+    socket.on('worker:push_new_videos', async (data) => {
+      logger.info(`Worker ${socket.id} pushing ${data.videos?.length || 0} new videos (request #${data.request_id})`);
+      if (handlers.onPushNewVideos) {
+        try {
+          await handlers.onPushNewVideos(data, socket);
+        } catch (error) {
+          logger.error('Failed to push new videos:', error);
+          socket.emit(`master:push_new_videos_ack_${data?.request_id}`, {
+            success: false,
+            error: error.message
+          });
+        }
+      }
+    });
+
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
       try {

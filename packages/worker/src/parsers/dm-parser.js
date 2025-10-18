@@ -7,6 +7,7 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { parsePlatformTime } = require('@hiscrm-im/shared/utils/time-parser');
 
 const logger = createLogger('dm-parser');
 
@@ -37,7 +38,7 @@ class DMParser {
 
   /**
    * 解析单条私信
-   * @param {object} item - 原始私信数据
+   * @param {object} item - 原始私信数据（来自爬虫）
    * @returns {object|null} 解析后的私信对象
    */
   parseMessage(item) {
@@ -53,19 +54,48 @@ class DMParser {
         return null;
       }
 
+      const detectedAt = item.detected_at || Math.floor(Date.now() / 1000);
+
+      // 新版爬虫直接提供真实的created_at时间戳
+      // 无需再进行复杂的时间转换
+      let createdAt = item.created_at || detectedAt;
+
+      // 验证created_at是否合理（不是未来时间，不是太远的过去）
+      const now = Math.floor(Date.now() / 1000);
+      const dayInSeconds = 86400;
+      const maxAgeSeconds = 365 * dayInSeconds; // 最多一年前
+
+      if (createdAt > now) {
+        // 如果是未来时间，可能是数据错误，使用detected_at
+        logger.warn(`DM created_at is in future: ${createdAt} > ${now}, using detected_at`);
+        createdAt = detectedAt;
+      } else if (createdAt < (now - maxAgeSeconds)) {
+        // 如果超过一年前，可能是数据错误
+        logger.warn(`DM created_at is too old: ${createdAt}, using detected_at`);
+        createdAt = detectedAt;
+      }
+
+      logger.debug(
+        `DM parsed: sender=${item.sender_name}, created_at=${createdAt}, detected_at=${detectedAt}, diff=${detectedAt - createdAt}s`
+      );
+
       return {
         platform_message_id: item.platform_message_id || null,
         content: item.content,
         sender_name: item.sender_name || null,
         sender_id: item.sender_id || null,
         direction: item.direction,
-        detected_at: item.detected_at || Math.floor(Date.now() / 1000),
+        detected_at: detectedAt,
+        created_at: createdAt, // 平台上的真实消息时间（来自item.createdTime）
+        sec_uid: item.sec_uid || null,
+        is_group_chat: item.is_group_chat || false,
       };
     } catch (error) {
       logger.error('Failed to parse direct message:', error);
       return null;
     }
   }
+
 }
 
 module.exports = DMParser;

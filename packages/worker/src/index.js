@@ -15,6 +15,8 @@ const WorkerBridge = require('./platforms/base/worker-bridge');
 const PlatformManager = require('./platform-manager');
 const AccountInitializer = require('./handlers/account-initializer');
 const AccountStatusReporter = require('./handlers/account-status-reporter');
+const IsNewPushTask = require('./tasks/is-new-push-task');
+const { getCacheManager } = require('./services/cache-manager');
 const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE, MASTER_ACCOUNT_LOGOUT, WORKER_ACCOUNT_LOGOUT_ACK, createMessage } = require('@hiscrm-im/shared/protocol/messages');
 const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
 
@@ -37,6 +39,7 @@ let workerBridge;
 let platformManager;
 let accountInitializer;
 let accountStatusReporter;
+let isNewPushTask;
 
 /**
  * 启动Worker
@@ -148,9 +151,15 @@ async function start() {
 
     // 14. 启动上报器（此时已有账号状态数据）
     accountStatusReporter.start();
-    logger.info('✓ Account status reporter started')
+    logger.info('✓ Account status reporter started');
 
-    // 8. 监听任务分配消息
+    // 15. 初始化并启动 IsNewPushTask（用于新数据推送）
+    const cacheManager = getCacheManager();
+    isNewPushTask = new IsNewPushTask(cacheManager, workerBridge);
+    isNewPushTask.start();
+    logger.info('✓ IsNewPushTask started (new data push scanning every 60s)');
+
+    // 16. 监听任务分配消息
     socketClient.onMessage(MASTER_TASK_ASSIGN, (msg) => {
       handleTaskAssign(msg);
     });
@@ -352,6 +361,12 @@ async function handleAccountLogout(msg) {
  */
 async function shutdown(signal) {
   logger.info(`${signal} received, shutting down gracefully`);
+
+  // 停止 IsNewPushTask
+  if (isNewPushTask) {
+    isNewPushTask.stop();
+    logger.info('IsNewPushTask stopped');
+  }
 
   // 停止任务执行器
   if (taskRunner) {

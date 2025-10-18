@@ -127,7 +127,18 @@ class DirectMessagesDAO {
         params.push(filters.end_time);
       }
 
-      sql += ' ORDER BY detected_at DESC';
+      // 添加 created_at 时间范围过滤
+      if (filters.created_at_start) {
+        sql += ' AND created_at >= ?';
+        params.push(filters.created_at_start);
+      }
+
+      if (filters.created_at_end) {
+        sql += ' AND created_at <= ?';
+        params.push(filters.created_at_end);
+      }
+
+      sql += ' ORDER BY created_at DESC';
 
       if (filters.limit) {
         sql += ' LIMIT ?';
@@ -281,24 +292,52 @@ class DirectMessagesDAO {
 
       const transaction = this.db.transaction((messageList) => {
         for (const message of messageList) {
-          const result = insertStmt.run(
-            message.id,
-            message.account_id,
-            message.platform_user_id || null,
-            message.conversation_id || null,
-            message.platform_message_id,
-            message.content,
-            message.sender_name,
-            message.sender_id,
-            message.direction,
-            message.is_read !== undefined ? message.is_read : 0,
-            message.detected_at,
-            message.created_at || Math.floor(Date.now() / 1000)
-          );
+          try {
+            // 数据清理和验证
+            const cleanMessage = {
+              id: String(message.id || ''),
+              account_id: String(message.account_id || ''),
+              platform_user_id: message.platform_user_id ? String(message.platform_user_id) : null,
+              conversation_id: message.conversation_id ? String(message.conversation_id) : null,
+              platform_message_id: String(message.platform_message_id || ''),
+              content: String(message.content || ''),
+              sender_name: String(message.sender_name || ''),
+              sender_id: String(message.sender_id || ''),
+              direction: String(message.direction || 'inbound'),
+              is_read: message.is_read !== undefined ? (message.is_read ? 1 : 0) : 0,
+              detected_at: Number(message.detected_at) || Math.floor(Date.now() / 1000),
+              created_at: Number(message.created_at) || Math.floor(Date.now() / 1000),
+            };
 
-          if (result.changes > 0) {
-            inserted++;
-          } else {
+            // 检查必须字段
+            if (!cleanMessage.id || !cleanMessage.account_id || !cleanMessage.content) {
+              logger.warn('Skipping invalid message (missing required fields):', cleanMessage);
+              skipped++;
+              continue;
+            }
+
+            const result = insertStmt.run(
+              cleanMessage.id,
+              cleanMessage.account_id,
+              cleanMessage.platform_user_id,
+              cleanMessage.conversation_id,
+              cleanMessage.platform_message_id,
+              cleanMessage.content,
+              cleanMessage.sender_name,
+              cleanMessage.sender_id,
+              cleanMessage.direction,
+              cleanMessage.is_read,
+              cleanMessage.detected_at,
+              cleanMessage.created_at
+            );
+
+            if (result.changes > 0) {
+              inserted++;
+            } else {
+              skipped++;
+            }
+          } catch (itemError) {
+            logger.warn(`Failed to insert single message, skipping:`, { error: itemError.message, message: JSON.stringify(message).substring(0, 100) });
             skipped++;
           }
         }
@@ -310,7 +349,23 @@ class DirectMessagesDAO {
       return { inserted, skipped };
     } catch (error) {
       logger.error('Failed to bulk insert direct messages:', error);
-      throw error;
+      // 如果 transaction 失败，尝试逐条插入
+      logger.info('Attempting to insert messages one by one...');
+      let oneByOneInserted = 0;
+      let oneByOneSkipped = 0;
+
+      for (const message of messages) {
+        try {
+          this.create(new (require('@hiscrm-im/shared/models/DirectMessage'))(message));
+          oneByOneInserted++;
+        } catch (e) {
+          logger.warn(`Failed to insert message ${message.id}:`, e.message);
+          oneByOneSkipped++;
+        }
+      }
+
+      logger.info(`One-by-one insertion: ${oneByOneInserted} inserted, ${oneByOneSkipped} skipped`);
+      return { inserted: oneByOneInserted, skipped: oneByOneSkipped };
     }
   }
 

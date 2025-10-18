@@ -13,6 +13,7 @@ class DouyinVideoDAO {
 
   /**
    * 创建或更新作品
+   * 去重策略：使用 (account_id + platform_videos_id) 组合去重
    * @param {Object} video - 作品对象
    * @returns {Object} 作品记录
    */
@@ -21,6 +22,7 @@ class DouyinVideoDAO {
       account_id,
       platform_user_id,
       aweme_id,
+      platform_videos_id = aweme_id,  // 默认使用 aweme_id 作为 platform_videos_id
       title,
       cover,
       publish_time,
@@ -31,26 +33,24 @@ class DouyinVideoDAO {
     } = video;
 
     try {
+      // 生成 UUID 作为主键
+      const { v4: uuidv4 } = require('uuid');
+      const id = uuidv4();
+
+      // 使用 INSERT OR IGNORE，利用 UNIQUE(account_id, platform_videos_id) 约束自动去重
       const stmt = this.db.prepare(`
-        INSERT INTO douyin_videos (
-          account_id, platform_user_id, aweme_id, title, cover, publish_time,
+        INSERT OR IGNORE INTO douyin_videos (
+          id, platform_videos_id, account_id, platform_user_id, title, cover, publish_time,
           total_comment_count, like_count, share_count, play_count
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(platform_user_id, aweme_id) DO UPDATE SET
-          title = excluded.title,
-          cover = excluded.cover,
-          total_comment_count = excluded.total_comment_count,
-          like_count = excluded.like_count,
-          share_count = excluded.share_count,
-          play_count = excluded.play_count,
-          updated_at = strftime('%s', 'now')
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const result = stmt.run(
+        id,  // 使用 UUID 作为主键
+        platform_videos_id,
         account_id,
         platform_user_id,
-        aweme_id,
         title,
         cover,
         publish_time,
@@ -60,17 +60,39 @@ class DouyinVideoDAO {
         play_count
       );
 
-      logger.info(`Upserted video: ${aweme_id} (${title}) for platform_user ${platform_user_id}`);
+      logger.info(`Upserted video: ${platform_videos_id} (${title}) for account ${account_id}`);
 
-      return this.getVideoByAwemeId(aweme_id, platform_user_id);
+      return this.getVideoByPlatformVideosId(platform_videos_id, account_id);
     } catch (error) {
-      logger.error(`Failed to upsert video ${aweme_id}:`, error);
+      logger.error(`Failed to upsert video ${platform_videos_id}:`, error);
       throw error;
     }
   }
 
   /**
-   * 根据 aweme_id 获取作品
+   * 根据 platform_videos_id 获取作品（推荐使用）
+   * @param {string} platformVideosId - 平台视频ID
+   * @param {string} platformUserId - 平台用户ID（可选）
+   * @returns {Object|null} 作品记录
+   */
+  getVideoByPlatformVideosId(platformVideosId, platformUserId = null) {
+    try {
+      let stmt;
+      if (platformUserId) {
+        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE platform_videos_id = ? AND platform_user_id = ?');
+        return stmt.get(platformVideosId, platformUserId);
+      } else {
+        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE platform_videos_id = ?');
+        return stmt.get(platformVideosId);
+      }
+    } catch (error) {
+      logger.error(`Failed to get video ${platformVideosId}:`, error);
+      return null;
+    }
+  }
+
+  /**
+   * 根据 aweme_id 获取作品（兼容旧版本，不推荐使用）
    * @param {string} awemeId - 作品ID
    * @param {string} platformUserId - 平台用户ID（可选）
    * @returns {Object|null} 作品记录
@@ -79,10 +101,10 @@ class DouyinVideoDAO {
     try {
       let stmt;
       if (platformUserId) {
-        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE aweme_id = ? AND platform_user_id = ?');
+        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE id = ? AND platform_user_id = ?');
         return stmt.get(awemeId, platformUserId);
       } else {
-        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE aweme_id = ?');
+        stmt = this.db.prepare('SELECT * FROM douyin_videos WHERE id = ?');
         return stmt.get(awemeId);
       }
     } catch (error) {
@@ -135,7 +157,7 @@ class DouyinVideoDAO {
         SET crawl_status = ?,
             crawl_error = ?,
             last_crawl_time = strftime('%s', 'now')
-        WHERE aweme_id = ?
+        WHERE platform_videos_id = ?
       `);
 
       stmt.run(status, error, awemeId);
@@ -157,7 +179,7 @@ class DouyinVideoDAO {
         UPDATE douyin_videos
         SET new_comment_count = ?,
             total_comment_count = total_comment_count + ?
-        WHERE aweme_id = ?
+        WHERE platform_videos_id = ?
       `);
 
       stmt.run(newCommentCount, newCommentCount, awemeId);
@@ -177,7 +199,7 @@ class DouyinVideoDAO {
       const stmt = this.db.prepare(`
         UPDATE douyin_videos
         SET new_comment_count = 0
-        WHERE aweme_id = ?
+        WHERE platform_videos_id = ?
       `);
 
       stmt.run(awemeId);
@@ -217,7 +239,7 @@ class DouyinVideoDAO {
    */
   deleteVideo(awemeId) {
     try {
-      const stmt = this.db.prepare('DELETE FROM douyin_videos WHERE aweme_id = ?');
+      const stmt = this.db.prepare('DELETE FROM douyin_videos WHERE platform_videos_id = ?');
       stmt.run(awemeId);
       logger.info(`Deleted video: ${awemeId}`);
     } catch (error) {
@@ -269,13 +291,13 @@ class DouyinVideoDAO {
   /**
    * 获取指定账号的所有视频ID列表（用于缓存预加载）
    * @param {string} accountId - 账号ID
-   * @returns {Array<string>} aweme_id列表
+   * @returns {Array<string>} platform_videos_id列表
    */
   getAllVideoIds(accountId) {
     try {
-      const query = `SELECT aweme_id FROM douyin_videos WHERE account_id = ?`;
+      const query = `SELECT platform_videos_id FROM douyin_videos WHERE account_id = ?`;
       const results = this.db.prepare(query).all(accountId);
-      return results.map(row => row.aweme_id);
+      return results.map(row => row.platform_videos_id);
     } catch (error) {
       logger.error(`Failed to get video IDs for account ${accountId}:`, error);
       return [];

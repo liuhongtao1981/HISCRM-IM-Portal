@@ -7,6 +7,7 @@ import {
   GlobalOutlined,
   DashboardOutlined,
   MonitorOutlined,
+  MessageOutlined,
 } from '@ant-design/icons';
 
 // 页面组件
@@ -15,6 +16,7 @@ import AccountsPage from './pages/AccountsPage';
 import WorkersPage from './pages/WorkersPage';
 import ProxiesPage from './pages/ProxiesPage';
 import AccountStatusPage from './pages/AccountStatusPage';
+import MessageManagementPage from './pages/MessageManagementPage';
 
 // WebSocket Provider
 import { SocketProvider } from './services/socketContext';
@@ -28,6 +30,12 @@ const menuItems = [
     icon: <DashboardOutlined />,
     label: '仪表板',
     path: '/',
+  },
+  {
+    key: '/messages',
+    icon: <MessageOutlined />,
+    label: '消息管理',
+    path: '/messages',
   },
   {
     key: '/account-status',
@@ -91,6 +99,7 @@ function App() {
             <Content className="app-content">
               <Routes>
                 <Route path="/" element={<Dashboard />} />
+                <Route path="/messages" element={<MessageManagementPage />} />
                 <Route path="/account-status" element={<AccountStatusPage />} />
                 <Route path="/accounts" element={<AccountsPage />} />
                 <Route path="/workers" element={<WorkersPage />} />

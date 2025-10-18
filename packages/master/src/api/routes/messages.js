@@ -21,8 +21,9 @@ function createMessagesRouter(db) {
   const messagesDAO = new DirectMessagesDAO(db);
 
   /**
-   * GET /api/v1/messages
+   * GET /
    * 查询消息历史（评论和私信）
+   * 当通过 /api/v1/messages 访问
    *
    * Query Parameters:
    * - account_id: 账户ID筛选
@@ -134,7 +135,7 @@ function createMessagesRouter(db) {
   });
 
   /**
-   * POST /api/v1/messages/:id/read
+   * POST /:id/read
    * 标记消息为已读
    *
    * Body:
@@ -202,4 +203,159 @@ function createMessagesRouter(db) {
   return router;
 }
 
+/**
+ * 创建评论路由
+ * @param {Database} db - SQLite 数据库实例
+ * @returns {express.Router}
+ */
+function createCommentsRouter(db) {
+  const router = express.Router();
+  const commentsDAO = new CommentsDAO(db);
+
+  /**
+   * GET /
+   * 查询评论列表
+   *
+   * Query Parameters:
+   * - account_id: 账户ID筛选
+   * - sort: 排序字段（created_at | detected_at）
+   * - order: 排序顺序（asc | desc）
+   * - created_at_start: 开始时间戳（Unix）
+   * - created_at_end: 结束时间戳（Unix）
+   * - limit: 返回数量（默认100）
+   */
+  router.get('/', async (req, res) => {
+    try {
+      const {
+        account_id,
+        sort = 'created_at',
+        order = 'desc',
+        created_at_start,
+        created_at_end,
+        limit = 100,
+      } = req.query;
+
+      const limitNum = parseInt(limit, 10);
+
+      // 构建查询过滤器
+      const filters = {};
+      if (account_id) filters.account_id = account_id;
+      if (created_at_start) filters.created_at_start = parseInt(created_at_start, 10);
+      if (created_at_end) filters.created_at_end = parseInt(created_at_end, 10);
+
+      // 查询评论
+      const comments = commentsDAO.findAll({
+        ...filters,
+        limit: limitNum,
+      });
+
+      // 排序
+      if (sort === 'created_at' || sort === 'detected_at') {
+        comments.sort((a, b) => {
+          const aVal = a[sort] || 0;
+          const bVal = b[sort] || 0;
+          return order === 'desc' ? bVal - aVal : aVal - bVal;
+        });
+      }
+
+      res.json({
+        success: true,
+        data: comments,
+        count: comments.length,
+      });
+
+      logger.info(`Comments queried: ${comments.length} records`);
+    } catch (error) {
+      logger.error('Failed to query comments:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to query comments',
+        message: error.message,
+      });
+    }
+  });
+
+  return router;
+}
+
+/**
+ * 创建私信路由
+ * @param {Database} db - SQLite 数据库实例
+ * @returns {express.Router}
+ */
+function createDirectMessagesRouter(db) {
+  const router = express.Router();
+  const messagesDAO = new DirectMessagesDAO(db);
+
+  /**
+   * GET /
+   * 查询私信列表
+   *
+   * Query Parameters:
+   * - account_id: 账户ID筛选
+   * - direction: 方向筛选（inbound | outbound）
+   * - sort: 排序字段（created_at | detected_at）
+   * - order: 排序顺序（asc | desc）
+   * - created_at_start: 开始时间戳（Unix）
+   * - created_at_end: 结束时间戳（Unix）
+   * - limit: 返回数量（默认100）
+   */
+  router.get('/', async (req, res) => {
+    try {
+      const {
+        account_id,
+        direction,
+        sort = 'created_at',
+        order = 'desc',
+        created_at_start,
+        created_at_end,
+        limit = 100,
+      } = req.query;
+
+      const limitNum = parseInt(limit, 10);
+
+      // 构建查询过滤器
+      const filters = {};
+      if (account_id) filters.account_id = account_id;
+      if (direction) filters.direction = direction;
+      if (created_at_start) filters.created_at_start = parseInt(created_at_start, 10);
+      if (created_at_end) filters.created_at_end = parseInt(created_at_end, 10);
+
+      // 查询私信
+      const messages = messagesDAO.findAll({
+        ...filters,
+        limit: limitNum,
+      });
+
+      // 排序
+      if (sort === 'created_at' || sort === 'detected_at') {
+        messages.sort((a, b) => {
+          const aVal = a[sort] || 0;
+          const bVal = b[sort] || 0;
+          return order === 'desc' ? bVal - aVal : aVal - bVal;
+        });
+      }
+
+      res.json({
+        success: true,
+        data: messages,
+        count: messages.length,
+      });
+
+      logger.info(`Direct messages queried: ${messages.length} records`);
+    } catch (error) {
+      logger.error('Failed to query direct messages:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to query direct messages',
+        message: error.message,
+      });
+    }
+  });
+
+  return router;
+}
+
 module.exports = createMessagesRouter;
+module.exports.createCommentsRouter = createCommentsRouter;
+module.exports.createDirectMessagesRouter = createDirectMessagesRouter;

@@ -62,6 +62,20 @@ const server = http.createServer(app);
 app.use(express.json());
 app.use(requestIdMiddleware);
 
+// CORS 中间件
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, PATCH, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-Requested-With');
+
+  // 处理 OPTIONS 预检请求
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+
+  next();
+});
+
 // 健康检查端点
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', timestamp: Date.now() });
@@ -340,6 +354,376 @@ async function start() {
     const douyinVideoDAO = new DouyinVideoDAO(db);
     const directMessagesDAO = new DirectMessagesDAO(db);
 
+    // ============================================
+    // 新数据推送处理器 (IsNewPushTask)
+    // ============================================
+
+    /**
+     * 处理新评论推送
+     * 逻辑：
+     * 1. 检查数据是否已存在
+     * 2. 新数据 (不存在): INSERT + 推送客户端通知
+     * 3. 历史数据 (已存在) 且 is_new=true: 推送客户端通知
+     * 4. 历史数据 (已存在) 且 is_new=false: 不推送
+     * 5. 发送 ACK 反馈到 Worker
+     */
+    tempHandlers.onPushNewComments = async (data, socket) => {
+      try {
+        const { request_id, account_id, platform_user_id, comments } = data;
+
+        if (!Array.isArray(comments) || comments.length === 0) {
+          logger.warn(`[IsNew] Received empty comments array (request #${request_id})`);
+          socket.emit(`master:push_new_comments_ack_${request_id}`, {
+            success: true,
+            inserted: 0,
+            skipped: 0,
+            message: 'Empty comments array'
+          });
+          return;
+        }
+
+        let inserted = 0;
+        let skipped = 0;
+        const commentsToNotify = [];
+
+        // 处理每条评论
+        for (const comment of comments) {
+          try {
+            // 检查评论是否已存在
+            const exists = commentsDAO.exists(account_id, comment.id);
+
+            if (!exists) {
+              // 新评论：插入数据库 + 加入通知列表
+              const newComment = {
+                id: comment.id,
+                account_id,
+                platform_user_id,
+                platform_comment_id: comment.id,
+                content: comment.content || '',
+                author_name: comment.author_name || '',
+                author_id: comment.author_id || '',
+                post_id: comment.post_id || '',
+                post_title: comment.post_title || '',
+                is_new: 1,
+                is_read: 0,
+                detected_at: Math.floor(Date.now() / 1000),
+                created_at: comment.created_at || Math.floor(Date.now() / 1000),
+              };
+
+              try {
+                commentsDAO.bulkInsert([newComment]);
+                inserted++;
+                commentsToNotify.push({
+                  type: 'new_comment',
+                  data: newComment,
+                  first_seen_at: newComment.detected_at
+                });
+                logger.debug(`[IsNew] New comment inserted: ${comment.id}`);
+              } catch (insertError) {
+                logger.warn(`[IsNew] Failed to insert comment ${comment.id}:`, insertError.message);
+                skipped++;
+              }
+            } else {
+              // 历史数据：检查 is_new 标志
+              const existingComment = commentsDAO.findAll({
+                account_id,
+                is_new: true
+              }).find(c => c.platform_comment_id === comment.id);
+
+              if (existingComment && existingComment.is_new) {
+                // 历史但标记为新的：加入通知列表
+                skipped++;
+                commentsToNotify.push({
+                  type: 'history_comment',
+                  data: existingComment,
+                  first_seen_at: existingComment.detected_at
+                });
+                logger.debug(`[IsNew] History comment with is_new=true: ${comment.id}`);
+              } else {
+                // 历史且 is_new=false：不推送
+                skipped++;
+                logger.debug(`[IsNew] History comment with is_new=false, skipped: ${comment.id}`);
+              }
+            }
+          } catch (itemError) {
+            logger.warn(`[IsNew] Error processing comment ${comment.id}:`, itemError.message);
+            skipped++;
+          }
+        }
+
+        // 发送客户端通知
+        if (commentsToNotify.length > 0) {
+          try {
+            clientNamespace.emit('new:comment', {
+              type: 'batch',
+              account_id,
+              platform_user_id,
+              data: commentsToNotify,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+            logger.info(`[IsNew] Sent ${commentsToNotify.length} comment notifications to clients`);
+          } catch (notifyError) {
+            logger.warn(`[IsNew] Failed to notify clients about comments:`, notifyError.message);
+          }
+        }
+
+        // 发送 ACK 反馈
+        socket.emit(`master:push_new_comments_ack_${request_id}`, {
+          success: true,
+          inserted,
+          skipped,
+          notified: commentsToNotify.length
+        });
+
+        logger.info(`[IsNew] Comments push completed (request #${request_id}): ${inserted} inserted, ${skipped} skipped`);
+      } catch (error) {
+        logger.error('[IsNew] Error in onPushNewComments:', error);
+        socket.emit(`master:push_new_comments_ack_${data?.request_id}`, {
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * 处理新私信推送
+     */
+    tempHandlers.onPushNewMessages = async (data, socket) => {
+      try {
+        const { request_id, account_id, platform_user_id, messages } = data;
+
+        if (!Array.isArray(messages) || messages.length === 0) {
+          logger.warn(`[IsNew] Received empty messages array (request #${request_id})`);
+          socket.emit(`master:push_new_messages_ack_${request_id}`, {
+            success: true,
+            inserted: 0,
+            skipped: 0,
+            message: 'Empty messages array'
+          });
+          return;
+        }
+
+        let inserted = 0;
+        let skipped = 0;
+        const messagesToNotify = [];
+
+        // 处理每条私信
+        for (const message of messages) {
+          try {
+            // 检查私信是否已存在
+            const exists = directMessagesDAO.findAll({
+              account_id,
+              platform_user_id
+            }).some(m => m.platform_message_id === message.id);
+
+            if (!exists) {
+              // 新私信：插入数据库 + 加入通知列表
+              const newMessage = {
+                id: message.id,
+                account_id,
+                platform_user_id,
+                platform_message_id: message.id,
+                from_user_id: message.from_user_id || '',
+                from_user_name: message.from_user_name || '',
+                content: message.content || '',
+                is_new: 1,
+                is_read: 0,
+                detected_at: Math.floor(Date.now() / 1000),
+                created_at: message.created_at || Math.floor(Date.now() / 1000),
+              };
+
+              try {
+                directMessagesDAO.bulkInsert([newMessage]);
+                inserted++;
+                messagesToNotify.push({
+                  type: 'new_message',
+                  data: newMessage,
+                  first_seen_at: newMessage.detected_at
+                });
+                logger.debug(`[IsNew] New message inserted: ${message.id}`);
+              } catch (insertError) {
+                logger.warn(`[IsNew] Failed to insert message ${message.id}:`, insertError.message);
+                skipped++;
+              }
+            } else {
+              // 历史数据：检查 is_new 标志
+              const existingMessage = directMessagesDAO.findAll({
+                account_id,
+                is_new: true
+              }).find(m => m.platform_message_id === message.id);
+
+              if (existingMessage && existingMessage.is_new) {
+                // 历史但标记为新的：加入通知列表
+                skipped++;
+                messagesToNotify.push({
+                  type: 'history_message',
+                  data: existingMessage,
+                  first_seen_at: existingMessage.detected_at
+                });
+                logger.debug(`[IsNew] History message with is_new=true: ${message.id}`);
+              } else {
+                // 历史且 is_new=false：不推送
+                skipped++;
+                logger.debug(`[IsNew] History message with is_new=false, skipped: ${message.id}`);
+              }
+            }
+          } catch (itemError) {
+            logger.warn(`[IsNew] Error processing message ${message.id}:`, itemError.message);
+            skipped++;
+          }
+        }
+
+        // 发送客户端通知
+        if (messagesToNotify.length > 0) {
+          try {
+            clientNamespace.emit('new:message', {
+              type: 'batch',
+              account_id,
+              platform_user_id,
+              data: messagesToNotify,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+            logger.info(`[IsNew] Sent ${messagesToNotify.length} message notifications to clients`);
+          } catch (notifyError) {
+            logger.warn(`[IsNew] Failed to notify clients about messages:`, notifyError.message);
+          }
+        }
+
+        // 发送 ACK 反馈
+        socket.emit(`master:push_new_messages_ack_${request_id}`, {
+          success: true,
+          inserted,
+          skipped,
+          notified: messagesToNotify.length
+        });
+
+        logger.info(`[IsNew] Messages push completed (request #${request_id}): ${inserted} inserted, ${skipped} skipped`);
+      } catch (error) {
+        logger.error('[IsNew] Error in onPushNewMessages:', error);
+        socket.emit(`master:push_new_messages_ack_${data?.request_id}`, {
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
+    /**
+     * 处理新视频推送
+     */
+    tempHandlers.onPushNewVideos = async (data, socket) => {
+      try {
+        const { request_id, account_id, platform_user_id, videos } = data;
+
+        if (!Array.isArray(videos) || videos.length === 0) {
+          logger.warn(`[IsNew] Received empty videos array (request #${request_id})`);
+          socket.emit(`master:push_new_videos_ack_${request_id}`, {
+            success: true,
+            inserted: 0,
+            skipped: 0,
+            message: 'Empty videos array'
+          });
+          return;
+        }
+
+        let inserted = 0;
+        let skipped = 0;
+        const videosToNotify = [];
+
+        // 处理每个视频
+        for (const video of videos) {
+          try {
+            // 检查视频是否已存在 (查询条件: platform_videos_id)
+            let existingVideo = douyinVideoDAO.getVideoByPlatformVideosId(video.id, platform_user_id);
+
+            if (!existingVideo) {
+              // 如果未找到，尝试用其他ID搜索（向后兼容）
+              existingVideo = douyinVideoDAO.getVideoByAwemeId(video.id, platform_user_id);
+            }
+
+            if (!existingVideo) {
+              // 新视频：插入数据库 + 加入通知列表
+              const newVideo = {
+                account_id,
+                platform_user_id,
+                aweme_id: video.id,
+                platform_videos_id: video.id,
+                title: video.title || '',
+                cover: video.cover || '',
+                publish_time: video.publish_time || Math.floor(Date.now() / 1000),
+                total_comment_count: video.total_comment_count || 0,
+                is_new: 1,
+              };
+
+              try {
+                douyinVideoDAO.upsertVideo(newVideo);
+                inserted++;
+                videosToNotify.push({
+                  type: 'new_video',
+                  data: newVideo,
+                  first_seen_at: Math.floor(Date.now() / 1000)
+                });
+                logger.debug(`[IsNew] New video inserted: ${video.id}`);
+              } catch (insertError) {
+                logger.warn(`[IsNew] Failed to insert video ${video.id}:`, insertError.message);
+                skipped++;
+              }
+            } else {
+              // 历史数据：检查 is_new 标志
+              if (existingVideo.is_new) {
+                // 历史但标记为新的：加入通知列表
+                skipped++;
+                videosToNotify.push({
+                  type: 'history_video',
+                  data: existingVideo,
+                  first_seen_at: existingVideo.detected_at || Math.floor(Date.now() / 1000)
+                });
+                logger.debug(`[IsNew] History video with is_new=true: ${video.id}`);
+              } else {
+                // 历史且 is_new=false：不推送
+                skipped++;
+                logger.debug(`[IsNew] History video with is_new=false, skipped: ${video.id}`);
+              }
+            }
+          } catch (itemError) {
+            logger.warn(`[IsNew] Error processing video ${video.id}:`, itemError.message);
+            skipped++;
+          }
+        }
+
+        // 发送客户端通知
+        if (videosToNotify.length > 0) {
+          try {
+            clientNamespace.emit('new:video', {
+              type: 'batch',
+              account_id,
+              platform_user_id,
+              data: videosToNotify,
+              timestamp: Math.floor(Date.now() / 1000)
+            });
+            logger.info(`[IsNew] Sent ${videosToNotify.length} video notifications to clients`);
+          } catch (notifyError) {
+            logger.warn(`[IsNew] Failed to notify clients about videos:`, notifyError.message);
+          }
+        }
+
+        // 发送 ACK 反馈
+        socket.emit(`master:push_new_videos_ack_${request_id}`, {
+          success: true,
+          inserted,
+          skipped,
+          notified: videosToNotify.length
+        });
+
+        logger.info(`[IsNew] Videos push completed (request #${request_id}): ${inserted} inserted, ${skipped} skipped`);
+      } catch (error) {
+        logger.error('[IsNew] Error in onPushNewVideos:', error);
+        socket.emit(`master:push_new_videos_ack_${data?.request_id}`, {
+          success: false,
+          error: error.message
+        });
+      }
+    };
+
     // 获取评论ID（用于增量爬取）
     tempHandlers.onGetCommentIds = async (data, socket) => {
       try {
@@ -521,7 +905,16 @@ async function start() {
     app.use('/api/v1/accounts', createAccountsRouter(db, accountAssigner));
 
     const createMessagesRouter = require('./api/routes/messages');
-    app.use('/api/v1/messages', createMessagesRouter(db));
+    const { createCommentsRouter, createDirectMessagesRouter } = require('./api/routes/messages');
+
+    const messagesRouter = createMessagesRouter(db);
+    const commentsRouter = createCommentsRouter(db);
+    const directMessagesRouter = createDirectMessagesRouter(db);
+
+    // 挂载各自的路由器到对应的路径
+    app.use('/api/v1/messages', messagesRouter);
+    app.use('/api/v1/comments', commentsRouter);
+    app.use('/api/v1/direct-messages', directMessagesRouter);
 
     const createStatisticsRouter = require('./api/routes/statistics');
     app.use('/api/v1/statistics', createStatisticsRouter(db));

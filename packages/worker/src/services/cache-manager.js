@@ -231,6 +231,155 @@ class CacheManager {
       total: cache.comments.size + cache.videos.size + cache.directMessages.size,
     };
   }
+
+  // ============================================
+  // 新数据推送系统方法 (IsNewPushTask)
+  // ============================================
+
+  /**
+   * 获取或创建账号的数据存储
+   * @private
+   * @param {string} accountId - 账号ID
+   * @returns {Object} 数据存储对象
+   */
+  _getOrCreateData(accountId) {
+    if (!this.accountData) {
+      this.accountData = new Map();
+    }
+    if (!this.accountData.has(accountId)) {
+      this.accountData.set(accountId, {
+        comments: new Map(),
+        videos: new Map(),
+        directMessages: new Map(),
+      });
+    }
+    return this.accountData.get(accountId);
+  }
+
+  /**
+   * 获取所有有数据的账号
+   * @returns {Array} 账号ID 数组
+   */
+  getAllAccounts() {
+    if (!this.accountData) {
+      return [];
+    }
+    return Array.from(this.accountData.keys());
+  }
+
+  /**
+   * 添加评论到数据存储
+   * @param {string} accountId - 账号ID
+   * @param {Object} comment - 评论对象（包含 is_new, push_count）
+   */
+  addComment(accountId, comment) {
+    const data = this._getOrCreateData(accountId);
+    data.comments.set(comment.id, {
+      ...comment,
+      is_new: comment.is_new !== undefined ? comment.is_new : true,
+      push_count: comment.push_count !== undefined ? comment.push_count : 0
+    });
+  }
+
+  /**
+   * 添加私信到数据存储
+   * @param {string} accountId - 账号ID
+   * @param {Object} message - 私信对象（包含 is_new, push_count）
+   */
+  addMessage(accountId, message) {
+    const data = this._getOrCreateData(accountId);
+    data.directMessages.set(message.id, {
+      ...message,
+      is_new: message.is_new !== undefined ? message.is_new : true,
+      push_count: message.push_count !== undefined ? message.push_count : 0
+    });
+  }
+
+  /**
+   * 添加视频到数据存储
+   * @param {string} accountId - 账号ID
+   * @param {Object} video - 视频对象（包含 is_new, push_count）
+   */
+  addVideo(accountId, video) {
+    const data = this._getOrCreateData(accountId);
+    data.videos.set(video.id, {
+      ...video,
+      is_new: video.is_new !== undefined ? video.is_new : true,
+      push_count: video.push_count !== undefined ? video.push_count : 0
+    });
+  }
+
+  /**
+   * 获取 is_new=true 的评论
+   * @param {string} accountId - 账号ID
+   * @returns {Array} 新评论数组
+   */
+  getCommentsWithIsNew(accountId) {
+    const data = this._getOrCreateData(accountId);
+    return Array.from(data.comments.values()).filter(c => c.is_new === true);
+  }
+
+  /**
+   * 获取 is_new=true 的私信
+   * @param {string} accountId - 账号ID
+   * @returns {Array} 新私信数组
+   */
+  getMessagesWithIsNew(accountId) {
+    const data = this._getOrCreateData(accountId);
+    return Array.from(data.directMessages.values()).filter(m => m.is_new === true);
+  }
+
+  /**
+   * 获取 is_new=true 的视频
+   * @param {string} accountId - 账号ID
+   * @returns {Array} 新视频数组
+   */
+  getVideosWithIsNew(accountId) {
+    const data = this._getOrCreateData(accountId);
+    return Array.from(data.videos.values()).filter(v => v.is_new === true);
+  }
+
+  /**
+   * 更新评论
+   * @param {string} accountId - 账号ID
+   * @param {string} commentId - 评论ID
+   * @param {Object} updates - 更新字段
+   */
+  updateComment(accountId, commentId, updates) {
+    const data = this._getOrCreateData(accountId);
+    const comment = data.comments.get(commentId);
+    if (comment) {
+      data.comments.set(commentId, { ...comment, ...updates });
+    }
+  }
+
+  /**
+   * 更新私信
+   * @param {string} accountId - 账号ID
+   * @param {string} messageId - 私信ID
+   * @param {Object} updates - 更新字段
+   */
+  updateMessage(accountId, messageId, updates) {
+    const data = this._getOrCreateData(accountId);
+    const message = data.directMessages.get(messageId);
+    if (message) {
+      data.directMessages.set(messageId, { ...message, ...updates });
+    }
+  }
+
+  /**
+   * 更新视频
+   * @param {string} accountId - 账号ID
+   * @param {string} videoId - 视频ID
+   * @param {Object} updates - 更新字段
+   */
+  updateVideo(accountId, videoId, updates) {
+    const data = this._getOrCreateData(accountId);
+    const video = data.videos.get(videoId);
+    if (video) {
+      data.videos.set(videoId, { ...video, ...updates });
+    }
+  }
 }
 
 // 单例模式

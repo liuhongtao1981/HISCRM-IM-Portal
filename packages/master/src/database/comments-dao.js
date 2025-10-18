@@ -127,7 +127,18 @@ class CommentsDAO {
         params.push(filters.end_time);
       }
 
-      sql += ' ORDER BY detected_at DESC';
+      // 添加 created_at 时间范围过滤
+      if (filters.created_at_start) {
+        sql += ' AND created_at >= ?';
+        params.push(filters.created_at_start);
+      }
+
+      if (filters.created_at_end) {
+        sql += ' AND created_at <= ?';
+        params.push(filters.created_at_end);
+      }
+
+      sql += ' ORDER BY created_at DESC';
 
       if (filters.limit) {
         sql += ' LIMIT ?';
@@ -308,25 +319,72 @@ class CommentsDAO {
 
       const transaction = this.db.transaction((commentList) => {
         for (const comment of commentList) {
-          const result = insertStmt.run(
-            comment.id,
-            comment.account_id,
-            comment.platform_user_id || null,
-            comment.platform_comment_id,
-            comment.content,
-            comment.author_name,
-            comment.author_id,
-            comment.post_id,
-            comment.post_title,
-            comment.is_new !== undefined ? comment.is_new : 1,
-            comment.is_read !== undefined ? comment.is_read : 0,
-            comment.detected_at,
-            comment.created_at || Math.floor(Date.now() / 1000)
-          );
+          try {
+            // 诊断：输出第一条评论的所有时间相关字段
+            if (commentList.indexOf(comment) === 0) {
+              logger.info('\n🔍 First comment received from Worker:');
+              logger.info(`   Keys: ${Object.keys(comment).join(', ')}`);
+              logger.info(`   create_time: ${comment.create_time} (type: ${typeof comment.create_time})`);
+              logger.info(`   created_at: ${comment.created_at} (type: ${typeof comment.created_at})`);
+              logger.info(`   detected_at: ${comment.detected_at} (type: ${typeof comment.detected_at})`);
+              logger.info(`   create_time_formatted: ${comment.create_time_formatted}`);
+            }
 
-          if (result.changes > 0) {
-            inserted++;
-          } else {
+            // 数据清理和验证
+            const cleanComment = {
+              id: String(comment.id || ''),
+              account_id: String(comment.account_id || ''),
+              platform_user_id: comment.platform_user_id ? String(comment.platform_user_id) : null,
+              platform_comment_id: String(comment.platform_comment_id || ''),
+              content: String(comment.content || ''),
+              author_name: String(comment.author_name || ''),
+              author_id: String(comment.author_id || ''),
+              post_id: String(comment.post_id || ''),
+              post_title: String(comment.post_title || ''),
+              is_new: comment.is_new !== undefined ? (comment.is_new ? 1 : 0) : 1,
+              is_read: comment.is_read !== undefined ? (comment.is_read ? 1 : 0) : 0,
+              detected_at: Number(comment.detected_at) || Math.floor(Date.now() / 1000),
+              created_at: Number(comment.created_at || comment.create_time) || Math.floor(Date.now() / 1000),
+            };
+
+            // 诊断：输出转换后的值
+            if (commentList.indexOf(comment) === 0) {
+              logger.info('\n   After normalization:');
+              logger.info(`   created_at: ${cleanComment.created_at}`);
+              logger.info(`   detected_at: ${cleanComment.detected_at}`);
+              logger.info(`   Time difference: ${cleanComment.detected_at - cleanComment.created_at} seconds\n`);
+            }
+
+            // 检查必须字段
+            if (!cleanComment.id || !cleanComment.account_id || !cleanComment.content) {
+              logger.warn('Skipping invalid comment (missing required fields):', cleanComment);
+              skipped++;
+              continue;
+            }
+
+            const result = insertStmt.run(
+              cleanComment.id,
+              cleanComment.account_id,
+              cleanComment.platform_user_id,
+              cleanComment.platform_comment_id,
+              cleanComment.content,
+              cleanComment.author_name,
+              cleanComment.author_id,
+              cleanComment.post_id,
+              cleanComment.post_title,
+              cleanComment.is_new,
+              cleanComment.is_read,
+              cleanComment.detected_at,
+              cleanComment.created_at
+            );
+
+            if (result.changes > 0) {
+              inserted++;
+            } else {
+              skipped++;
+            }
+          } catch (itemError) {
+            logger.warn(`Failed to insert single comment, skipping:`, { error: itemError.message, comment: JSON.stringify(comment).substring(0, 100) });
             skipped++;
           }
         }
@@ -338,7 +396,23 @@ class CommentsDAO {
       return { inserted, skipped };
     } catch (error) {
       logger.error('Failed to bulk insert comments:', error);
-      throw error;
+      // 如果 transaction 失败，尝试逐条插入
+      logger.info('Attempting to insert comments one by one...');
+      let oneByOneInserted = 0;
+      let oneByOneSkipped = 0;
+
+      for (const comment of comments) {
+        try {
+          this.create(new (require('@hiscrm-im/shared/models/Comment'))(comment));
+          oneByOneInserted++;
+        } catch (e) {
+          logger.warn(`Failed to insert comment ${comment.id}:`, e.message);
+          oneByOneSkipped++;
+        }
+      }
+
+      logger.info(`One-by-one insertion: ${oneByOneInserted} inserted, ${oneByOneSkipped} skipped`);
+      return { inserted: oneByOneInserted, skipped: oneByOneSkipped };
     }
   }
 

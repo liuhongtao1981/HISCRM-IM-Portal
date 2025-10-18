@@ -3,7 +3,7 @@ import { message } from 'antd';
 
 // 创建 axios 实例
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api/v1',
+  baseURL: process.env.REACT_APP_API_URL || `${process.env.REACT_APP_MASTER_URL || 'http://localhost:3000'}/api/v1`,
   timeout: 10000,
 });
 
@@ -110,6 +110,21 @@ export const statisticsAPI = {
 
   // 获取消息历史
   getMessages: (params) => api.get('/messages', { params }),
+};
+
+// =========================
+// 消息相关 API
+// =========================
+
+export const messagesAPI = {
+  // 获取评论列表
+  getComments: (params) => api.get('/comments', { params }),
+
+  // 获取私信列表
+  getDirectMessages: (params) => api.get('/direct-messages', { params }),
+
+  // 获取消息统计
+  getMessageStats: () => api.get('/messages/stats'),
 };
 
 export default api;
