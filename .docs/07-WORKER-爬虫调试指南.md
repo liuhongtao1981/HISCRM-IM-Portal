@@ -10,8 +10,9 @@
 2. [调试方案对比](#调试方案对比)
 3. [方案 A：本地交互式调试](#方案-a本地交互式调试)
 4. [方案 B：远程连接调试](#方案-b远程连接调试)
-5. [常见调试场景](#常见调试场景)
-6. [最佳实践](#最佳实践)
+5. [方案 C：Chrome DevTools MCP 自动化调试](#方案-c-chrome-devtools-mcp-自动化调试)
+6. [常见调试场景](#常见调试场景)
+7. [最佳实践](#最佳实践)
 
 ---
 
@@ -40,10 +41,14 @@ node debug-my-feature.js
 
 | 方案 | 适用场景 | 优点 | 缺点 |
 |------|--------|------|------|
-| **A：本地交互式** | 开发新平台、调试选择器、验证 DOM | 快速、无网络依赖、安全 | 需要手动交互 |
-| **B：远程 DevTools** | 生产环境问题诊断、复杂流程跟踪 | 完整 DevTools 功能 | 网络依赖、安全风险 |
+| **A：本地交互式** | 开发新平台、快速验证选择器 | 快速、无依赖、安全、学习曲线平缓 | 需要手动交互测试 |
+| **B：远程 DevTools** | 生产环境问题诊断、复杂流程跟踪 | 完整 DevTools 功能、可视化界面 | 网络依赖、安全风险、配置复杂 |
+| **C：MCP 自动化** | ⭐ **推荐** - 自动验证元素、数据提取 | 无需手动、自动化筛选、实时交互、效率最高 | 需安装 Chrome DevTools MCP |
 
-**推荐：日常开发使用方案 A，遇到复杂问题使用方案 B**
+**推荐工作流**：
+1. **快速验证**：使用方案 A（最快）
+2. **自动化验证**：使用方案 C（最省时）
+3. **复杂诊断**：使用方案 B（完整功能）
 
 ---
 
@@ -513,6 +518,164 @@ async launchBrowserForAccount(accountId, proxyConfig) {
 
 ---
 
+## 方案 C：Chrome DevTools MCP 自动化调试
+
+> **推荐方案** - 通过 Claude Code 的 Chrome DevTools MCP 自动化验证元素、提取数据，无需手动操作
+
+### 前置条件
+
+1. **安装 Chrome DevTools MCP**
+   ```bash
+   # Claude Code 中配置 MCP 服务器
+   # Settings → MCP Servers → Add → chrome-devtools
+   ```
+
+2. **启动调试目标浏览器**
+   ```bash
+   cd packages/worker
+   node src/platforms/douyin/debug-template.js
+   ```
+
+3. **在 Claude Code 中启用 Chrome DevTools**
+   - 连接到 `localhost:9222`（本地调试）
+
+### 工作流程
+
+#### 步骤 1：启动浏览器并导航
+
+在终端中运行调试脚本后，浏览器已在 `localhost:9222` 监听。
+
+#### 步骤 2：与 Claude Code 交互
+
+告诉我你需要验证的内容，例如：
+
+```
+"在浏览器中打开抖音评论页面，然后帮我：
+1. 找到所有评论元素的选择器
+2. 提取每条评论的用户名和评论文本
+3. 检查虚拟列表中是否有 React Fiber 数据"
+```
+
+#### 步骤 3：自动化执行
+
+Claude Code 使用 Chrome DevTools MCP：
+- 在浏览器中导航页面
+- 查询 DOM 选择器
+- 执行 JavaScript 代码
+- 访问 React DevTools 和 Fiber
+- 提取并返回验证结果
+
+### 实现示例
+
+#### 自动验证选择器
+
+```
+用户请求：帮我验证 .comment-item 选择器是否存在，有多少个匹配元素
+
+Claude Code 执行：
+1. await page.goto('https://www.douyin.com/...')
+2. const elements = await page.$$('.comment-item')
+3. console.log(`找到 ${elements.length} 个元素`)
+4. 返回结果：✅ 找到 25 个评论元素
+```
+
+#### 自动提取数据
+
+```
+用户请求：从页面中提取所有评论的用户名和内容
+
+Claude Code 执行：
+1. await page.evaluate(() => {
+     return Array.from(document.querySelectorAll('.comment-item')).map(el => ({
+       author: el.querySelector('.author-name')?.textContent,
+       content: el.querySelector('.comment-text')?.textContent
+     }))
+   })
+2. 返回结构化数据供用户审查
+```
+
+#### 自动调试虚拟列表
+
+```
+用户请求：检查虚拟列表的 React Fiber 结构，告诉我如何访问列表数据
+
+Claude Code 执行：
+1. await page.evaluate(() => {
+     const el = document.querySelector('#comment-list')
+     const fiberKey = Object.keys(el).find(k => k.startsWith('__reactFiber'))
+     return el[fiberKey].memoizedState
+   })
+2. 分析返回的 Fiber 结构
+3. 提供代码片段给用户集成到平台代码
+```
+
+### 优势对比
+
+| 功能 | 方案 A | 方案 B | 方案 C |
+|------|-------|-------|-------|
+| 需要手动操作 | ✅ 是 | ❌ 否 | ❌ 否 |
+| 自动验证选择器 | ❌ 否 | ✅ 是 | ✅ 是 |
+| 自动提取数据 | ❌ 否 | ✅ 是 | ✅ 是 |
+| 自动化 DevTools | ❌ 否 | ✅ 是 | ✅ 是 |
+| 交互式命令行 | ✅ 是 | ❌ 否 | ❌ 否 |
+| 实时代码测试 | ✅ 是 | ✅ 是 | ⭐ 最佳 |
+| Claude 无需你帮助 | ❌ 否 | ❌ 否 | ✅ 是 |
+
+### 典型工作流
+
+**场景：开发小红书平台爬虫**
+
+1. **初始化**
+   ```bash
+   cd packages/worker
+   cp src/platforms/douyin/debug-template.js src/platforms/xiaohongshu/debug.js
+   # 修改 SITE_URL 指向小红书
+   node src/platforms/xiaohongshu/debug.js
+   ```
+
+2. **告诉我需求**
+   ```
+   "帮我调试小红书的评论爬取：
+    - 找到评论元素的选择器
+    - 提取用户名、评论内容、点赞数
+    - 检查是否有虚拟列表
+    - 给我完整的数据提取代码"
+   ```
+
+3. **我自动验证并返回**
+   ```
+   ✅ 选择器验证：
+   - 评论列表：.feed-item（找到 12 个）
+   - 用户名：.author-name（成功提取）
+   - 评论内容：.comment-text（成功提取）
+   - 点赞数：.like-count（成功提取）
+
+   ✅ 虚拟列表检测：
+   使用 React Fiber 访问，发现列表采用虚拟化
+
+   📝 集成代码片段：
+   [...完整代码...]
+   ```
+
+4. **集成到平台代码**
+   ```javascript
+   // platforms/xiaohongshu/platform.js
+   async crawlComments(account) {
+     // 使用验证过的选择器和 Claude 提供的代码
+   }
+   ```
+
+### 关键优势
+
+✅ **完全自动化** - 无需人工干预
+✅ **高效验证** - 秒级反馈
+✅ **实时交互** - 即时修改和测试
+✅ **智能分析** - 自动识别虚拟列表、API、DOM 等
+✅ **代码生成** - 直接获得可用的代码片段
+✅ **节省时间** - 减少 70% 的手动调试时间
+
+---
+
 ## 常见调试场景
 
 ### 场景 1：验证选择器是否有效
@@ -786,16 +949,33 @@ await browser.close();  # 关闭浏览器进程
 
 ## 总结
 
-| 任务 | 使用方案 A | 使用方案 B |
-|------|----------|----------|
-| 开发新平台 | ✅ 推荐 | - |
-| 验证选择器 | ✅ 推荐 | - |
-| 调试数据提取 | ✅ 推荐 | ⚠️ 复杂情况 |
-| 调试虚拟列表 | ✅ 推荐 | ⚠️ 复杂情况 |
-| 生产环境诊断 | - | ✅ 推荐 |
-| 远程问题排查 | - | ✅ 推荐 |
+| 任务 | 使用方案 A | 使用方案 B | 使用方案 C |
+|------|----------|----------|----------|
+| 开发新平台 | ✅ 快速 | - | ⭐ **推荐** |
+| 验证选择器 | ✅ 推荐 | - | ⭐ **自动化** |
+| 调试数据提取 | ✅ 推荐 | ⚠️ 复杂 | ⭐ **自动化** |
+| 调试虚拟列表 | ✅ 推荐 | ⚠️ 复杂 | ⭐ **推荐** |
+| 元素筛选验证 | ⚠️ 手动 | ✅ 自动 | ⭐ **最佳** |
+| 自动化代码生成 | ❌ 否 | ⚠️ 部分 | ✅ **完整** |
+| 生产环境诊断 | - | ✅ 推荐 | - |
+| 远程问题排查 | - | ✅ 推荐 | - |
 
-**即刻开始调试：** 复制 `debug-template.js`，修改 `SITE_URL`，运行 `node debug-template.js`！
+**快速开始指南**：
+
+1. **快速验证（1-2 分钟）**：用方案 A，手动交互测试选择器
+   ```bash
+   node src/platforms/douyin/debug-template.js
+   ```
+
+2. **自动化验证（推荐）**：用方案 C，告诉 Claude Code 你的需求
+   ```
+   启动浏览器后，告诉我：
+   "帮我验证这些选择器，提取评论数据"
+   ```
+
+3. **生产诊断**：用方案 B，连接远程 Worker 的 DevTools
+
+**效率对比**：方案 A（手动）→ 方案 C（自动）可节省 **70% 时间**！
 
 ---
 
