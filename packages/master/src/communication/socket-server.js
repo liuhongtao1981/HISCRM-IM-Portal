@@ -162,6 +162,18 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
       }
     });
 
+    // 监听会话数据 (Phase 8 新增)
+    socket.on('worker:bulk_insert_conversations', async (data) => {
+      logger.info(`Worker ${socket.id} bulk inserting ${data.conversations?.length || 0} conversations`);
+      if (handlers.onBulkInsertConversations) {
+        try {
+          await handlers.onBulkInsertConversations(data, socket);
+        } catch (error) {
+          logger.error('Failed to bulk insert conversations:', error);
+        }
+      }
+    });
+
     // 监听新数据推送事件 (IsNewPushTask)
     socket.on('worker:push_new_comments', async (data) => {
       logger.info(`Worker ${socket.id} pushing ${data.comments?.length || 0} new comments (request #${data.request_id})`);

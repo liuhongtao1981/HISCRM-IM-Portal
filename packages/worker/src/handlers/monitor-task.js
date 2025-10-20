@@ -170,8 +170,9 @@ class MonitorTask {
         'platform_comment_id'
       );
 
-      // 4. 爬取私信（通过平台实例）- 返回 { directMessages, stats }
+      // 4. 爬取私信（通过平台实例）- 返回 { conversations, directMessages, stats } (Phase 8)
       const dmResult = await this.platformInstance.crawlDirectMessages(this.account);
+      const conversations = dmResult.conversations || [];  // Phase 8 新增
       const rawDMs = dmResult.directMessages || dmResult;  // 兼容旧版本
       const dmStats = dmResult.stats || {};
 
@@ -185,11 +186,12 @@ class MonitorTask {
         'platform_message_id'
       );
 
-      // 7. 上报新消息
-      if (newComments.length > 0 || newDMs.length > 0) {
+      // 7. 上报新消息和会话 (Phase 8: 添加会话报告)
+      if (newComments.length > 0 || newDMs.length > 0 || conversations.length > 0) {
         this.messageReporter.reportAll(this.account.id, {
           comments: newComments,
           directMessages: newDMs,
+          conversations,  // Phase 8 新增: 上报会话数据
         });
       }
 

@@ -55,6 +55,26 @@ class MessageReporter {
   }
 
   /**
+   * 上报会话 (Phase 8 新增)
+   * @param {string} accountId - 账户ID
+   * @param {Array} conversations - 会话数组
+   */
+  reportConversations(accountId, conversations) {
+    if (!Array.isArray(conversations) || conversations.length === 0) {
+      return;
+    }
+
+    logger.info(`Reporting ${conversations.length} conversations for account ${accountId}`);
+
+    // 会话数据通过 worker:bulk_insert_conversations 直接发送到 Master
+    // 这里只记录日志，实际数据通过 platform.js 的 sendConversationsToMaster 发送
+    logger.debug(`Conversations data available for account ${accountId}:`, {
+      count: conversations.length,
+      platformUserIds: conversations.map(c => c.platform_user_id).slice(0, 5),
+    });
+  }
+
+  /**
    * 上报单条消息
    * @param {string} accountId - 账户ID
    * @param {string} messageType - 消息类型 ('comment' | 'direct_message')
@@ -82,7 +102,7 @@ class MessageReporter {
   /**
    * 批量上报消息
    * @param {string} accountId - 账户ID
-   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [] }
+   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [], conversations: [] }
    */
   reportAll(accountId, detectedMessages) {
     if (detectedMessages.comments && detectedMessages.comments.length > 0) {
@@ -93,11 +113,16 @@ class MessageReporter {
       this.reportDirectMessages(accountId, detectedMessages.directMessages);
     }
 
+    // Phase 8 新增: 上报会话数据
+    if (detectedMessages.conversations && detectedMessages.conversations.length > 0) {
+      this.reportConversations(accountId, detectedMessages.conversations);
+    }
+
     const totalReported =
       (detectedMessages.comments?.length || 0) +
       (detectedMessages.directMessages?.length || 0);
 
-    logger.info(`Total reported ${totalReported} messages for account ${accountId}`);
+    logger.info(`Total reported ${totalReported} messages + ${detectedMessages.conversations?.length || 0} conversations for account ${accountId}`);
   }
 }
 

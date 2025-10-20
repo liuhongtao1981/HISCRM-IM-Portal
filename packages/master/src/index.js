@@ -429,10 +429,12 @@ async function start() {
     const CommentsDAO = require('./database/comments-dao');
     const DouyinVideoDAO = require('./database/douyin-video-dao');
     const DirectMessagesDAO = require('./database/messages-dao');
+    const ConversationsDAO = require('./database/conversations-dao');
 
     const commentsDAO = new CommentsDAO(db);
     const douyinVideoDAO = new DouyinVideoDAO(db);
     const directMessagesDAO = new DirectMessagesDAO(db);
+    const conversationsDAO = new ConversationsDAO(db);
 
     // ============================================
     // 新数据推送处理器 (IsNewPushTask)
@@ -902,6 +904,33 @@ async function start() {
         logger.info(`Bulk inserted messages: ${result.inserted} inserted, ${result.skipped} skipped`);
       } catch (error) {
         logger.error('Failed to bulk insert messages:', error);
+      }
+    };
+
+    // Phase 8 新增: 处理会话数据
+    tempHandlers.onBulkInsertConversations = async (data, socket) => {
+      try {
+        const { account_id, conversations } = data;
+
+        logger.info(`Processing ${conversations?.length || 0} conversations for account ${account_id}`);
+
+        if (!conversations || conversations.length === 0) {
+          logger.info('No conversations to insert');
+          return;
+        }
+
+        // 添加 account_id 到每个会话
+        const conversationsWithAccountId = conversations.map(conv => ({
+          ...conv,
+          account_id,
+        }));
+
+        // 使用 upsertMany 批量创建/更新会话
+        const result = conversationsDAO.upsertMany(conversationsWithAccountId);
+
+        logger.info(`✅ Bulk upserted conversations: ${result.upserted || conversationsWithAccountId.length} conversations processed`);
+      } catch (error) {
+        logger.error('Failed to bulk insert conversations:', error);
       }
     };
 

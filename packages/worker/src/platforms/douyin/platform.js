@@ -9,6 +9,7 @@ const IncrementalCrawlService = require('../../services/incremental-crawl-servic
 const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
 
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
@@ -1000,7 +1001,7 @@ class DouyinPlatform extends PlatformBase {
    */
   async crawlDirectMessages(account) {
     try {
-      logger.info(`[crawlDirectMessages] Starting for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
+      logger.info(`[crawlDirectMessages] Starting Phase 8 implementation for account ${account.id}`);
 
       // 确保账号有 platform_user_id
       if (!account.platform_user_id) {
@@ -1013,85 +1014,25 @@ class DouyinPlatform extends PlatformBase {
       const page = await this.getOrCreatePage(account.id);
       logger.info(`[crawlDirectMessages] Page created/retrieved successfully`);
 
-      // 2. 设置API拦截器，捕获私信数据
-      logger.debug(`[crawlDirectMessages] Step 2: Setting up API interceptor for message API`);
-      const apiResponses = [];
-      await page.route('**/message/get_by_user_init**', async (route) => {
-        try {
-          logger.debug('[crawlDirectMessages] API interceptor triggered');
-          // 继续请求，不阻断
-          const response = await route.fetch();
+      // 2. 执行 Phase 8 爬虫 (包括 API 拦截、虚拟列表提取、数据合并等)
+      logger.debug(`[crawlDirectMessages] Step 2: Running Phase 8 crawler (crawlDirectMessagesV2)`);
+      const crawlResult = await crawlDirectMessagesV2(page, account);
 
-          // 检查响应的 Content-Type
-          const contentType = response.headers()['content-type'] || '';
-          logger.debug(`[crawlDirectMessages] API response Content-Type: ${contentType}`);
+      const { conversations, directMessages: rawDirectMessages, stats: crawlStats } = crawlResult;
+      logger.info(`[crawlDirectMessages] Phase 8 crawler completed: ${conversations.length} conversations, ${rawDirectMessages.length} messages`);
 
-          // 尝试解析为JSON，如果失败则记录并跳过
-          try {
-            const body = await response.json();
-            logger.info(`[crawlDirectMessages] Intercepted JSON message API response: ${JSON.stringify(body).substring(0, 200)}...`);
-            apiResponses.push(body);
-          } catch (jsonError) {
-            // 响应不是JSON格式（可能是protobuf或其他二进制格式）
-            logger.warn(`[crawlDirectMessages] API response is not JSON (likely protobuf), skipping: ${jsonError.message}`);
-            const bodyText = await response.text();
-            logger.debug(`[crawlDirectMessages] Response preview (first 100 bytes): ${bodyText.substring(0, 100)}`);
-          }
-
-          // 继续正常响应
-          await route.fulfill({ response });
-        } catch (error) {
-          logger.error('[crawlDirectMessages] Error in API interceptor:', error);
-          try {
-            await route.continue();
-          } catch (continueError) {
-            logger.error('[crawlDirectMessages] Failed to continue route:', continueError);
-          }
-        }
-      });
-      logger.info(`[crawlDirectMessages] API interceptor set up successfully`);
-
-      // 3. 导航到私信管理页面 (互动管理 - 私信管理)
-      logger.debug(`[crawlDirectMessages] Step 3: Navigating to message management page`);
-      await this.navigateToMessageManage(page);
-      logger.info(`[crawlDirectMessages] Navigation completed`);
-
-      // 4. 等待页面加载和API请求完成
-      logger.debug(`[crawlDirectMessages] Step 4: Waiting for page load and API requests (3s)`);
-      await page.waitForTimeout(3000);
-      logger.info(`[crawlDirectMessages] Initial wait completed, ${apiResponses.length} API responses captured`);
-
-      // 5. 尝试滚动私信列表以触发分页加载
-      logger.debug(`[crawlDirectMessages] Step 5: Scrolling message list to load more messages (pagination)`);
-      await this.scrollMessageListToLoadMore(page, apiResponses);
-      logger.info(`[crawlDirectMessages] Scrolling completed, total ${apiResponses.length} API responses`);
-
-      // 6. 从拦截的API响应中提取私信
-      logger.debug(`[crawlDirectMessages] Step 6: Parsing ${apiResponses.length} API responses`);
-      const rawMessages = this.parseMessagesFromAPI(apiResponses);
-      logger.info(`[crawlDirectMessages] Parsed ${rawMessages.length} messages from ${apiResponses.length} API responses`);
-
-      // 7. 如果API拦截没有数据，回退到DOM提取
-      if (rawMessages.length === 0) {
-        logger.warn('[crawlDirectMessages] No messages from API, falling back to DOM extraction');
-        const domMessages = await this.extractDirectMessages(page);
-        logger.info(`[crawlDirectMessages] DOM extraction returned ${domMessages.length} messages`);
-        rawMessages.push(...domMessages);
-      }
-
-      // 8. 添加必要字段（account_id, platform_user_id）
-      // 使用 platform_message_id 作为唯一标识，避免重复
-      logger.debug(`[crawlDirectMessages] Step 8: Adding account fields to ${rawMessages.length} raw messages`);
+      // 3. 处理直接消息数据 (添加 account_id 等字段)
+      logger.debug(`[crawlDirectMessages] Step 3: Processing ${rawDirectMessages.length} direct messages`);
 
       const createIsNewFlag = (createdAt) => {
         const now = Math.floor(Date.now() / 1000);
         const ageSeconds = now - createdAt;
-        const oneDaySeconds = 24 * 60 * 60;  // 86400
+        const oneDaySeconds = 24 * 60 * 60;
         return ageSeconds < oneDaySeconds;
       };
 
-      const directMessages = rawMessages.map((msg) => {
-        let createdAt = msg.create_time || Math.floor(Date.now() / 1000);
+      const directMessages = rawDirectMessages.map((msg) => {
+        let createdAt = msg.created_at || msg.create_time || Math.floor(Date.now() / 1000);
 
         // 检查是否为毫秒级（13位数字）并转换为秒级
         if (createdAt > 9999999999) {
@@ -1099,36 +1040,42 @@ class DouyinPlatform extends PlatformBase {
         }
 
         return {
-          id: msg.platform_message_id,  // 使用 platform_message_id 作为唯一ID，而不是生成新UUID
-          account_id: account.id,
-          platform_user_id: account.platform_user_id,
           ...msg,
+          account_id: account.id,
           is_read: false,
-          created_at: createdAt,  // 使用提取的时间，如果没有则使用当前时间
-          is_new: createIsNewFlag(createdAt),  // 基于 created_at 计算 is_new
-          push_count: 0,  // 初始推送计数为0
+          created_at: createdAt,
+          is_new: createIsNewFlag(createdAt),
+          push_count: 0,
         };
       });
-      logger.info(`[crawlDirectMessages] Prepared ${directMessages.length} direct messages with account fields`);
+      logger.info(`[crawlDirectMessages] Processed ${directMessages.length} direct messages`);
 
-      // 将私信添加到缓存管理器（用于 IsNewPushTask）
+      // 4. 将私信添加到缓存管理器（用于 IsNewPushTask）
       directMessages.forEach(msg => {
         cacheManager.addMessage(account.id, msg);
       });
 
-      // 9. 发送私信数据到 Master
-      logger.debug(`[crawlDirectMessages] Step 9: Sending ${directMessages.length} messages to Master`);
+      // 5. 发送私信数据到 Master
+      logger.debug(`[crawlDirectMessages] Step 5: Sending ${directMessages.length} messages to Master`);
       await this.sendMessagesToMaster(account, directMessages);
       logger.info(`[crawlDirectMessages] Messages sent to Master successfully`);
+
+      // 6. 发送会话数据到 Master (新增 Phase 8 功能)
+      logger.debug(`[crawlDirectMessages] Step 6: Sending ${conversations.length} conversations to Master`);
+      await this.sendConversationsToMaster(account, conversations);
+      logger.info(`[crawlDirectMessages] Conversations sent to Master successfully`);
 
       // 构建统计数据
       const stats = {
         recent_dms_count: directMessages.length,
+        conversations_count: conversations.length,
         crawl_time: Math.floor(Date.now() / 1000),
+        ...crawlStats,
       };
 
-      logger.info(`[crawlDirectMessages] ✅ Completed successfully: ${directMessages.length} messages, ${apiResponses.length} API responses`);
+      logger.info(`[crawlDirectMessages] ✅ Phase 8 completed: ${directMessages.length} messages, ${conversations.length} conversations`);
       return {
+        conversations,
         directMessages,
         stats,
       };
@@ -1985,6 +1932,32 @@ class DouyinPlatform extends PlatformBase {
       logger.info(`✅ Successfully sent ${newMessages.length} new messages to Master`);
     } catch (error) {
       logger.error('Failed to send messages to Master:', error);
+    }
+  }
+
+  /**
+   * 发送会话数据到 Master (Phase 8 新增)
+   * @param {Object} account - 账户对象
+   * @param {Array} conversations - 会话数组
+   */
+  async sendConversationsToMaster(account, conversations) {
+    try {
+      if (!conversations || conversations.length === 0) {
+        logger.info('No conversations to send to Master');
+        return;
+      }
+
+      logger.info(`Sending ${conversations.length} conversations for account ${account.id} to Master`);
+
+      // 发送会话数据到 Master
+      this.bridge.socket.emit('worker:bulk_insert_conversations', {
+        account_id: account.id,
+        conversations,
+      });
+
+      logger.info(`✅ Successfully sent ${conversations.length} conversations to Master`);
+    } catch (error) {
+      logger.error('Failed to send conversations to Master:', error);
     }
   }
 
