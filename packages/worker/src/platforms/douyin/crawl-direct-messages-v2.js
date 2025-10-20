@@ -226,62 +226,144 @@ async function openConversation(page, conversation) {
 }
 
 /**
- * 爬取完整消息历史 (虚拟列表分页)
+ * 爬取完整消息历史 (虚拟列表分页) - 改进版
+ * 支持智能延迟、收敛判断优化、平台特定指示器检测
  */
 async function crawlCompleteMessageHistory(page, conversation, account, apiResponses) {
   logger.debug(`Crawling complete message history for: ${conversation.platform_user_name}`);
 
-  const allMessages = [];
+  const MAX_ATTEMPTS = 50;
+  const BASE_WAIT_TIME = 300;
+  const CONVERGENCE_CHECK_ATTEMPTS = 3; // 检查多次以确认真正收敛
+
   let previousCount = 0;
+  let previousContentHash = '';
+  let convergenceCounter = 0;
   let attempts = 0;
-  const maxAttempts = 50;
 
-  while (attempts < maxAttempts) {
-    // 向上滚动虚拟列表加载更早的消息
-    await page.evaluate(() => {
-      const grid = document.querySelector('[role="grid"]');
-      if (grid) {
-        grid.scrollTop = 0;
+  while (attempts < MAX_ATTEMPTS) {
+    try {
+      // 第 1 步: 向上滚动虚拟列表以加载更早的消息
+      logger.debug(`Attempt ${attempts + 1}: Scrolling to top to load earlier messages`);
+
+      const scrollResult = await page.evaluate(() => {
+        // 尝试多种选择器找到虚拟列表容器
+        let grid = document.querySelector('[role="grid"]') ||
+                   document.querySelector('[role="list"]') ||
+                   document.querySelector('.virtual-list') ||
+                   document.querySelector('[class*="virtualList"]');
+
+        if (grid) {
+          const previousScroll = grid.scrollTop;
+          grid.scrollTop = 0;
+          return { success: true, previousScroll: previousScroll };
+        }
+
+        return { success: false };
+      });
+
+      if (!scrollResult.success) {
+        logger.warn(`Could not find virtual list container at attempt ${attempts}`);
       }
-    });
 
-    await page.waitForTimeout(500); // 等待新消息加载
+      // 第 2 步: 等待新消息加载 (智能延迟)
+      // 根据当前消息数量动态调整延迟时间
+      const dynamicWaitTime = previousCount > 100 ? BASE_WAIT_TIME * 2 : BASE_WAIT_TIME;
+      logger.debug(`Waiting ${dynamicWaitTime}ms for messages to load...`);
+      await page.waitForTimeout(dynamicWaitTime);
 
-    // 提取当前所有消息
-    const currentMessages = await extractMessagesFromVirtualList(page);
+      // 第 3 步: 提取当前所有消息
+      const currentMessages = await extractMessagesFromVirtualList(page);
+      const currentCount = currentMessages.length;
+      const currentContentHash = hashMessages(currentMessages);
 
-    // 检查是否新增了消息
-    if (currentMessages.length === previousCount) {
-      logger.debug(`No new messages loaded. Reached history bottom at attempt ${attempts}`);
-      break;
+      logger.debug(`Attempt ${attempts + 1}: Loaded ${currentCount} messages (previous: ${previousCount})`);
+
+      // 第 4 步: 检查是否收敛 (多层判断)
+      const hasNewMessages = currentCount > previousCount;
+      const hasContentChange = currentContentHash !== previousContentHash;
+
+      if (!hasNewMessages && !hasContentChange) {
+        convergenceCounter++;
+        logger.debug(`No changes detected (${convergenceCounter}/${CONVERGENCE_CHECK_ATTEMPTS})`);
+
+        if (convergenceCounter >= CONVERGENCE_CHECK_ATTEMPTS) {
+          logger.info(`✅ Reached convergence at attempt ${attempts}. Total messages: ${currentCount}`);
+          // 为每条消息添加会话信息
+          currentMessages.forEach(msg => {
+            msg.conversation_id = conversation.id;
+            msg.account_id = account.id;
+          });
+          return currentMessages;
+        }
+      } else {
+        // 重置收敛计数器
+        convergenceCounter = 0;
+        logger.debug(`Reset convergence counter. New: ${hasNewMessages}, Changed: ${hasContentChange}`);
+      }
+
+      // 第 5 步: 检查平台特定的分页指示器
+      const hasMoreFlag = await page.evaluate(() => {
+        // 检查 API 响应中是否有 has_more 标志
+        // 这需要在 setupAPIInterceptors 中配置
+        return document.querySelector('[data-has-more="false"]') === null;
+      });
+
+      if (!hasMoreFlag) {
+        logger.info(`✅ Platform "has_more" flag indicates no more messages. Total: ${currentCount}`);
+        currentMessages.forEach(msg => {
+          msg.conversation_id = conversation.id;
+          msg.account_id = account.id;
+        });
+        return currentMessages;
+      }
+
+      previousCount = currentCount;
+      previousContentHash = currentContentHash;
+      attempts++;
+
+      // 第 6 步: 延迟以避免过快的加载
+      await page.waitForTimeout(200);
+
+    } catch (error) {
+      logger.error(`Error during message history crawl at attempt ${attempts}:`, error);
+      attempts++;
+      await page.waitForTimeout(500);
     }
-
-    logger.debug(`Attempt ${attempts + 1}: Loaded ${currentMessages.length} messages (previous: ${previousCount})`);
-    previousCount = currentMessages.length;
-    attempts++;
-
-    // 延迟以避免过快的加载
-    await page.waitForTimeout(200);
   }
 
-  // 获取最终的完整消息列表
-  const messages = await extractMessagesFromVirtualList(page);
+  logger.warn(`⚠️ Reached max attempts (${MAX_ATTEMPTS}) without full convergence`);
 
-  // 为每条消息添加会话信息
-  messages.forEach(msg => {
+  // 获取最后的消息列表
+  const finalMessages = await extractMessagesFromVirtualList(page);
+  finalMessages.forEach(msg => {
     msg.conversation_id = conversation.id;
     msg.account_id = account.id;
   });
 
-  logger.info(`✅ Complete history: ${messages.length} messages for ${conversation.platform_user_name}`);
-  return messages;
+  logger.info(`✅ Crawl completed: ${finalMessages.length} messages for ${conversation.platform_user_name}`);
+  return finalMessages;
 }
 
 /**
- * 从虚拟列表中提取消息
+ * 计算消息内容的哈希值，用于检测变化
+ */
+function hashMessages(messages) {
+  if (!messages || messages.length === 0) return '';
+
+  // 简单的哈希: 使用消息ID列表的 JSON
+  const ids = messages.map(m => m.platform_message_id || m.content).join(',');
+  return ids.split('').reduce((acc, char) => {
+    return ((acc << 5) - acc) + char.charCodeAt(0);
+  }, 0).toString(36);
+}
+
+/**
+ * 从虚拟列表中提取消息 (改进版)
+ * 支持深层 React Fiber 搜索和多种虚拟列表实现
  */
 async function extractMessagesFromVirtualList(page) {
-  logger.debug('Extracting messages from virtual list');
+  logger.debug('Extracting messages from virtual list (enhanced)');
 
   return await page.evaluate(() => {
     const messages = [];
@@ -291,43 +373,104 @@ async function extractMessagesFromVirtualList(page) {
       try {
         const content = row.textContent || '';
 
-        // 尝试从 React Fiber 提取完整数据
-        const fiberNode = Object.keys(row).find(key => key.startsWith('__react'));
-        let msgData = {};
+        // 第 1 步: 从 React Fiber 树深层搜索完整消息数据
+        let msgData = extractFromReactFiber(row);
 
-        if (fiberNode) {
-          const fiber = row[fiberNode];
-          if (fiber?.memoizedProps?.data) {
-            msgData = fiber.memoizedProps.data;
-          }
-        }
+        // 第 2 步: 从 DOM 提取基本信息
+        const { timeMatch, text } = extractFromDOM(content);
 
-        // 从 DOM 提取基本信息
-        const timeMatch = content.match(/(\d{1,2}:\d{2}|\d{1,2}-\d{2}|\d{4}-\d{1,2}-\d{1,2})/);
-        const time = timeMatch ? timeMatch[0] : '';
-        const text = content.replace(time, '').trim();
-
-        messages.push({
+        // 第 3 步: 构建完整消息对象
+        const message = {
           index: index,
-          platform_message_id: msgData.platform_message_id || `msg_${index}_${Date.now()}`,
-          content: text,
-          timestamp: time,
+          platform_message_id: msgData.platform_message_id || msgData.id || `msg_${index}_${Date.now()}`,
+          content: text || msgData.content || '',
+          timestamp: timeMatch,
           message_type: msgData.message_type || 'text',
-          platform_sender_id: msgData.platform_sender_id || msgData.sender_id || 'unknown',
-          platform_sender_name: msgData.platform_sender_name || msgData.sender_name || 'Unknown',
+          platform_sender_id: msgData.platform_sender_id || msgData.sender_id || msgData.uid || 'unknown',
+          platform_sender_name: msgData.platform_sender_name || msgData.sender_name || msgData.name || 'Unknown',
           platform_receiver_id: msgData.platform_receiver_id || msgData.receiver_id,
           platform_receiver_name: msgData.platform_receiver_name || msgData.receiver_name,
           direction: msgData.direction || 'inbound',
-          created_at: msgData.created_at || Math.floor(Date.now() / 1000),
-          is_read: msgData.is_read || false,
+          created_at: msgData.created_at || msgData.create_time || Math.floor(Date.now() / 1000),
+          is_read: msgData.is_read !== undefined ? msgData.is_read : false,
           status: msgData.status || 'sent'
-        });
+        };
+
+        messages.push(message);
       } catch (error) {
-        console.error('Error extracting message:', error);
+        console.error('Error extracting message at index', index, ':', error.message);
       }
     });
 
     return messages;
+
+    /**
+     * 从 React Fiber 树中深层搜索消息数据
+     */
+    function extractFromReactFiber(element) {
+      let result = {};
+
+      // 尝试多个可能的 React Fiber 键
+      const fiberKeys = Object.keys(element).filter(key => key.startsWith('__react'));
+
+      for (const fiberKey of fiberKeys) {
+        try {
+          const fiber = element[fiberKey];
+          if (!fiber) continue;
+
+          // 方法 1: 检查 memoizedProps 中的 data
+          if (fiber.memoizedProps?.data) {
+            result = { ...result, ...fiber.memoizedProps.data };
+          }
+
+          // 方法 2: 检查 memoizedProps 本身
+          if (fiber.memoizedProps?.message) {
+            result = { ...result, ...fiber.memoizedProps.message };
+          }
+
+          // 方法 3: 递归检查子 Fiber
+          let current = fiber;
+          let depth = 0;
+          const maxDepth = 10;
+
+          while (current && depth < maxDepth) {
+            // 检查 child 属性链
+            if (current.child) {
+              current = current.child;
+
+              if (current.memoizedProps) {
+                if (current.memoizedProps.data) {
+                  result = { ...result, ...current.memoizedProps.data };
+                }
+                if (current.memoizedProps.message) {
+                  result = { ...result, ...current.memoizedProps.message };
+                }
+              }
+
+              depth++;
+            } else {
+              break;
+            }
+          }
+        } catch (e) {
+          // 继续尝试其他 fiber 键
+        }
+      }
+
+      return result;
+    }
+
+    /**
+     * 从 DOM 文本提取时间戳和内容
+     */
+    function extractFromDOM(content) {
+      // 支持多种时间格式: HH:MM, MM-DD, YYYY-MM-DD
+      const timeMatch = content.match(/(\d{1,2}:\d{2}|\d{1,2}-\d{2}|\d{4}-\d{1,2}-\d{1,2})/);
+      const time = timeMatch ? timeMatch[0] : '';
+      const text = content.replace(time, '').trim();
+
+      return { timeMatch: time, text };
+    }
   });
 }
 
