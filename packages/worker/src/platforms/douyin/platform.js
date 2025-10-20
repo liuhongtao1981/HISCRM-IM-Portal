@@ -2307,14 +2307,85 @@ class DouyinPlatform extends PlatformBase {
       // 等待回复成功
       await page.waitForTimeout(2000);
 
-      // 7. 验证回复成功（可选）
-      const successIndicators = await page.evaluate(() => {
-        const successMsgs = document.querySelectorAll('[class*="success"], [class*="tip"], [class*="message"]');
-        return Array.from(successMsgs).map(el => el.textContent);
+      // 7. 验证回复状态（检查错误消息或成功提示）
+      logger.info('Checking reply status...');
+
+      const replyStatus = await page.evaluate(() => {
+        // 查找所有可能的错误或成功消息
+        const errorSelectors = [
+          '[class*="error"]',
+          '[class*="alert"]',
+          '[role="alert"]',
+          '[class*="tip"]',
+          '[class*="message"]'
+        ];
+
+        let errorMessage = null;
+        let errorElement = null;
+
+        for (const selector of errorSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const el of elements) {
+            const text = el.textContent.trim();
+            // 检查是否是错误信息
+            if (text && (
+              text.includes('无法') ||
+              text.includes('失败') ||
+              text.includes('error') ||
+              text.includes('Error') ||
+              text.includes('禁') ||
+              text.includes('限制')
+            )) {
+              errorMessage = text;
+              errorElement = el;
+              break;
+            }
+          }
+          if (errorMessage) break;
+        }
+
+        return {
+          hasError: !!errorMessage,
+          errorMessage: errorMessage,
+          errorElement: errorElement ? {
+            className: errorElement.className,
+            text: errorElement.textContent.substring(0, 200)
+          } : null
+        };
       });
 
+      // 检查是否有错误
+      if (replyStatus.hasError && replyStatus.errorMessage) {
+        logger.warn(`[Douyin] Reply blocked with error: ${replyStatus.errorMessage}`, {
+          accountId,
+          commentId: target_id,
+          errorMessage: replyStatus.errorMessage,
+        });
+
+        // 保存错误状态截图
+        try {
+          await this.takeScreenshot(accountId, `reply_blocked_${Date.now()}.png`);
+        } catch (screenshotError) {
+          logger.warn('Failed to take screenshot:', screenshotError.message);
+        }
+
+        // 返回错误状态（不抛出异常）
+        return {
+          success: false,
+          status: 'blocked',
+          reason: replyStatus.errorMessage,
+          data: {
+            comment_id: target_id,
+            reply_content,
+            error_message: replyStatus.errorMessage,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // 如果没有错误，认为回复成功
       logger.info('Reply submitted successfully', {
-        successIndicators: successIndicators.slice(0, 3),
+        commentId: target_id,
       });
 
       // 返回成功结果
@@ -2343,7 +2414,18 @@ class DouyinPlatform extends PlatformBase {
         }
       }
 
-      throw error;
+      // 返回错误状态而不是抛出异常
+      return {
+        success: false,
+        status: 'error',
+        reason: error.message,
+        data: {
+          comment_id: target_id,
+          reply_content,
+          error_message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      };
 
     } finally {
       // 清理页面
@@ -2507,7 +2589,90 @@ class DouyinPlatform extends PlatformBase {
       logger.info('Waiting for message to be sent');
       await page.waitForTimeout(2000);
 
-      // 10. 验证消息发送成功
+      // 10. 检查错误消息或限制提示
+      logger.info('Checking for error messages or restrictions');
+
+      const dmReplyStatus = await page.evaluate(() => {
+        // 查找所有可能的错误或限制消息
+        const errorSelectors = [
+          '[class*="error"]',
+          '[class*="alert"]',
+          '[role="alert"]',
+          '[class*="tip"]',
+          '[class*="message"]',
+          '[class*="toast"]',
+          '[class*="notification"]'
+        ];
+
+        let errorMessage = null;
+        let errorElement = null;
+
+        for (const selector of errorSelectors) {
+          const elements = document.querySelectorAll(selector);
+          for (const el of elements) {
+            const text = el.textContent.trim();
+            // 检查是否是错误或限制消息
+            if (text && (
+              text.includes('无法') ||
+              text.includes('失败') ||
+              text.includes('error') ||
+              text.includes('Error') ||
+              text.includes('禁') ||
+              text.includes('限制') ||
+              text.includes('超出') ||
+              text.includes('blocked') ||
+              text.includes('restricted')
+            )) {
+              errorMessage = text;
+              errorElement = el;
+              break;
+            }
+          }
+          if (errorMessage) break;
+        }
+
+        return {
+          hasError: !!errorMessage,
+          errorMessage: errorMessage,
+          errorElement: errorElement ? {
+            className: errorElement.className,
+            text: errorElement.textContent.substring(0, 200)
+          } : null
+        };
+      });
+
+      // 检查是否有错误
+      if (dmReplyStatus.hasError && dmReplyStatus.errorMessage) {
+        logger.warn(`[Douyin] DM reply blocked with error: ${dmReplyStatus.errorMessage}`, {
+          accountId,
+          messageId: target_id,
+          senderId: sender_id,
+          errorMessage: dmReplyStatus.errorMessage,
+        });
+
+        // 保存错误状态截图
+        try {
+          await this.takeScreenshot(accountId, `dm_reply_blocked_${Date.now()}.png`);
+        } catch (screenshotError) {
+          logger.warn('Failed to take screenshot:', screenshotError.message);
+        }
+
+        // 返回错误状态（不抛出异常）
+        return {
+          success: false,
+          status: 'blocked',
+          reason: dmReplyStatus.errorMessage,
+          data: {
+            message_id: target_id,
+            sender_id,
+            reply_content,
+            error_message: dmReplyStatus.errorMessage,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // 11. 验证消息发送成功
       const messageVerified = await page.evaluate((content) => {
         const messageElements = document.querySelectorAll('[class*="message"], [role="listitem"]');
         return Array.from(messageElements).some(msg => msg.textContent.includes(content));
@@ -2515,7 +2680,7 @@ class DouyinPlatform extends PlatformBase {
 
       logger.info(`Message sent ${messageVerified ? 'and verified' : '(verification pending)'}`);
 
-      // 11. 返回成功结果
+      // 12. 返回成功结果
       return {
         success: true,
         platform_reply_id: `dm_${target_id || 'first'}_${Date.now()}`,
@@ -2545,7 +2710,19 @@ class DouyinPlatform extends PlatformBase {
         }
       }
 
-      throw error;
+      // 返回错误状态而不是抛出异常
+      return {
+        success: false,
+        status: 'error',
+        reason: error.message,
+        data: {
+          message_id: target_id,
+          sender_id,
+          reply_content,
+          error_message: error.message,
+          timestamp: new Date().toISOString(),
+        },
+      };
 
     } finally {
       // 清理资源
