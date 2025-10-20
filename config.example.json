@@ -1,0 +1,79 @@
+{
+  "environment": "development",
+  "description": "HisCRM-IM 配置文件示例 - 根据环境修改后重命名为 config.json",
+
+  "paths": {
+    "projectRoot": "./",
+    "comment": "项目根目录。开发环境可用相对路径 ./ 或 ../，生产环境建议使用绝对路径如 /opt/hiscrm-im",
+
+    "master": {
+      "data": "./packages/master/data",
+      "comment_data": "Master 数据目录，用于存放 SQLite 数据库"
+    },
+
+    "worker": {
+      "data": "./packages/worker/data",
+      "comment_data": "Worker 数据目录，用于存放浏览器配置、指纹等",
+
+      "platforms": "./packages/worker/src/platforms",
+      "comment_platforms": "平台脚本目录，存放各个社交平台的爬虫脚本"
+    },
+
+    "logs": {
+      "master": "./packages/master/logs",
+      "worker": "./packages/worker/logs",
+      "admin": "./packages/admin-web/logs",
+      "comment": "日志目录，可根据环境设置不同位置"
+    }
+  },
+
+  "server": {
+    "master": {
+      "host": "0.0.0.0",
+      "port": 3000,
+      "comment": "Master 服务器绑定的主机和端口"
+    },
+
+    "admin": {
+      "host": "0.0.0.0",
+      "port": 3001,
+      "comment": "Admin Web 服务器绑定的主机和端口"
+    }
+  },
+
+  "worker": {
+    "id": "worker-1",
+    "comment_id": "Worker 的唯一标识，如果运行多个 Worker，每个需要不同的 ID",
+
+    "maxAccounts": 10,
+    "comment_maxAccounts": "单个 Worker 最多管理的账户数",
+
+    "masterHost": "localhost",
+    "masterPort": 3000,
+    "comment_master": "Master 服务器的地址和端口。本地开发用 localhost，生产环境填写 Master 所在的 IP 或域名"
+  },
+
+  "database": {
+    "type": "sqlite",
+    "comment_type": "数据库类型，目前只支持 sqlite",
+
+    "path": "./packages/master/data/master.db",
+    "comment_path": "SQLite 数据库文件的完整路径"
+  },
+
+  "logging": {
+    "level": "debug",
+    "comment_level": "日志级别：debug, info, warn, error。生产环境建议设置为 info",
+
+    "format": "json",
+    "comment_format": "日志格式：json, text。生产环境建议用 json 便于解析"
+  },
+
+  "deployment": {
+    "environment": "development",
+    "comment_environment": "部署环境：development, staging, production",
+
+    "processManager": "npm",
+    "comment_processManager": "进程管理器：npm (开发), pm2 (生产)"
+  }
+}
