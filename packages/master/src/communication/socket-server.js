@@ -208,6 +208,22 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
       }
     });
 
+    // 监听回复执行结果
+    socket.on('worker:reply:result', async (data) => {
+      logger.info(`Worker ${socket.id} reply result:`, {
+        replyId: data.reply_id,
+        status: data.status,
+        requestId: data.request_id,
+      });
+      if (handlers.onReplyResult) {
+        try {
+          await handlers.onReplyResult(data, socket);
+        } catch (error) {
+          logger.error('Failed to handle reply result:', error);
+        }
+      }
+    });
+
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
       try {

@@ -2016,6 +2016,78 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
+   * 回复评论
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 回复选项
+   *   - target_id: string - 被回复的评论 ID
+   *   - reply_content: string - 回复内容
+   *   - context: object - 上下文信息 (video_id, user_id, etc.)
+   *   - browserManager: BrowserManager
+   * @returns {Promise<{platform_reply_id?, data?}>}
+   */
+  async replyToComment(accountId, options) {
+    const { target_id, reply_content, context, browserManager } = options;
+
+    try {
+      logger.info(`[Douyin] Replying to comment: ${target_id}`, {
+        accountId,
+        replyContent: reply_content.substring(0, 50), // 只记录前50字符
+      });
+
+      // TODO: 具体实现
+      // 1. 获取浏览器上下文
+      // 2. 导航到视频页面
+      // 3. 定位评论
+      // 4. 打开回复框
+      // 5. 输入内容
+      // 6. 提交并获取回复ID
+      // 7. 返回结果
+
+      // 临时抛出错误，提示需要实现
+      throw new Error('Douyin reply to comment not implemented yet');
+    } catch (error) {
+      logger.error(`[Douyin] Failed to reply to comment: ${target_id}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 回复私信
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 回复选项
+   *   - target_id: string - 被回复的私信 ID
+   *   - reply_content: string - 回复内容
+   *   - context: object - 上下文信息
+   *   - browserManager: BrowserManager
+   * @returns {Promise<{platform_reply_id?, data?}>}
+   */
+  async replyToDirectMessage(accountId, options) {
+    const { target_id, reply_content, context, browserManager } = options;
+
+    try {
+      logger.info(`[Douyin] Replying to direct message: ${target_id}`, {
+        accountId,
+        replyContent: reply_content.substring(0, 50), // 只记录前50字符
+      });
+
+      // TODO: 具体实现
+      // 1. 获取浏览器上下文
+      // 2. 导航到私信页面
+      // 3. 定位对话
+      // 4. 打开输入框
+      // 5. 输入内容
+      // 6. 提交并获取消息ID
+      // 7. 返回结果
+
+      // 临时抛出错误，提示需要实现
+      throw new Error('Douyin reply to direct message not implemented yet');
+    } catch (error) {
+      logger.error(`[Douyin] Failed to reply to direct message: ${target_id}`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 清理资源
    * @param {string} accountId - 账户 ID
    */

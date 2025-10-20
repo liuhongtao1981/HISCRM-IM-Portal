@@ -1,0 +1,40 @@
+{
+  "environment": "development",
+  "description": "开发环境配置 - 默认使用本地项目结构",
+
+  "paths": {
+    "projectRoot": "./",
+
+    "master": {
+      "data": "./packages/master/data",
+      "logs": "./packages/master/logs"
+    },
+
+    "worker": {
+      "data": "./packages/worker/data",
+      "platforms": "./packages/worker/src/platforms",
+      "logs": "./packages/worker/logs"
+    },
+
+    "logs": {
+      "master": "./packages/master/logs",
+      "worker": "./packages/worker/logs"
+    }
+  },
+
+  "server": {
+    "master": {
+      "host": "0.0.0.0",
+      "port": 3000
+    },
+    "admin": {
+      "host": "0.0.0.0",
+      "port": 3001
+    }
+  },
+
+  "logging": {
+    "level": "debug",
+    "format": "text"
+  }
+}

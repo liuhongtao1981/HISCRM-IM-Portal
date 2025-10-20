@@ -1,0 +1,25 @@
+# 配置文件（不要提交到 git）
+config.json
+.env
+.env.local
+.env.*.local
+
+# 日志
+*.log
+logs/
+
+# 数据
+data/
+
+# Node 模块
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db

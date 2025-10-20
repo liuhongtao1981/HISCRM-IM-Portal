@@ -5,19 +5,27 @@
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const MonitorTask = require('./monitor-task');
+const ReplyExecutor = require('./reply-executor');
 const { getCacheManager } = require('../services/cache-manager');
 
 const logger = createLogger('task-runner');
 const cacheManager = getCacheManager();
 
 class TaskRunner {
-  constructor(socketClient, heartbeatSender, platformManager, accountStatusReporter = null) {
+  constructor(socketClient, heartbeatSender, platformManager, accountStatusReporter = null, browserManager = null) {
     this.socketClient = socketClient;
     this.heartbeatSender = heartbeatSender;
     this.platformManager = platformManager;
     this.accountStatusReporter = accountStatusReporter;
+    this.browserManager = browserManager;
     this.tasks = new Map(); // accountId -> MonitorTask
     this.running = false;
+
+    // 初始化回复执行器
+    this.replyExecutor = new ReplyExecutor(platformManager, browserManager, socketClient);
+
+    // 监听回复请求事件
+    this.setupReplyHandlers();
   }
 
   /**
@@ -150,6 +158,41 @@ class TaskRunner {
       logger.info(`Updated task for account ${accountId}`);
     } else {
       logger.warn(`Task not found for account ${accountId}`);
+    }
+  }
+
+  /**
+   * 设置回复事件处理器
+   */
+  setupReplyHandlers() {
+    try {
+      if (!this.socketClient || !this.socketClient.socket) {
+        logger.warn('Socket client not ready, reply handlers setup deferred');
+        return;
+      }
+
+      // 监听 Master 发送的回复请求
+      this.socketClient.socket.on('master:reply:request', async (data) => {
+        logger.info(`Received reply request: ${data.reply_id}`, {
+          requestId: data.request_id,
+          platform: data.platform,
+        });
+
+        try {
+          // 异步执行回复，不阻塞主线程
+          setImmediate(() => {
+            this.replyExecutor.executeReply(data).catch((error) => {
+              logger.error('Failed to execute reply:', error);
+            });
+          });
+        } catch (error) {
+          logger.error('Failed to process reply request:', error);
+        }
+      });
+
+      logger.info('Reply handlers setup completed');
+    } catch (error) {
+      logger.error('Failed to setup reply handlers:', error);
     }
   }
 

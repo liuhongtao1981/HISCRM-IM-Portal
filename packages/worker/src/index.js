@@ -124,8 +124,8 @@ async function start() {
     // 10. 初始化账号状态上报器（在 TaskRunner 之前创建）
     accountStatusReporter = new AccountStatusReporter(socketClient.socket, WORKER_ID);
 
-    // 11. 启动任务执行器（传入 platformManager 和 accountStatusReporter）
-    taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager, accountStatusReporter);
+    // 11. 启动任务执行器（传入 platformManager、accountStatusReporter 和 browserManager）
+    taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager, accountStatusReporter, browserManager);
     taskRunner.start();
     logger.info('✓ Task runner started');
 

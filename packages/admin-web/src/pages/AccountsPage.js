@@ -10,12 +10,43 @@ const { Option } = Select;
 const AccountsPage = () => {
   const [accounts, setAccounts] = useState([]);
   const [workers, setWorkers] = useState([]);
+  const [platforms, setPlatforms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [platformsLoading, setPlatformsLoading] = useState(true);
   const [modalVisible, setModalVisible] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
   const [form] = Form.useForm();
 
   const { startLogin, loginModalData, submitUserInput, closeLoginModal } = useSocketContext();
+
+  // 从 Master 加载平台列表
+  const loadPlatforms = async () => {
+    setPlatformsLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/v1/platforms');
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.data)) {
+        setPlatforms(data.data);
+      } else {
+        // 降级方案：使用默认平台列表
+        console.warn('Failed to load platforms from API, using defaults');
+        setPlatforms([
+          { value: 'douyin', label: '抖音' },
+          { value: 'xiaohongshu', label: '小红书' }
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to load platforms:', error);
+      // 降级方案：使用默认平台列表
+      setPlatforms([
+        { value: 'douyin', label: '抖音' },
+        { value: 'xiaohongshu', label: '小红书' }
+      ]);
+    } finally {
+      setPlatformsLoading(false);
+    }
+  };
 
   // 加载账户列表
   const loadAccounts = async () => {
@@ -41,6 +72,7 @@ const AccountsPage = () => {
   };
 
   useEffect(() => {
+    loadPlatforms();
     loadAccounts();
     loadWorkers();
   }, []);
@@ -357,10 +389,15 @@ const AccountsPage = () => {
             label="平台"
             rules={[{ required: true, message: '请选择平台' }]}
           >
-            <Select placeholder="选择平台">
-              <Option value="douyin">抖音</Option>
-              <Option value="weibo">微博</Option>
-              <Option value="xiaohongshu">小红书</Option>
+            <Select
+              placeholder="选择平台"
+              loading={platformsLoading}
+            >
+              {platforms.map(platform => (
+                <Option key={platform.value} value={platform.value}>
+                  {platform.label}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
 

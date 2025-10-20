@@ -1,0 +1,41 @@
+{
+  "environment": "production",
+  "description": "生产环境配置 - 请根据实际部署环境修改",
+
+  "paths": {
+    "projectRoot": "/opt/hiscrm-im",
+
+    "master": {
+      "data": "/data/hiscrm-im/master",
+      "logs": "/var/log/hiscrm-im/master"
+    },
+
+    "worker": {
+      "data": "/data/hiscrm-im/worker",
+      "platforms": "/opt/hiscrm-im/platforms",
+      "logs": "/var/log/hiscrm-im/worker"
+    },
+
+    "logs": {
+      "master": "/var/log/hiscrm-im/master",
+      "worker": "/var/log/hiscrm-im/worker"
+    }
+  },
+
+  "server": {
+    "master": {
+      "host": "0.0.0.0",
+      "port": 3000
+    }
+  },
+
+  "database": {
+    "type": "sqlite",
+    "path": "/data/hiscrm-im/master/master.db"
+  },
+
+  "logging": {
+    "level": "info",
+    "format": "json"
+  }
+}

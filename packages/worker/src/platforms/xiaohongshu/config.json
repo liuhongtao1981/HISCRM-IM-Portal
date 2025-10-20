@@ -1,0 +1,35 @@
+{
+  "platform": "xiaohongshu",
+  "displayName": "小红书",
+  "description": "XiaoHongShu Platform - 小红书创作者平台",
+  "enabled": true,
+  "urls": {
+    "base": "https://www.xiaohongshu.com",
+    "login": "https://www.xiaohongshu.com/user/login",
+    "home": "https://www.xiaohongshu.com/user/home",
+    "creator": "https://creator.xiaohongshu.com"
+  },
+  "selectors": {
+    "qrCode": ".qr-code-img",
+    "phoneInput": "input[type='tel']",
+    "passwordInput": "input[type='password']",
+    "loginBtn": "button[type='submit']",
+    "commentContainer": ".comment-item",
+    "replyBtn": ".reply-btn",
+    "replyInput": ".reply-input-box textarea"
+  },
+  "timeouts": {
+    "navigation": 30000,
+    "interaction": 5000,
+    "login": 300000
+  },
+  "capabilities": [
+    "login",
+    "crawl_comments",
+    "crawl_direct_messages",
+    "reply_to_comment",
+    "reply_to_direct_message"
+  ],
+  "monitorInterval": 300000,
+  "notes": "小红书平台实现框架，具体功能待实现"
+}

@@ -517,6 +517,34 @@ class PlatformBase {
   }
 
   /**
+   * 回复评论（需要子类实现）
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 回复选项
+   *   - target_id: string - 被回复的评论 ID
+   *   - reply_content: string - 回复内容
+   *   - context: object - 上下文信息
+   *   - browserManager: BrowserManager - 浏览器管理器
+   * @returns {Promise<{platform_reply_id?: string, data?: object}>}
+   */
+  async replyToComment(accountId, options) {
+    throw new Error('replyToComment must be implemented by subclass');
+  }
+
+  /**
+   * 回复私信（需要子类实现）
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 回复选项
+   *   - target_id: string - 被回复的私信 ID
+   *   - reply_content: string - 回复内容
+   *   - context: object - 上下文信息
+   *   - browserManager: BrowserManager - 浏览器管理器
+   * @returns {Promise<{platform_reply_id?: string, data?: object}>}
+   */
+  async replyToDirectMessage(accountId, options) {
+    throw new Error('replyToDirectMessage must be implemented by subclass');
+  }
+
+  /**
    * 清理资源
    * @param {string} accountId - 账户 ID
    */

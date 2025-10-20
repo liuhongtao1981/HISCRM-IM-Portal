@@ -1,0 +1,14 @@
+{
+  "name": "@hiscrm-im/config",
+  "version": "1.0.0",
+  "description": "Configuration management for HisCRM-IM - centralized config files and setup scripts",
+  "main": "index.js",
+  "scripts": {
+    "setup": "node scripts/setup.js",
+    "setup:dev": "node scripts/setup.js --env development",
+    "setup:prod": "node scripts/setup.js --env production"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

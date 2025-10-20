@@ -287,6 +287,60 @@ function handleClientSync(socket, message) {
   }
 }
 
+/**
+ * 处理 Worker 发送的回复执行结果
+ */
+function handleReplyResult(data, socket) {
+  try {
+    const { reply_id, request_id, status, platform_reply_id, error_code, error_message } = data;
+    const ReplyDAO = require('./database/reply-dao');
+    const replyDAO = new ReplyDAO(db);
+
+    logger.info(`Processing reply result: ${reply_id}`, {
+      requestId: request_id,
+      status,
+    });
+
+    // 获取回复记录
+    const reply = replyDAO.getReplyById(reply_id);
+    if (!reply) {
+      logger.warn(`Reply not found: ${reply_id}`);
+      return;
+    }
+
+    // 检查是否已经处理过（防止重复处理）
+    if (reply.reply_status !== 'executing') {
+      logger.warn(`Reply already processed: ${reply_id}, status: ${reply.reply_status}`);
+      return;
+    }
+
+    // 更新回复状态
+    if (status === 'success') {
+      replyDAO.updateReplySuccess(reply_id, platform_reply_id, data.data);
+      logger.info(`Reply success: ${reply_id}`, { platformReplyId: platform_reply_id });
+    } else if (status === 'failed') {
+      replyDAO.updateReplyFailed(reply_id, error_code || 'UNKNOWN_ERROR', error_message || 'Unknown error');
+      logger.warn(`Reply failed: ${reply_id}`, { errorCode: error_code, errorMessage: error_message });
+    }
+
+    // 推送结果给客户端
+    if (clientNamespace) {
+      clientNamespace.emit('server:reply:result', {
+        reply_id,
+        request_id,
+        status,
+        account_id: reply.account_id,
+        platform: reply.platform,
+        message: status === 'success' ? '✅ 回复成功！' : `❌ 回复失败: ${error_message || 'Unknown error'}`,
+        timestamp: Date.now(),
+      });
+      logger.debug(`Pushed reply result to clients: ${reply_id}`);
+    }
+  } catch (error) {
+    logger.error('Failed to handle reply result:', error);
+  }
+}
+
 // 启动服务
 async function start() {
   try {
@@ -315,6 +369,7 @@ async function start() {
       onWorkerDisconnect: (socket) => workerRegistry.handleDisconnect(socket),
       onClientConnect: (socket) => handleClientConnect(socket),
       onClientDisconnect: (socket) => handleClientDisconnect(socket),
+      onReplyResult: (data, socket) => handleReplyResult(data, socket),
     };
 
     const socketNamespaces = initSocketServer(
@@ -931,6 +986,18 @@ async function start() {
 
     const createWorkerLifecycleRouter = require('./api/routes/worker-lifecycle');
     app.use('/api/v1/worker-lifecycle', createWorkerLifecycleRouter(workerLifecycleManager, workerConfigDAO));
+
+    // 回复功能路由
+    const createRepliesRouter = require('./api/routes/replies');
+    app.use('/api/v1/replies', createRepliesRouter(db, {
+      getSocketServer: () => server,
+    }));
+
+    // 平台管理路由
+    const createPlatformsRouter = require('./api/routes/platforms');
+    app.use('/api/v1/platforms', createPlatformsRouter(db, {
+      getWorkerRegistry: () => workerRegistry,
+    }));
 
     logger.info('API routes mounted');
 

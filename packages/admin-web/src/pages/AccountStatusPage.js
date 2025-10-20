@@ -24,7 +24,9 @@ const AccountStatusPage = () => {
   } = useSocketContext();
 
   const [accounts, setAccounts] = useState([]);
+  const [platforms, setPlatforms] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [platformsLoading, setPlatformsLoading] = useState(true);
   const [filters, setFilters] = useState({
     worker_status: undefined,
     login_status: undefined,
@@ -34,6 +36,33 @@ const AccountStatusPage = () => {
     sort: 'last_heartbeat_time',
     order: 'desc',
   });
+
+  // 从 Master 加载平台列表
+  const loadPlatforms = async () => {
+    setPlatformsLoading(true);
+    try {
+      const response = await fetch('http://localhost:3000/api/v1/platforms');
+      const data = await response.json();
+
+      if (data.success && Array.isArray(data.data)) {
+        setPlatforms(data.data);
+      } else {
+        console.warn('Failed to load platforms from API, using defaults');
+        setPlatforms([
+          { value: 'douyin', label: '抖音' },
+          { value: 'xiaohongshu', label: '小红书' }
+        ]);
+      }
+    } catch (error) {
+      console.error('Failed to load platforms:', error);
+      setPlatforms([
+        { value: 'douyin', label: '抖音' },
+        { value: 'xiaohongshu', label: '小红书' }
+      ]);
+    } finally {
+      setPlatformsLoading(false);
+    }
+  };
 
   // 加载账号状态
   const fetchAccountStatus = async () => {
@@ -67,6 +96,7 @@ const AccountStatusPage = () => {
 
   // 初始加载
   useEffect(() => {
+    loadPlatforms();
     fetchAccountStatus();
 
     // 自动刷新（每30秒）
@@ -477,11 +507,15 @@ const AccountStatusPage = () => {
             placeholder="平台"
             style={{ width: 120 }}
             allowClear
+            loading={platformsLoading}
             value={filters.platform}
             onChange={(value) => setFilters({ ...filters, platform: value })}
           >
-            <Option value="douyin">抖音</Option>
-            <Option value="xiaohongshu">小红书</Option>
+            {platforms.map(platform => (
+              <Option key={platform.value} value={platform.value}>
+                {platform.label}
+              </Option>
+            ))}
           </Select>
         </Space>
       </Card>
