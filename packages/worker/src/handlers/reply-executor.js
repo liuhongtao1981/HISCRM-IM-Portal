@@ -120,6 +120,38 @@ class ReplyExecutor {
         });
       }
 
+      // 检查操作结果
+      if (!result.success) {
+        // 操作被拦截或失败（但不是异常）
+        const blockedResult = {
+          reply_id,
+          request_id,
+          platform,
+          account_id,
+          status: result.status || 'blocked', // 'blocked', 'error', etc.
+          error_code: result.status === 'blocked' ? 'REPLY_BLOCKED' : 'OPERATION_FAILED',
+          error_message: result.reason || 'Operation blocked or failed',
+          timestamp: Date.now(),
+        };
+
+        // 更新缓存
+        this.executedRequests.set(request_id, {
+          reply_id,
+          status: result.status || 'blocked',
+          timestamp: Date.now(),
+        });
+
+        // 发送结果给 Master
+        this.sendReplyResult(blockedResult);
+
+        logger.warn(`Reply operation blocked/failed: ${reply_id}`, {
+          reason: result.reason,
+          status: result.status,
+        });
+
+        return blockedResult;
+      }
+
       // 成功
       const successResult = {
         reply_id,

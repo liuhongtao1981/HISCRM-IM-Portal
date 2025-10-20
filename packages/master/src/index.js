@@ -314,27 +314,52 @@ function handleReplyResult(data, socket) {
       return;
     }
 
-    // 更新回复状态
+    // 根据状态处理回复
     if (status === 'success') {
+      // 成功：保存到数据库
       replyDAO.updateReplySuccess(reply_id, platform_reply_id, data.data);
       logger.info(`Reply success: ${reply_id}`, { platformReplyId: platform_reply_id });
-    } else if (status === 'failed') {
-      replyDAO.updateReplyFailed(reply_id, error_code || 'UNKNOWN_ERROR', error_message || 'Unknown error');
-      logger.warn(`Reply failed: ${reply_id}`, { errorCode: error_code, errorMessage: error_message });
-    }
 
-    // 推送结果给客户端
-    if (clientNamespace) {
-      clientNamespace.emit('server:reply:result', {
-        reply_id,
-        request_id,
-        status,
-        account_id: reply.account_id,
-        platform: reply.platform,
-        message: status === 'success' ? '✅ 回复成功！' : `❌ 回复失败: ${error_message || 'Unknown error'}`,
-        timestamp: Date.now(),
+      // 推送成功结果给客户端
+      if (clientNamespace) {
+        clientNamespace.emit('server:reply:result', {
+          reply_id,
+          request_id,
+          status: 'success',
+          account_id: reply.account_id,
+          platform: reply.platform,
+          message: '✅ 回复成功！',
+          timestamp: Date.now(),
+        });
+        logger.debug(`Pushed reply success to clients: ${reply_id}`);
+      }
+    } else if (status === 'failed' || status === 'blocked') {
+      // 失败/被拦截：删除数据库记录，不保存失败的回复
+      replyDAO.deleteReply(reply_id);
+      logger.warn(`Reply failed and deleted from database: ${reply_id}`, {
+        reason: status,
+        errorCode: error_code,
+        errorMessage: error_message,
       });
-      logger.debug(`Pushed reply result to clients: ${reply_id}`);
+
+      // 推送失败结果给客户端（仅通知，不记录）
+      if (clientNamespace) {
+        clientNamespace.emit('server:reply:result', {
+          reply_id,
+          request_id,
+          status: status === 'blocked' ? 'blocked' : 'failed',
+          account_id: reply.account_id,
+          platform: reply.platform,
+          error_code: error_code,
+          error_message: error_message,
+          message: `❌ 回复失败: ${error_message || 'Unknown error'}`,
+          timestamp: Date.now(),
+        });
+        logger.debug(`Pushed reply failure to clients: ${reply_id}`);
+      }
+    } else {
+      // 其他状态：记录警告
+      logger.warn(`Unknown reply status: ${status}`, { reply_id });
     }
   } catch (error) {
     logger.error('Failed to handle reply result:', error);

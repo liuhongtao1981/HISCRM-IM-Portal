@@ -349,6 +349,29 @@ class ReplyDAO {
   }
 
   /**
+   * 删除回复记录（用于删除失败的回复）
+   * @param {string} replyId - 回复ID
+   * @returns {boolean} - 是否删除成功
+   */
+  deleteReply(replyId) {
+    try {
+      const stmt = this.db.prepare(`
+        DELETE FROM replies
+        WHERE id = ?
+      `);
+
+      const result = stmt.run(replyId);
+      this.logger.info(`Deleted reply: ${replyId}`, {
+        changes: result.changes,
+      });
+      return result.changes > 0;
+    } catch (error) {
+      this.logger.error('Failed to delete reply:', error);
+      throw error;
+    }
+  }
+
+  /**
    * 清理长期失败的回复记录（可选的清理策略）
    */
   cleanupFailedReplies(daysOld = 30) {
