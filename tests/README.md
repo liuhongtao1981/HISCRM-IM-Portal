@@ -7,6 +7,9 @@
 ```
 tests/
 ├── unit/                      # 单元测试
+│   ├── contract/
+│   │   ├── message-detection.test.js              # Socket.IO 消息格式测试 (13 个)
+│   │   └── notifications.test.js                  # 桌面客户端通知测试
 │   └── platforms/
 │       └── douyin/
 │           ├── reply-to-comment.test.js           # 评论回复单元测试 (25 个)
@@ -20,7 +23,8 @@ tests/
 │   ├── offline-sync.test.js
 │   ├── test-integration-e2e.js
 │   ├── test-message-management.js
-│   └── test-new-data-push-system.js
+│   ├── test-new-data-push-system.js
+│   └── test-reply-integration.js                  # 回复功能集成测试
 │
 └── logs/                      # 测试日志
 
@@ -68,9 +72,12 @@ npm test -- tests/integration/
 - ✅ 边界情况
 
 **统计**:
-- 评论回复: 25 个测试
-- 私信回复: 23 个测试
-- **总计: 48 个测试 (100% 通过)**
+- 回复功能: 48 个测试 (100% 通过) ✅
+  - 评论回复: 25 个测试
+  - 私信回复: 23 个测试
+- 合约测试: 13 个测试 (Socket.IO 消息)
+- 通知测试: N/A 个测试 (桌面客户端)
+- **总单元测试: 61+ 个测试**
 
 ### 集成测试 (Integration Tests)
 
