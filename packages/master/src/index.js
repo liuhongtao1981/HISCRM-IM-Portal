@@ -1068,7 +1068,7 @@ async function start() {
     // 回复功能路由
     const createRepliesRouter = require('./api/routes/replies');
     app.use('/api/v1/replies', createRepliesRouter(db, {
-      getSocketServer: () => server,
+      getSocketServer: () => socketNamespaces.io,
     }));
 
     // 平台管理路由

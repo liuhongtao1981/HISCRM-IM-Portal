@@ -28,23 +28,28 @@ class DirectMessagesDAO {
       const row = message.toDbRow();
       const stmt = this.db.prepare(
         `INSERT INTO direct_messages (
-          id, account_id, platform_message_id, content,
-          sender_name, sender_id, direction,
-          is_read, detected_at, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          id, account_id, conversation_id, platform_message_id, content,
+          platform_sender_id, platform_sender_name, platform_receiver_id, platform_receiver_name,
+          message_type, direction, is_read, detected_at, created_at, platform_user_id
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
 
       stmt.run(
         row.id,
         row.account_id,
+        row.conversation_id || null,
         row.platform_message_id,
         row.content,
-        row.sender_name,
-        row.sender_id,
+        row.platform_sender_id || row.sender_id,
+        row.platform_sender_name || row.sender_name,
+        row.platform_receiver_id || null,
+        row.platform_receiver_name || null,
+        row.message_type || 'text',
         row.direction,
         row.is_read,
         row.detected_at,
-        row.created_at
+        row.created_at,
+        row.platform_user_id || null
       );
 
       logger.info(`Direct message created: ${row.id}`);
@@ -426,9 +431,9 @@ class DirectMessagesDAO {
     try {
       const insertStmt = this.db.prepare(`
         INSERT OR IGNORE INTO direct_messages (
-          id, account_id, platform_user_id, conversation_id, platform_message_id,
-          content, sender_name, sender_id, direction,
-          is_read, detected_at, created_at
+          id, account_id, conversation_id, platform_message_id,
+          content, platform_sender_id, platform_sender_name, direction,
+          is_read, detected_at, created_at, message_type
         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
@@ -439,16 +444,16 @@ class DirectMessagesDAO {
             const cleanMessage = {
               id: String(message.id || ''),
               account_id: String(message.account_id || ''),
-              platform_user_id: message.platform_user_id ? String(message.platform_user_id) : null,
               conversation_id: message.conversation_id ? String(message.conversation_id) : null,
               platform_message_id: String(message.platform_message_id || ''),
               content: String(message.content || ''),
-              sender_name: String(message.sender_name || ''),
-              sender_id: String(message.sender_id || ''),
+              platform_sender_id: String(message.platform_sender_id || message.sender_id || ''),
+              platform_sender_name: String(message.platform_sender_name || message.sender_name || ''),
               direction: String(message.direction || 'inbound'),
               is_read: message.is_read !== undefined ? (message.is_read ? 1 : 0) : 0,
               detected_at: Number(message.detected_at) || Math.floor(Date.now() / 1000),
               created_at: Number(message.created_at) || Math.floor(Date.now() / 1000),
+              message_type: String(message.message_type || 'text'),
             };
 
             // 检查必需字段
@@ -461,16 +466,16 @@ class DirectMessagesDAO {
             const result = insertStmt.run(
               cleanMessage.id,
               cleanMessage.account_id,
-              cleanMessage.platform_user_id,
               cleanMessage.conversation_id,
               cleanMessage.platform_message_id,
               cleanMessage.content,
-              cleanMessage.sender_name,
-              cleanMessage.sender_id,
+              cleanMessage.platform_sender_id,
+              cleanMessage.platform_sender_name,
               cleanMessage.direction,
               cleanMessage.is_read,
               cleanMessage.detected_at,
-              cleanMessage.created_at
+              cleanMessage.created_at,
+              cleanMessage.message_type
             );
 
             if (result.changes > 0) {
