@@ -8,6 +8,7 @@ const CommentParser = require('../parsers/comment-parser');
 const DMParser = require('../parsers/dm-parser');
 const CacheHandler = require('./cache-handler');
 const MessageReporter = require('../communication/message-reporter');
+const debugConfig = require('../config/debug-config');
 
 const logger = createLogger('monitor-task');
 
@@ -141,7 +142,18 @@ class MonitorTask {
     logger.info(`Executing monitor task for account ${this.account.id} (count: ${this.executionCount})`);
 
     try {
-      // 0. 检查登录状态 - 如果未登录,跳过本次执行
+      // 0. Debug 模式：检查是否是被跳过的账户（无浏览器）
+      if (debugConfig.enabled && debugConfig.singleAccount.enabled) {
+        // 检查浏览器是否存在
+        const browserContext = this.platformInstance?.browserContext;
+        if (!browserContext) {
+          logger.debug(`Debug 模式：账号 ${this.account.id} 没有浏览器，跳过本次爬取`);
+          // 不报错，仅跳过本次执行，下次继续尝试
+          return;
+        }
+      }
+
+      // 1. 检查登录状态 - 如果未登录,跳过本次执行
       if (this.account.login_status !== 'logged_in') {
         logger.warn(`Account ${this.account.id} is not logged in (status: ${this.account.login_status}), skipping crawl`);
 
