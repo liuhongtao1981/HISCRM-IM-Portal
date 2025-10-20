@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(if not exist \"e:\\HISCRM-IM-main\\.docs\\_archived\" mkdir \"e:\\HISCRM-IM-main\\.docs\\_archived\")",
-      "Bash(test -d \"e:\\HISCRM-IM-main\\.docs\\_archived\")"
+      "Bash(test -d \"e:\\HISCRM-IM-main\\.docs\\_archived\")",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 合并 Worker 系统文档，核心文档从 9 份减为 8 份\n\n主要变更：\n- 合并 03-04 两个 Worker 文档成为单一完整文档\n  • 03-WORKER-系统文档-第一部分.md \n  • 04-WORKER-系统文档-第二部分.md \n  • → 03-WORKER-系统完整文档.md (1254 行，42KB)\n\n- 新增 ReplyExecutor 任务执行器章节 ✨\n  • Worker 端回复任务执行框架\n  • 与平台的交互接口\n  • Socket 事件通信\n  • 错误处理和重试机制\n  • 完整代码示例\n\n- 更新 05-平台扩展指南\n  • 增加回复功能相关方法表\n  • 添加回复实现详细说明\n  • 完整的代码示例\n  • 更新检查清单\n\n- 更新 README.md 导航\n  • 简化 Worker 文档引用\n  • 核心文档数从 9 减至 8\n  • 更新统计数字\n  • 更新文件结构树\n\n文档现状：\n✅ 核心文档 8 份 (从 9 份优化)\n✅ 回复功能完整支持 (平台端 + Worker 端)\n✅ 任务管理框架 (监控 + 回复)\n✅ 总文档 65 份 (8 核心 + 57 归档)\n\n🎯 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(git commit -m \"docs: 重新编号文档序号，保持顺序连续\n\n主要变更：\n- 文档重新编号（已删除 05 和 08，保持连续）\n  • 03-WORKER-系统完整文档.md → 03-WORKER-系统文档.md\n  • 05-WORKER-平台扩展指南.md → 04-WORKER-平台扩展指南.md\n  • 06-DOUYIN-平台实现技术细节.md → 05-DOUYIN-平台实现技术细节.md\n  • 07-WORKER-爬虫调试指南.md → 06-WORKER-爬虫调试指南.md\n  • 08-WORKER-回复功能完整设计.md → 07-WORKER-回复功能完整设计.md\n\n- 更新 README.md 所有文档引用\n  • 文档顺序现为：01, 02, 03, 04, 05, 06, 07（连续）\n  • 更新所有内链和描述\n  • 更新文档结构树\n\n核心文档现状：\n✅ 快速参考-系统文档.md\n✅ 01-ADMIN-WEB-系统文档.md\n✅ 02-MASTER-系统文档.md\n✅ 03-WORKER-系统文档.md\n✅ 04-WORKER-平台扩展指南.md\n✅ 05-DOUYIN-平台实现技术细节.md\n✅ 06-WORKER-爬虫调试指南.md\n✅ 07-WORKER-回复功能完整设计.md\n\n总计：8 份核心文档 + 57 份归档 = 65 份\n\n🎯 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")"
     ],
     "deny": [],
     "ask": []
