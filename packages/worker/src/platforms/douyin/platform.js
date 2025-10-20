@@ -2725,6 +2725,107 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
+   * 从 conversation_id 提取 platform_user_id (Phase 9 新增)
+   * conversation_id 格式: conv_account-123_user-001
+   *
+   * @param {string} conversationId - 会话 ID
+   * @returns {string|null} platform_user_id 或 null
+   */
+  extractUserIdFromConversationId(conversationId) {
+    if (!conversationId) return null;
+    const match = conversationId.match(/^conv_[^_]+_(.+)$/);
+    return match ? match[1] : null;
+  }
+
+  /**
+   * 在虚拟列表中定位会话项 (Phase 9 新增)
+   * 用于找到目标用户的对话
+   *
+   * @param {Page} page - Playwright 页面对象
+   * @param {string} platformUserId - 平台用户 ID (要对话的用户)
+   * @param {string} userName - 用户名 (可选，帮助定位)
+   * @returns {Promise<Locator|null>} 会话项的 Locator 或 null
+   */
+  async findConversationByPlatformUser(page, platformUserId, userName) {
+    logger.debug(`Finding conversation for platform user: ${platformUserId}`, {
+      userName,
+    });
+
+    try {
+      // 使用 Playwright Locator API 查找所有会话项
+      const conversationItems = page.locator('[role="grid"] [role="listitem"]');
+      const count = await conversationItems.count();
+
+      logger.debug(`Found ${count} conversation items in virtual list`);
+
+      // 逐个检查会话项是否匹配目标用户
+      for (let i = 0; i < count; i++) {
+        const item = conversationItems.nth(i);
+        const text = await item.textContent();
+
+        logger.debug(`Checking conversation item ${i}: ${text?.substring(0, 50)}...`);
+
+        // 匹配条件: 用户名 或 用户 ID
+        if ((userName && text?.includes(userName)) ||
+            (platformUserId && text?.includes(platformUserId))) {
+          logger.info(`Located conversation for user ${platformUserId} at index ${i}`);
+          return item;
+        }
+      }
+
+      logger.warn(`No conversation found for user ${platformUserId}`);
+      return null;
+    } catch (error) {
+      logger.error('Error finding conversation by platform user:', error);
+      return null;
+    }
+  }
+
+  /**
+   * 在已打开的对话中定位具体消息 (Phase 9 新增)
+   * 用于精确定位要回复的消息
+   *
+   * @param {Page} page - Playwright 页面对象
+   * @param {string} platformMessageId - 平台消息 ID
+   * @param {Object} context - 上下文信息 (包含消息内容等)
+   * @returns {Promise<Locator|null>} 消息项的 Locator 或 null
+   */
+  async findMessageInConversation(page, platformMessageId, context) {
+    logger.debug(`Finding message in conversation: ${platformMessageId}`, {
+      contentSnippet: context?.message_content?.substring(0, 30),
+    });
+
+    try {
+      // 获取对话窗口中的所有消息项
+      const messageItems = page.locator('[role="list"] [role="listitem"]');
+      const count = await messageItems.count();
+
+      logger.debug(`Found ${count} message items in conversation`);
+
+      // 逐个检查消息项
+      for (let i = 0; i < count; i++) {
+        const item = messageItems.nth(i);
+        const text = await item.textContent();
+
+        logger.debug(`Checking message item ${i}: ${text?.substring(0, 50)}...`);
+
+        // 匹配条件: 消息 ID 或 消息内容
+        if ((platformMessageId && text?.includes(platformMessageId)) ||
+            (context?.message_content && text?.includes(context.message_content))) {
+          logger.info(`Located message ${platformMessageId} at index ${i}`);
+          return item;
+        }
+      }
+
+      logger.warn(`No message found with ID ${platformMessageId}`);
+      return null;
+    } catch (error) {
+      logger.error('Error finding message in conversation:', error);
+      return null;
+    }
+  }
+
+  /**
    * 清理资源
    * @param {string} accountId - 账户 ID
    */
