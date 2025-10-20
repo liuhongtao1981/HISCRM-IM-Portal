@@ -6,6 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { PATHS } = require('@hiscrm-im/shared/config/paths');
 
 const logger = createLogger('platform-manager');
 
@@ -19,9 +20,10 @@ class PlatformManager {
 
   /**
    * 自动扫描并加载平台脚本
+   * 使用共享的路径配置确保 Master 和 Worker 使用相同的平台目录
    */
   async loadPlatforms() {
-    const platformsDir = path.join(__dirname, 'platforms');
+    const platformsDir = PATHS.worker.platforms;
     
     try {
       const entries = fs.readdirSync(platformsDir, { withFileTypes: true });
