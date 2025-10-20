@@ -4,6 +4,7 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const debugConfig = require('../config/debug-config');
 
 const logger = createLogger('account-initializer');
 
@@ -174,11 +175,23 @@ class AccountInitializer {
    * @returns {Promise<void>}
    */
   async initializeAccounts(accounts) {
-    logger.info(`Initializing ${accounts.length} accounts...`);
+    // Debug 模式：只初始化第一个账号
+    let accountsToInitialize = accounts;
+
+    if (debugConfig.enabled && debugConfig.singleAccount.enabled) {
+      logger.info(`🔍 Debug 模式已启用：仅初始化第一个账号，其他账号浏览器将不启动`);
+      if (accounts.length > 1) {
+        logger.info(`   总共 ${accounts.length} 个账号，仅初始化第一个: ${accounts[0].id} (${accounts[0].account_name})`);
+        logger.info(`   其他 ${accounts.length - 1} 个账号将被跳过（用于测试）`);
+        accountsToInitialize = [accounts[0]];
+      }
+    }
+
+    logger.info(`Initializing ${accountsToInitialize.length} accounts...`);
 
     const results = [];
 
-    for (const account of accounts) {
+    for (const account of accountsToInitialize) {
       try {
         await this.initializeAccount(account);
         results.push({ accountId: account.id, success: true });
@@ -188,10 +201,26 @@ class AccountInitializer {
       }
     }
 
+    // 对于被跳过的账号，记录为已初始化但不启动浏览器
+    if (debugConfig.enabled && debugConfig.singleAccount.enabled && accounts.length > 1) {
+      for (let i = 1; i < accounts.length; i++) {
+        const account = accounts[i];
+        logger.info(`⏭️  Debug 模式：账号 ${account.id} 被跳过（仅作记录，不启动浏览器）`);
+        // 标记为已初始化（即使没有启动浏览器），这样任务系统仍然可以分配任务给这个账号
+        this.initializedAccounts.add(account.id);
+        results.push({ accountId: account.id, success: true, skipped: true, reason: 'Debug mode: only first account browser launched' });
+      }
+    }
+
     const successCount = results.filter(r => r.success).length;
+    const skippedCount = results.filter(r => r.skipped).length;
     const failCount = results.filter(r => !r.success).length;
 
-    logger.info(`Initialization complete: ${successCount} succeeded, ${failCount} failed`);
+    if (skippedCount > 0) {
+      logger.info(`Initialization complete: ${successCount - skippedCount} initialized, ${skippedCount} skipped (debug mode), ${failCount} failed`);
+    } else {
+      logger.info(`Initialization complete: ${successCount} succeeded, ${failCount} failed`);
+    }
 
     return results;
   }
