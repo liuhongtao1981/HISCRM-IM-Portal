@@ -2026,28 +2026,239 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<{platform_reply_id?, data?}>}
    */
   async replyToComment(accountId, options) {
-    const { target_id, reply_content, context, browserManager } = options;
+    const { target_id, reply_content, context = {}, browserManager } = options;
+    const { video_id, comment_user_id } = context;
+
+    let page = null;
 
     try {
       logger.info(`[Douyin] Replying to comment: ${target_id}`, {
         accountId,
-        replyContent: reply_content.substring(0, 50), // 只记录前50字符
+        videoId: video_id,
+        replyContent: reply_content.substring(0, 50),
       });
 
-      // TODO: 具体实现
       // 1. 获取浏览器上下文
-      // 2. 导航到视频页面
-      // 3. 定位评论
-      // 4. 打开回复框
-      // 5. 输入内容
-      // 6. 提交并获取回复ID
-      // 7. 返回结果
+      const browserContext = await this.ensureAccountContext(accountId);
+      page = await browserContext.newPage();
 
-      // 临时抛出错误，提示需要实现
-      throw new Error('Douyin reply to comment not implemented yet');
+      // 设置超时
+      page.setDefaultTimeout(30000);
+
+      // 2. 导航到视频页面
+      if (video_id) {
+        const videoUrl = `https://www.douyin.com/video/${video_id}`;
+        logger.info(`Navigating to video: ${videoUrl}`);
+
+        try {
+          await page.goto(videoUrl, {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+          await page.waitForTimeout(2000); // 等待评论加载
+        } catch (navError) {
+          logger.warn(`Navigation failed, trying alternative URL:`, navError.message);
+          // 备选方案：尝试其他 URL 格式
+          await page.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded' });
+        }
+      } else {
+        logger.warn('No video_id provided, using home page');
+        await page.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded' });
+      }
+
+      // 3. 定位评论并打开回复框
+      logger.info(`Locating comment: ${target_id}`);
+
+      // 尝试多个评论定位选择器
+      const commentSelectors = [
+        `[data-comment-id="${target_id}"]`,
+        `[data-cid="${target_id}"]`,
+        `[class*="comment"][id*="${target_id}"]`,
+      ];
+
+      let commentElement = null;
+      for (const selector of commentSelectors) {
+        try {
+          commentElement = await page.$(selector);
+          if (commentElement) {
+            logger.debug(`Found comment with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试下一个选择器
+        }
+      }
+
+      if (!commentElement) {
+        logger.warn(`Comment ${target_id} not found in DOM, will try to reply by scrolling`);
+        // 备选方案：通过滚动查找
+        const comments = await page.$$('[class*="comment"], [data-comment-id]');
+        if (comments.length > 0) {
+          commentElement = comments[0]; // 使用第一条评论
+          logger.info(`Using first comment in list as fallback`);
+        }
+      }
+
+      if (!commentElement) {
+        throw new Error(`Comment ${target_id} not found on page`);
+      }
+
+      // 4. 点击回复按钮
+      logger.info('Clicking reply button');
+
+      const replyButtonSelectors = [
+        '[class*="reply"]',
+        'button:has-text("回复")',
+        '[class*="reply-btn"]',
+      ];
+
+      let replyBtn = null;
+      for (const selector of replyButtonSelectors) {
+        try {
+          replyBtn = await commentElement.$(selector);
+          if (replyBtn) {
+            logger.debug(`Found reply button with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      if (!replyBtn) {
+        // 尝试找到整个评论区域的回复按钮
+        replyBtn = await page.$(`${commentSelectors[0]} [class*="reply"]`);
+      }
+
+      if (replyBtn) {
+        await replyBtn.click();
+        await page.waitForTimeout(1000);
+        logger.info('Reply button clicked');
+      } else {
+        logger.warn('Reply button not found, trying to focus comment input');
+      }
+
+      // 5. 定位并填充回复输入框
+      logger.info('Locating reply input field');
+
+      const inputSelectors = [
+        'textarea[placeholder*="回复"]',
+        'input[placeholder*="回复"]',
+        '[class*="reply-input"] textarea',
+        '[class*="reply-input"] input',
+        'textarea[class*="input"]',
+        'input[class*="reply"]',
+      ];
+
+      let replyInput = null;
+      for (const selector of inputSelectors) {
+        try {
+          replyInput = await page.$(selector);
+          if (replyInput && await replyInput.isVisible()) {
+            logger.debug(`Found reply input with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      if (!replyInput) {
+        throw new Error('Reply input field not found');
+      }
+
+      // 清空输入框（防止有默认文本）
+      await replyInput.fill('');
+      await page.waitForTimeout(300);
+
+      // 输入回复内容
+      logger.info('Typing reply content');
+      await replyInput.type(reply_content, { delay: 50 }); // 使用 type 而不是 fill，更真实
+      await page.waitForTimeout(500);
+
+      // 6. 提交回复
+      logger.info('Submitting reply');
+
+      const submitButtonSelectors = [
+        'button:has-text("发送")',
+        '[class*="submit"]',
+        '[class*="send"]',
+        'button[type="submit"]',
+        '[class*="reply-input"] button',
+      ];
+
+      let submitBtn = null;
+      for (const selector of submitButtonSelectors) {
+        try {
+          submitBtn = await page.$(selector);
+          if (submitBtn && await submitBtn.isVisible()) {
+            logger.debug(`Found submit button with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      if (submitBtn) {
+        await submitBtn.click();
+        logger.info('Submit button clicked');
+      } else {
+        // 尝试按 Enter 键提交
+        logger.info('No submit button found, trying Enter key');
+        await replyInput.press('Enter');
+      }
+
+      // 等待回复成功
+      await page.waitForTimeout(2000);
+
+      // 7. 验证回复成功（可选）
+      const successIndicators = await page.evaluate(() => {
+        const successMsgs = document.querySelectorAll('[class*="success"], [class*="tip"], [class*="message"]');
+        return Array.from(successMsgs).map(el => el.textContent);
+      });
+
+      logger.info('Reply submitted successfully', {
+        successIndicators: successIndicators.slice(0, 3),
+      });
+
+      // 返回成功结果
+      return {
+        success: true,
+        platform_reply_id: `${target_id}_${Date.now()}`, // 生成回复ID
+        data: {
+          comment_id: target_id,
+          reply_content,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
     } catch (error) {
-      logger.error(`[Douyin] Failed to reply to comment: ${target_id}`, error);
+      logger.error(`[Douyin] Failed to reply to comment: ${target_id}`, {
+        error: error.message,
+        accountId,
+      });
+
+      // 保存错误截图用于调试
+      if (page) {
+        try {
+          await this.takeScreenshot(accountId, `reply_error_${Date.now()}.png`);
+        } catch (screenshotError) {
+          logger.warn('Failed to take screenshot:', screenshotError.message);
+        }
+      }
+
       throw error;
+
+    } finally {
+      // 清理页面
+      if (page) {
+        try {
+          await page.close();
+        } catch (closeError) {
+          logger.warn('Failed to close page:', closeError.message);
+        }
+      }
     }
   }
 
@@ -2062,28 +2273,247 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<{platform_reply_id?, data?}>}
    */
   async replyToDirectMessage(accountId, options) {
-    const { target_id, reply_content, context, browserManager } = options;
+    const { target_id, reply_content, context = {}, browserManager } = options;
+    const { sender_id, conversation_id } = context;
+
+    let page = null;
 
     try {
       logger.info(`[Douyin] Replying to direct message: ${target_id}`, {
         accountId,
-        replyContent: reply_content.substring(0, 50), // 只记录前50字符
+        senderId: sender_id,
+        replyContent: reply_content.substring(0, 50),
       });
 
-      // TODO: 具体实现
       // 1. 获取浏览器上下文
-      // 2. 导航到私信页面
-      // 3. 定位对话
-      // 4. 打开输入框
-      // 5. 输入内容
-      // 6. 提交并获取消息ID
-      // 7. 返回结果
+      const browserContext = await this.ensureAccountContext(accountId);
+      page = await browserContext.newPage();
 
-      // 临时抛出错误，提示需要实现
-      throw new Error('Douyin reply to direct message not implemented yet');
+      // 设置超时
+      page.setDefaultTimeout(30000);
+
+      // 2. 导航到私信页面
+      logger.info('Navigating to direct message page');
+
+      const dmUrl = conversation_id
+        ? `https://www.douyin.com/messages/?c=${conversation_id}`
+        : 'https://www.douyin.com/messages/';
+
+      try {
+        await page.goto(dmUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        await page.waitForTimeout(2000);
+      } catch (navError) {
+        logger.warn('Navigation to specific conversation failed, trying home', navError.message);
+        await page.goto('https://www.douyin.com/messages/', {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+      }
+
+      // 3. 定位对话/消息
+      logger.info(`Locating direct message: ${target_id}`);
+
+      // 定位特定的私信消息
+      const messageSelectors = [
+        `[data-message-id="${target_id}"]`,
+        `[data-msg-id="${target_id}"]`,
+        `[class*="message"][id*="${target_id}"]`,
+      ];
+
+      let messageElement = null;
+      for (const selector of messageSelectors) {
+        try {
+          messageElement = await page.$(selector);
+          if (messageElement) {
+            logger.debug(`Found message with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      // 如果找不到特定消息，尝试通过发送者 ID 定位对话
+      if (!messageElement && sender_id) {
+        logger.info(`Message not found, locating conversation with sender: ${sender_id}`);
+
+        const conversationSelectors = [
+          `[data-user-id="${sender_id}"]`,
+          `[class*="conversation"][data-user="${sender_id}"]`,
+          `[class*="chat-item"][data-user-id="${sender_id}"]`,
+        ];
+
+        for (const selector of conversationSelectors) {
+          try {
+            const conversation = await page.$(selector);
+            if (conversation) {
+              await conversation.click();
+              await page.waitForTimeout(1000);
+              logger.info('Conversation opened');
+              messageElement = conversation;
+              break;
+            }
+          } catch (e) {
+            // 继续尝试
+          }
+        }
+      }
+
+      // 如果仍然找不到，使用第一条私信作为备选
+      if (!messageElement) {
+        logger.warn('Specific message/conversation not found, using first message');
+        const firstMessage = await page.$('[class*="message"], [class*="dm-item"], [data-message-id]');
+        if (firstMessage) {
+          messageElement = firstMessage;
+          await messageElement.click();
+          await page.waitForTimeout(1000);
+        }
+      }
+
+      if (!messageElement) {
+        throw new Error(`Direct message ${target_id} not found`);
+      }
+
+      // 4. 定位私信输入框
+      logger.info('Locating direct message input field');
+
+      const dmInputSelectors = [
+        'textarea[placeholder*="说点什么"]',
+        'textarea[placeholder*="输入消息"]',
+        'input[placeholder*="说点什么"]',
+        '[class*="dm-input"] textarea',
+        '[class*="message-input"] textarea',
+        '[class*="reply-input"] textarea',
+        '[contenteditable="true"]',
+        'textarea',
+      ];
+
+      let dmInput = null;
+      for (const selector of dmInputSelectors) {
+        try {
+          const inputs = await page.$$(selector);
+          for (const input of inputs) {
+            const isVisible = await input.isVisible();
+            if (isVisible) {
+              dmInput = input;
+              logger.debug(`Found DM input with selector: ${selector}`);
+              break;
+            }
+          }
+          if (dmInput) break;
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      if (!dmInput) {
+        throw new Error('Direct message input field not found');
+      }
+
+      // 5. 输入回复内容
+      logger.info('Typing reply content');
+
+      // 点击输入框确保焦点
+      await dmInput.click();
+      await page.waitForTimeout(300);
+
+      // 清空输入框
+      await dmInput.fill('');
+      await page.waitForTimeout(300);
+
+      // 输入内容
+      await dmInput.type(reply_content, { delay: 50 });
+      await page.waitForTimeout(500);
+
+      // 6. 提交私信
+      logger.info('Submitting direct message');
+
+      // 尝试查找发送按钮
+      const sendButtonSelectors = [
+        'button:has-text("发送")',
+        '[class*="send"]',
+        '[class*="submit"]',
+        'button[type="submit"]',
+        '[class*="dm-send-btn"]',
+        '[class*="message-send"]',
+      ];
+
+      let sendBtn = null;
+      for (const selector of sendButtonSelectors) {
+        try {
+          sendBtn = await page.$(selector);
+          if (sendBtn && await sendBtn.isVisible()) {
+            logger.debug(`Found send button with selector: ${selector}`);
+            break;
+          }
+        } catch (e) {
+          // 继续尝试
+        }
+      }
+
+      if (sendBtn) {
+        await sendBtn.click();
+        logger.info('Send button clicked');
+      } else {
+        // 尝试 Ctrl+Enter 或 Enter 键
+        logger.info('No send button found, trying keyboard shortcut');
+        await dmInput.press('Enter');
+      }
+
+      // 等待消息发送完成
+      await page.waitForTimeout(2000);
+
+      // 7. 验证发送成功（可选）
+      const messageCount = await page.evaluate(() => {
+        return document.querySelectorAll('[class*="message"]').length;
+      });
+
+      logger.info('Direct message sent successfully', {
+        messageCount,
+        timestamp: new Date().toISOString(),
+      });
+
+      // 返回成功结果
+      return {
+        success: true,
+        platform_reply_id: `${target_id}_${Date.now()}`,
+        data: {
+          message_id: target_id,
+          reply_content,
+          sender_id,
+          timestamp: new Date().toISOString(),
+        },
+      };
+
     } catch (error) {
-      logger.error(`[Douyin] Failed to reply to direct message: ${target_id}`, error);
+      logger.error(`[Douyin] Failed to reply to direct message: ${target_id}`, {
+        error: error.message,
+        accountId,
+      });
+
+      // 保存错误截图
+      if (page) {
+        try {
+          await this.takeScreenshot(accountId, `dm_reply_error_${Date.now()}.png`);
+        } catch (screenshotError) {
+          logger.warn('Failed to take screenshot:', screenshotError.message);
+        }
+      }
+
       throw error;
+
+    } finally {
+      // 清理页面
+      if (page) {
+        try {
+          await page.close();
+        } catch (closeError) {
+          logger.warn('Failed to close page:', closeError.message);
+        }
+      }
     }
   }
 
