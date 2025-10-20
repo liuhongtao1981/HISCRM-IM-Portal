@@ -2016,6 +2016,82 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
+   * 从虚拟列表中查找消息项 - 支持多维度匹配
+   * @param {Page} page - Playwright 页面
+   * @param {string} targetId - 目标消息 ID
+   * @param {Object} criteria - 匹配条件 { content, senderName, timeIndicator, index }
+   * @returns {Promise<ElementHandle>} 找到的消息项元素
+   */
+  async findMessageItemInVirtualList(page, targetId, criteria = {}) {
+    const messageItems = await page.$$('[role="grid"] [role="listitem"]');
+
+    if (messageItems.length === 0) {
+      throw new Error('虚拟列表中没有消息');
+    }
+
+    // 如果只有一条消息且没有指定条件，返回第一条
+    if (messageItems.length === 1 && !criteria.content) {
+      logger.warn('虚拟列表中只有一条消息，使用它作为目标');
+      return messageItems[0];
+    }
+
+    // 第一阶段：精确内容匹配
+    if (criteria.content) {
+      for (let i = 0; i < messageItems.length; i++) {
+        const itemText = await messageItems[i].textContent();
+
+        if (itemText.includes(criteria.content)) {
+          // 如果有其他条件，进行二次检查
+          if (criteria.senderName && !itemText.includes(criteria.senderName)) {
+            continue;
+          }
+          if (criteria.timeIndicator && !itemText.includes(criteria.timeIndicator)) {
+            continue;
+          }
+
+          logger.debug(`在索引 ${i} 找到精确匹配的消息`);
+          return messageItems[i];
+        }
+      }
+    }
+
+    // 第二阶段：ID 属性匹配
+    if (targetId && targetId !== 'first') {
+      for (let i = 0; i < messageItems.length; i++) {
+        const itemHTML = await messageItems[i].evaluate(el => el.outerHTML);
+        const itemText = await messageItems[i].textContent();
+
+        // 检查 ID 是否在 HTML 或文本中
+        if (itemHTML.includes(targetId) || itemText.includes(targetId)) {
+          logger.debug(`在索引 ${i} 找到 ID 匹配的消息`);
+          return messageItems[i];
+        }
+      }
+    }
+
+    // 第三阶段：发送者 + 时间模糊匹配
+    if (criteria.senderName && criteria.timeIndicator) {
+      for (let i = 0; i < messageItems.length; i++) {
+        const itemText = await messageItems[i].textContent();
+        if (itemText.includes(criteria.senderName) && itemText.includes(criteria.timeIndicator)) {
+          logger.debug(`在索引 ${i} 找到模糊匹配（发送者+时间）`);
+          return messageItems[i];
+        }
+      }
+    }
+
+    // 第四阶段：使用索引作为备选
+    if (typeof criteria.index === 'number' && criteria.index < messageItems.length) {
+      logger.warn(`使用索引备选方案：${criteria.index}`);
+      return messageItems[criteria.index];
+    }
+
+    // 最后备选：使用第一条消息
+    logger.warn(`未找到匹配的消息，使用第一条作为备选`);
+    return messageItems[0];
+  }
+
+  /**
    * 回复评论
    * @param {string} accountId - 账户 ID
    * @param {Object} options - 回复选项
@@ -2292,28 +2368,7 @@ class DouyinPlatform extends PlatformBase {
       // 设置超时
       page.setDefaultTimeout(30000);
 
-      // 2. 导航到私信页面
-      logger.info('Navigating to direct message page');
-
-      const dmUrl = conversation_id
-        ? `https://www.douyin.com/messages/?c=${conversation_id}`
-        : 'https://www.douyin.com/messages/';
-
-      try {
-        await page.goto(dmUrl, {
-          waitUntil: 'domcontentloaded',
-          timeout: 30000
-        });
-        await page.waitForTimeout(2000);
-      } catch (navError) {
-        logger.warn('Navigation to specific conversation failed, trying home', navError.message);
-        await page.goto('https://www.douyin.com/messages/', {
-          waitUntil: 'domcontentloaded',
-          timeout: 30000
-        });
-      }
-
-      // 2. 改为导航到创作者中心私信管理页面（已验证的真实页面）
+      // 2. 导航到创作者中心私信管理页面（已验证的真实页面）
       const dmUrl = 'https://creator.douyin.com/creator-micro/data/following/chat';
       logger.info('Navigating to creator center direct message management page');
 
@@ -2331,42 +2386,31 @@ class DouyinPlatform extends PlatformBase {
       // 3. 定位私信列表中的消息项（已验证：[role="grid"] [role="listitem"]）
       logger.info(`Locating message in list: ${target_id}`);
 
-      const messageItems = await page.$$('[role="grid"] [role="listitem"]');
-      logger.debug(`Found ${messageItems.length} message items in list`);
+      // 使用多维度匹配策略查找消息（优先级：内容 > ID > 发送者+时间 > 索引）
+      const searchCriteria = {
+        content: context.conversation_title,      // 从上下文获取对话主题
+        senderName: context.sender_name,          // 发送者名称
+        timeIndicator: context.message_time,      // 时间指示
+        index: 0                                  // 索引作为最后备选
+      };
 
-      if (messageItems.length === 0) {
-        throw new Error('No messages found in the private message list');
-      }
+      const targetMessageItem = await this.findMessageItemInVirtualList(
+        page,
+        target_id,
+        searchCriteria
+      );
 
-      // 4. 选择目标消息（如果 target_id 为 'first' 或未指定，使用第一条）
-      let targetMessageItem = null;
-
-      if (target_id && target_id !== 'first') {
-        // 尝试通过消息内容或数据属性精确定位
-        for (let i = 0; i < messageItems.length; i++) {
-          const itemText = await messageItems[i].textContent();
-          const itemHTML = await messageItems[i].evaluate(el => el.outerHTML);
-
-          if (itemHTML.includes(target_id) || itemText.includes(target_id)) {
-            targetMessageItem = messageItems[i];
-            logger.debug(`Found target message at index ${i}`);
-            break;
-          }
-        }
-      }
-
-      // 如果没找到特定消息，使用第一条
+      logger.debug(`Located target message item`);
       if (!targetMessageItem) {
-        logger.warn(`Message ${target_id || 'specified'} not found in list, using first message`);
-        targetMessageItem = messageItems[0];
+        throw new Error(`Failed to locate message ${target_id} in virtual list`);
       }
 
-      // 5. 点击消息项打开对话（已验证）
+      // 4. 点击消息项打开对话（已验证）
       logger.info('Clicking message item to open conversation');
       await targetMessageItem.click();
       await page.waitForTimeout(1500);
 
-      // 6. 定位输入框（已验证的选择器：div[contenteditable="true"]）
+      // 5. 定位输入框（已验证的选择器：div[contenteditable="true"]）
       logger.info('Locating message input field');
 
       const inputSelectors = [
@@ -2391,7 +2435,7 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Message input field (contenteditable div) not found');
       }
 
-      // 7. 激活输入框并清空
+      // 6. 激活输入框并清空
       logger.info('Activating input field');
       await dmInput.click();
       await page.waitForTimeout(500);
@@ -2400,12 +2444,12 @@ class DouyinPlatform extends PlatformBase {
       await dmInput.evaluate(el => el.textContent = '');
       await page.waitForTimeout(300);
 
-      // 8. 输入回复内容（已验证：使用 type 模拟真实输入）
+      // 7. 输入回复内容（已验证：使用 type 模拟真实输入）
       logger.info('Typing reply content');
       await dmInput.type(reply_content, { delay: 30 }); // 30ms 延迟
       await page.waitForTimeout(800);
 
-      // 9. 查找并点击发送按钮（已验证：button:has-text("发送")）
+      // 8. 查找并点击发送按钮（已验证：button:has-text("发送")）
       logger.info('Looking for send button');
 
       const sendBtn = await page.$('button:has-text("发送")');
@@ -2424,11 +2468,11 @@ class DouyinPlatform extends PlatformBase {
         await dmInput.press('Enter');
       }
 
-      // 10. 等待消息发送完成
+      // 9. 等待消息发送完成
       logger.info('Waiting for message to be sent');
       await page.waitForTimeout(2000);
 
-      // 11. 验证消息发送成功
+      // 10. 验证消息发送成功
       const messageVerified = await page.evaluate((content) => {
         const messageElements = document.querySelectorAll('[class*="message"], [role="listitem"]');
         return Array.from(messageElements).some(msg => msg.textContent.includes(content));
@@ -2436,7 +2480,7 @@ class DouyinPlatform extends PlatformBase {
 
       logger.info(`Message sent ${messageVerified ? 'and verified' : '(verification pending)'}`);
 
-      // 12. 返回成功结果
+      // 11. 返回成功结果
       return {
         success: true,
         platform_reply_id: `dm_${target_id || 'first'}_${Date.now()}`,
