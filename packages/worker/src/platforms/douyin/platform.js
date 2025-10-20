@@ -2023,7 +2023,15 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<ElementHandle>} 找到的消息项元素
    */
   async findMessageItemInVirtualList(page, targetId, criteria = {}) {
-    const messageItems = await page.$$('[role="grid"] [role="listitem"]');
+    // 正确的虚拟列表选择器（已验证）
+    // 抖音使用 ReactVirtualized，直接子元素是消息行，不是 [role="listitem"]
+    const innerContainer = await page.$('.ReactVirtualized__Grid__innerScrollContainer');
+
+    if (!innerContainer) {
+      throw new Error('虚拟列表容器未找到');
+    }
+
+    const messageItems = await innerContainer.$$(':scope > div');
 
     if (messageItems.length === 0) {
       throw new Error('虚拟列表中没有消息');
@@ -2255,24 +2263,35 @@ class DouyinPlatform extends PlatformBase {
       // 6. 提交回复
       logger.info('Submitting reply');
 
-      const submitButtonSelectors = [
-        'button:has-text("发送")',
-        '[class*="submit"]',
-        '[class*="send"]',
-        'button[type="submit"]',
-        '[class*="reply-input"] button',
-      ];
+      // 先尝试使用 JavaScript 查找发送按钮（更可靠）
+      let submitBtn = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        return buttons.find(btn =>
+          btn.textContent.includes('发送') ||
+          btn.textContent.includes('回复') ||
+          btn.getAttribute('type') === 'submit'
+        );
+      });
 
-      let submitBtn = null;
-      for (const selector of submitButtonSelectors) {
-        try {
-          submitBtn = await page.$(selector);
-          if (submitBtn && await submitBtn.isVisible()) {
-            logger.debug(`Found submit button with selector: ${selector}`);
-            break;
+      if (!submitBtn) {
+        // 备选选择器列表
+        const submitButtonSelectors = [
+          '[class*="submit"]',
+          '[class*="send"]',
+          'button[type="submit"]',
+          '[class*="reply-input"] button',
+        ];
+
+        for (const selector of submitButtonSelectors) {
+          try {
+            submitBtn = await page.$(selector);
+            if (submitBtn && await submitBtn.isVisible()) {
+              logger.debug(`Found submit button with selector: ${selector}`);
+              break;
+            }
+          } catch (e) {
+            // 继续尝试
           }
-        } catch (e) {
-          // 继续尝试
         }
       }
 
@@ -2449,16 +2468,32 @@ class DouyinPlatform extends PlatformBase {
       await dmInput.type(reply_content, { delay: 30 }); // 30ms 延迟
       await page.waitForTimeout(800);
 
-      // 8. 查找并点击发送按钮（已验证：button:has-text("发送")）
+      // 8. 查找并点击发送按钮（已验证的正确选择器）
       logger.info('Looking for send button');
 
-      const sendBtn = await page.$('button:has-text("发送")');
+      // CSS has-text() 不支持，需要使用 JavaScript 查找
+      const sendBtn = await page.evaluate(() => {
+        const buttons = Array.from(document.querySelectorAll('button'));
+        return buttons.find(btn => btn.textContent.includes('发送'));
+      });
 
       if (sendBtn) {
-        const isEnabled = await sendBtn.evaluate(btn => !btn.disabled);
+        const isEnabled = await page.evaluate(btn => !btn.disabled, sendBtn);
         if (isEnabled) {
           logger.info('Clicking send button');
-          await sendBtn.click();
+          await page.click('button:visible');
+          // 备选：使用 locator 点击
+          try {
+            const btn = await page.locator('button').filter({ hasText: '发送' }).first();
+            await btn.click();
+          } catch (e) {
+            logger.debug('Locator click failed, trying evaluate click');
+            await page.evaluate(() => {
+              const buttons = Array.from(document.querySelectorAll('button'));
+              const btn = buttons.find(b => b.textContent.includes('发送'));
+              btn?.click();
+            });
+          }
         } else {
           logger.info('Send button is disabled, trying Enter key');
           await dmInput.press('Enter');
