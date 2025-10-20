@@ -11,9 +11,10 @@
 1. [快速开始](#快速开始)
 2. [平台系统设计](#平台系统设计)
 3. [实现步骤](#实现步骤)
-4. [完整代码示例](#完整代码示例)
-5. [测试和验证](#测试和验证)
-6. [常见问题](#常见问题)
+4. [回复功能支持](#回复功能支持)
+5. [完整代码示例](#完整代码示例)
+6. [测试和验证](#测试和验证)
+7. [常见问题](#常见问题)
 
 ---
 
@@ -438,6 +439,139 @@ module.exports = XiaohongshuPlatform;
 | `crawlDirectMessages(account)` | Promise\<Array\> | 爬取私信 | 返回私信列表 |
 | `cleanup(accountId)` | Promise\<void\> | 清理账户资源 | 关闭浏览器、清空缓存 |
 
+#### 🔵 回复功能相关的方法（可选，如支持回复功能）
+
+| 方法名 | 返回类型 | 说明 | 参数 |
+|--------|---------|------|------|
+| `replyToComment(options)` | Promise\<Object\> | 回复评论 | {accountId, commentId, targetId, content, replyType} |
+| `replyToDirectMessage(options)` | Promise\<Object\> | 回复私信 | {accountId, messageId, senderId, content} |
+| `canReply(accountId, type)` | Promise\<Boolean\> | 检查是否支持回复 | type: 'comment' \| 'message' |
+
+**回复功能实现说明**:
+```javascript
+/**
+ * 回复评论
+ * @param {Object} options
+ * @param {string} options.accountId - 账户ID
+ * @param {string} options.commentId - 评论ID
+ * @param {string} options.targetId - 目标ID (帖子/视频ID)
+ * @param {string} options.content - 回复内容
+ * @param {string} options.replyType - 回复类型 ('reply'|'mention'|'quote')
+ * @returns {Promise<Object>} {success: boolean, replyId?: string, error?: string}
+ */
+async replyToComment({ accountId, commentId, targetId, content, replyType }) {
+  try {
+    this.logger.info(`Replying to comment ${commentId}`);
+
+    const context = await this.getAccountContext(accountId);
+    const page = await context.newPage();
+
+    try {
+      // 1. 导航到评论所在的帖子/视频页面
+      await page.goto(`${this.config.urls.home}/post/${targetId}`);
+
+      // 2. 找到并点击评论的回复按钮
+      const replyButton = await page.$(`[data-comment-id="${commentId}"] [class*="reply-btn"]`);
+      if (!replyButton) throw new Error('Reply button not found');
+
+      await replyButton.click();
+
+      // 3. 等待回复框出现
+      await page.waitForSelector('[class*="reply-input"]', { timeout: 5000 });
+
+      // 4. 输入回复内容
+      const replyInput = await page.$('[class*="reply-input"]');
+      await replyInput.type(content, { delay: 50 });
+
+      // 5. 提交回复
+      const submitBtn = await page.$('[class*="reply-submit"]');
+      await submitBtn.click();
+
+      // 6. 等待成功提示
+      await page.waitForSelector('[class*="success-message"]', { timeout: 10000 });
+
+      this.logger.info(`Successfully replied to comment ${commentId}`);
+      return { success: true };
+
+    } finally {
+      await page.close();
+    }
+
+  } catch (error) {
+    this.logger.error(`Failed to reply to comment: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 回复私信
+ * @param {Object} options
+ * @param {string} options.accountId - 账户ID
+ * @param {string} options.messageId - 私信ID
+ * @param {string} options.senderId - 发送者ID
+ * @param {string} options.content - 回复内容
+ * @returns {Promise<Object>} {success: boolean, messageId?: string, error?: string}
+ */
+async replyToDirectMessage({ accountId, messageId, senderId, content }) {
+  try {
+    this.logger.info(`Replying to message ${messageId} from ${senderId}`);
+
+    const context = await this.getAccountContext(accountId);
+    const page = await context.newPage();
+
+    try {
+      // 1. 导航到私信页面
+      await page.goto(`${this.config.urls.home}/dm`);
+
+      // 2. 找到对应的私信会话
+      await page.click(`[data-user-id="${senderId}"]`);
+
+      // 3. 等待消息输入框加载
+      await page.waitForSelector('[class*="message-input"]', { timeout: 5000 });
+
+      // 4. 输入回复内容
+      const input = await page.$('[class*="message-input"]');
+      await input.type(content, { delay: 50 });
+
+      // 5. 发送消息
+      const sendBtn = await page.$('[class*="message-send"]');
+      await sendBtn.click();
+
+      // 6. 验证消息已发送
+      await page.waitForSelector('[class*="message-sent"]', { timeout: 10000 });
+
+      this.logger.info(`Successfully replied to message ${messageId}`);
+      return { success: true };
+
+    } finally {
+      await page.close();
+    }
+
+  } catch (error) {
+    this.logger.error(`Failed to reply to message: ${error.message}`);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
+ * 检查是否支持某类型的回复
+ */
+async canReply(accountId, type) {
+  try {
+    // 检查账户是否已登录且有权限进行该操作
+    const context = await this.getAccountContext(accountId);
+    if (!context) return false;
+
+    // type: 'comment' | 'message'
+    return type === 'comment' || type === 'message';
+
+  } catch (error) {
+    this.logger.error(`Error checking reply capability: ${error.message}`);
+    return false;
+  }
+}
+```
+
 #### 🟡 可选的辅助方法
 
 | 方法名 | 返回类型 | 说明 |
@@ -539,6 +673,187 @@ async extractDirectMessages(account, context) {
     await page.close();
   }
 }
+```
+
+---
+
+## 回复功能支持
+
+### 概述
+
+如果你的平台想支持**自动回复**功能（回复评论或私信），需要实现以下三个方法。这些方法将由 Master 服务器中的 ReplyExecutor 调用。
+
+### 工作流程
+
+```
+Master ReplyExecutor (packages/master/src/handlers/reply-executor.js)
+    │
+    ├─→ 检查回复任务 (reply_type, target_id, account_id)
+    │
+    ├─→ 从数据库获取回复详情
+    │
+    ├─→ 发送回复任务到 Worker (Socket: worker:execute_reply)
+    │
+    └─→ Worker 执行回复
+            │
+            ├─→ 调用 platform.replyToComment() 或 platform.replyToDirectMessage()
+            │
+            ├─→ 返回执行结果 (成功/失败 + 详情)
+            │
+            └─→ Master 更新回复状态 (成功/失败)
+```
+
+### 实现快速指南
+
+#### 1. 在 PlatformBase 中声明回复方法
+
+大多数平台共同的回复逻辑已在 PlatformBase 中，但平台特定的实现需要在你的平台类中重写：
+
+```javascript
+class MyPlatform extends PlatformBase {
+  /**
+   * 平台特定的回复实现
+   * PlatformBase 会委托给这些方法
+   */
+  async _replyToCommentImpl(options) {
+    // 你的平台特定的回复逻辑
+  }
+
+  async _replyToDirectMessageImpl(options) {
+    // 你的平台特定的直消息回复逻辑
+  }
+}
+```
+
+#### 2. 处理不同的回复类型
+
+```javascript
+async replyToComment({ accountId, commentId, targetId, content, replyType = 'reply' }) {
+  // replyType 可能的值:
+  // - 'reply': 普通回复
+  // - 'mention': @某人的回复
+  // - 'quote': 引用回复
+
+  if (replyType === 'mention') {
+    // 处理 @mention 格式
+  } else if (replyType === 'quote') {
+    // 处理引用回复
+  }
+  // ...
+}
+```
+
+#### 3. 错误处理和重试
+
+```javascript
+async replyToComment(options) {
+  const maxRetries = 3;
+  let lastError;
+
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      // 执行回复
+      return await this._executeReply(options);
+    } catch (error) {
+      lastError = error;
+      this.logger.warn(`Reply attempt ${i + 1} failed: ${error.message}`);
+
+      if (i < maxRetries - 1) {
+        // 指数退避重试
+        await new Promise(r => setTimeout(r, Math.pow(2, i) * 1000));
+      }
+    }
+  }
+
+  throw lastError;
+}
+```
+
+#### 4. 幂等性保证
+
+```javascript
+async replyToComment({ accountId, commentId, targetId, content, replyId }) {
+  // 使用 replyId 检查是否已经回复过
+  const existingReply = await this.checkReplyExists(replyId);
+  if (existingReply) {
+    this.logger.info(`Reply ${replyId} already exists, skipping`);
+    return { success: true, replyId, duplicate: true };
+  }
+
+  // 执行回复...
+}
+```
+
+### 与 ReplyExecutor 的集成
+
+Master 的 ReplyExecutor 会按以下方式调用你的平台方法：
+
+```javascript
+// packages/master/src/handlers/reply-executor.js
+const result = await platform.replyToComment({
+  accountId: reply.account_id,
+  commentId: reply.comment_id,
+  targetId: reply.target_id,
+  content: reply.content,
+  replyType: reply.reply_type,
+  replyId: reply.id  // 用于幂等性检查
+});
+
+// 或者
+const result = await platform.replyToDirectMessage({
+  accountId: reply.account_id,
+  messageId: reply.message_id,
+  senderId: reply.sender_id,
+  content: reply.content,
+  replyId: reply.id
+});
+```
+
+### 数据库信息
+
+回复数据存储在 Master 的 `replies` 表中：
+
+```sql
+-- 回复表结构 (packages/master/src/database/migrations/015_add_replies_table.sql)
+CREATE TABLE replies (
+  id                TEXT PRIMARY KEY,
+  account_id        TEXT NOT NULL,          -- 回复者账户ID
+  comment_id        TEXT,                   -- 评论ID (如果是回复评论)
+  target_id         TEXT,                   -- 目标帖子/视频ID
+  message_id        TEXT,                   -- 私信ID (如果是回复私信)
+  sender_id         TEXT,                   -- 发送者ID (针对私信回复)
+  content           TEXT NOT NULL,          -- 回复内容
+  reply_type        TEXT DEFAULT 'reply',   -- reply|mention|quote
+  platform          TEXT NOT NULL,          -- 平台名称
+  status            TEXT DEFAULT 'pending', -- pending|success|failed
+  created_at        INTEGER NOT NULL,       -- 创建时间戳
+  executed_at       INTEGER,                -- 执行时间戳
+  error_message     TEXT,                   -- 错误信息
+  reply_id          TEXT,                   -- 平台返回的回复ID (用于幂等性)
+  is_new            INTEGER DEFAULT 1       -- 是否为新数据 (用于增量检测)
+);
+```
+
+### 测试回复功能
+
+```bash
+# 1. 启动 Master
+npm run start:master
+
+# 2. 启动 Worker
+npm run start:worker
+
+# 3. 创建测试回复 (在 Master 数据库中)
+sqlite3 packages/master/data/master.db << EOF
+INSERT INTO replies (id, account_id, comment_id, target_id, content, reply_type, platform, status, created_at)
+VALUES ('reply-001', 'account-1', 'comment-123', 'post-456', '测试回复', 'reply', 'douyin', 'pending', $(date +%s));
+EOF
+
+# 4. 手动触发回复执行器 (在 Master 端)
+# 或通过 Admin Web UI 创建回复任务
+
+# 5. 查看回复执行结果
+sqlite3 packages/master/data/master.db "SELECT id, status, error_message FROM replies WHERE id='reply-001';"
 ```
 
 ---
@@ -799,6 +1114,14 @@ class ConnectionPool {
 - [ ] 实现 `handleQRCodeLogin(page, ...)` 方法，处理二维码登录
 - [ ] 实现 `extractComments()` 或 `extractDirectMessages()` 辅助方法
 - [ ] 实现 `extractUserInfo(page)` 方法，登录后提取用户信息
+
+**回复功能实现（可选，支持自动回复）**:
+- [ ] 实现 `replyToComment({accountId, commentId, targetId, content, replyType})` 方法
+- [ ] 实现 `replyToDirectMessage({accountId, messageId, senderId, content})` 方法
+- [ ] 实现 `canReply(accountId, type)` 方法，检查是否支持回复
+- [ ] 处理不同的回复类型 (reply|mention|quote)
+- [ ] 实现错误处理和重试机制
+- [ ] 实现幂等性保证（避免重复回复）
 
 **质量保证（必须）**:
 - [ ] 添加完整的错误处理和重试机制

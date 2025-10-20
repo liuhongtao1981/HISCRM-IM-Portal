@@ -1,20 +1,27 @@
-# Worker 系统完整文档 - 第一部分
+# Worker 系统完整文档
 
-**版本**: 1.0.0
-**日期**: 2025-10-18
+**版本**: 2.0.0
+**日期**: 2025-10-20
 **模块**: Worker (浏览器自动化和爬虫)
 **端口**: 4000-4099 (根据 WORKER_ID)
 **数据存储**: packages/worker/data/browser/
 
 ---
 
-## 目录 (第一部分)
+## 目录
 
 1. [系统概述](#系统概述)
 2. [架构设计](#架构设计)
 3. [核心模块](#核心模块)
 4. [多Browser架构](#多browser架构)
 5. [平台系统](#平台系统)
+6. [任务管理](#任务管理)
+7. [Socket.IO 通信](#socketio-通信)
+8. [数据存储](#数据存储)
+9. [错误处理](#错误处理)
+10. [部署运维](#部署运维)
+11. [常见问题](#常见问题)
+12. [性能优化和安全](#性能优化和安全)
 
 ---
 
@@ -32,6 +39,7 @@ Worker 是系统的**执行节点**，负责：
 - ✅ **指纹管理** - 浏览器指纹隔离和持久化
 - ✅ **代理支持** - 支持 HTTP/HTTPS/Socks5 代理
 - ✅ **心跳上报** - 定期向 Master 发送心跳和数据
+- ✅ **回复执行** - 执行自动回复任务（评论和私信）✨
 
 ### 技术栈
 
@@ -814,8 +822,434 @@ class MonitorTask {
 
 ---
 
-**文档版本**: 1.0.0
-**最后更新**: 2025-10-18
-**维护者**: 开发团队
+## 任务管理
 
-[继续查看第二部分: 任务管理、通信流程、部署说明]
+### TaskRunner 任务执行器
+
+```javascript
+class TaskRunner {
+  constructor() {
+    this.tasks = new Map();      // accountId -> MonitorTask
+    this.timers = new Map();     // accountId -> timeoutId
+  }
+
+  addTask(accountId, task) {
+    if (this.tasks.has(accountId)) {
+      logger.warn(`Task already exists for account ${accountId}`);
+      return;
+    }
+
+    this.tasks.set(accountId, task);
+    this.scheduleTask(accountId, task);
+    logger.info(`Task added for account ${accountId}`);
+  }
+
+  removeTask(accountId) {
+    if (!this.tasks.has(accountId)) {
+      return;
+    }
+
+    const timerId = this.timers.get(accountId);
+    if (timerId) {
+      clearTimeout(timerId);
+      this.timers.delete(accountId);
+    }
+
+    this.tasks.delete(accountId);
+    logger.info(`Task removed for account ${accountId}`);
+  }
+
+  scheduleTask(accountId, task) {
+    const timerId = setTimeout(() => {
+      task.run().then(() => {
+        this.scheduleTask(accountId, task);
+      }).catch(error => {
+        logger.error(`Task execution failed for ${accountId}:`, error);
+        this.scheduleTask(accountId, task);
+      });
+    }, task.interval);
+
+    this.timers.set(accountId, timerId);
+  }
+
+  getActiveTasks() {
+    return Array.from(this.tasks.keys());
+  }
+
+  async stopAll() {
+    for (const [accountId] of this.tasks) {
+      this.removeTask(accountId);
+    }
+  }
+}
+
+const taskRunner = new TaskRunner();
+```
+
+### ReplyExecutor 回复任务执行器 ✨
+
+```javascript
+class ReplyExecutor {
+  constructor(platformManager, socketClient) {
+    this.platformManager = platformManager;
+    this.socketClient = socketClient;
+    this.logger = createLogger('reply-executor', './logs');
+  }
+
+  /**
+   * 执行回复任务
+   * @param {Object} data - 回复数据
+   * @param {string} data.reply_id - 回复ID
+   * @param {string} data.account_id - 账户ID
+   * @param {string} data.platform - 平台名称
+   * @param {string} data.reply_type - 回复类型 (comment|message)
+   * @param {string} data.content - 回复内容
+   * @param {string} data.comment_id - 评论ID (如果是评论回复)
+   * @param {string} data.target_id - 目标ID (帖子/视频ID)
+   * @param {string} data.message_id - 私信ID (如果是私信回复)
+   * @param {string} data.sender_id - 发送者ID (如果是私信回复)
+   */
+  async execute(data) {
+    const { reply_id, account_id, platform, reply_type, content } = data;
+
+    try {
+      this.logger.info(`Executing reply ${reply_id} for account ${account_id}`);
+
+      const platformInstance = this.platformManager.getPlatform(platform);
+      if (!platformInstance) {
+        throw new Error(`Platform ${platform} not found`);
+      }
+
+      // 检查平台是否支持回复
+      if (!await platformInstance.canReply(account_id, reply_type)) {
+        throw new Error(`Platform ${platform} does not support ${reply_type} reply`);
+      }
+
+      let result;
+
+      // 根据回复类型执行不同的回复方法
+      if (reply_type === 'comment') {
+        result = await platformInstance.replyToComment({
+          accountId: account_id,
+          commentId: data.comment_id,
+          targetId: data.target_id,
+          content,
+          replyType: data.reply_type_detail || 'reply',
+          replyId: reply_id
+        });
+      } else if (reply_type === 'message') {
+        result = await platformInstance.replyToDirectMessage({
+          accountId: account_id,
+          messageId: data.message_id,
+          senderId: data.sender_id,
+          content,
+          replyId: reply_id
+        });
+      } else {
+        throw new Error(`Unknown reply type: ${reply_type}`);
+      }
+
+      // 上报成功
+      this.logger.info(`Reply ${reply_id} executed successfully`);
+      await this.socketClient.sendReplyResult(reply_id, true, {
+        executed_at: Math.floor(Date.now() / 1000),
+        platform_reply_id: result.replyId || result.id
+      });
+
+    } catch (error) {
+      this.logger.error(`Failed to execute reply ${reply_id}:`, error);
+
+      // 上报失败
+      await this.socketClient.sendReplyResult(reply_id, false, {
+        error_message: error.message,
+        executed_at: Math.floor(Date.now() / 1000)
+      });
+    }
+  }
+}
+```
+
+---
+
+## Socket.IO 通信
+
+### 消息协议
+
+**Worker → Master**:
+
+```javascript
+// 1. 注册 Worker
+socket.emit('worker:register', {
+  workerId: 'worker-1',
+  host: '127.0.0.1',
+  port: 4000,
+  capabilities: ['douyin', 'xiaohongshu'],
+  maxAccounts: 10,
+  version: '1.0.0'
+});
+
+// 2. 心跳
+socket.emit('worker:heartbeat', {
+  workerId: 'worker-1',
+  stats: {
+    activeAccounts: 2,
+    memoryUsage: 512,
+    cpuUsage: 15.5
+  },
+  timestamp: Date.now()
+});
+
+// 3. 发送二维码
+socket.emit('worker:login:qrcode', {
+  session_id: 'session-xxx',
+  qr_code_data: 'data:image/png;base64,...',
+  account_id: 'account-xxx'
+});
+
+// 4. 登录状态更新
+socket.emit('worker:login:status', {
+  session_id: 'session-xxx',
+  status: 'success',
+  cookies: [...],
+  user_info: {...},
+  fingerprint: {...}
+});
+
+// 5. 发送监控数据
+socket.emit('worker:message:detected', {
+  type: 'comment',
+  account_id: 'account-xxx',
+  messages: [...]
+});
+
+// 6. 发送回复结果 ✨
+socket.emit('worker:reply:result', {
+  reply_id: 'reply-001',
+  success: true,
+  error_message: null,
+  platform_reply_id: 'platform-reply-123',
+  executed_at: 1700000000
+});
+```
+
+**Master → Worker**:
+
+```javascript
+// 1. 登录请求
+socket.on('master:login:start', (data) => {
+  // data: {
+  //   account_id, session_id, platform, proxy
+  // }
+});
+
+// 2. 任务分配
+socket.on('master:task:assign', (data) => {
+  // data: { accounts: [...] }
+});
+
+// 3. 任务撤销
+socket.on('master:task:revoke', (data) => {
+  // data: { accountIds: [...] }
+});
+
+// 4. 回复任务执行 ✨
+socket.on('master:reply:execute', (data) => {
+  // data: {
+  //   reply_id, account_id, platform, reply_type, content,
+  //   comment_id, target_id, message_id, sender_id
+  // }
+});
+```
+
+---
+
+## 数据存储
+
+### 文件结构
+
+```
+packages/worker/data/browser/
+├── worker-1/
+│   ├── fingerprints/
+│   │   ├── account-123_fingerprint.json
+│   │   └── account-456_fingerprint.json
+│   ├── storage-states/
+│   │   ├── account-123_storage.json
+│   │   └── account-456_storage.json
+│   ├── contexts/
+│   │   ├── account-123/
+│   │   └── account-456/
+│   ├── browser_account-123/
+│   ├── browser_account-456/
+│   └── screenshots/
+```
+
+---
+
+## 错误处理
+
+### 错误分类
+
+```javascript
+class ErrorHandler {
+  static isNetworkError(error) {
+    return error.message.includes('ERR_') ||
+           error.message.includes('ECONNREFUSED');
+  }
+
+  static isTimeoutError(error) {
+    return error.message.includes('Timeout') ||
+           error.message.includes('timed out');
+  }
+
+  static isElementNotFound(error) {
+    return error.message.includes('Selector') ||
+           error.message.includes('not found');
+  }
+}
+```
+
+### 重试机制
+
+```javascript
+class RetryManager {
+  static async retry(fn, options = {}) {
+    const {
+      maxRetries = 3,
+      delay = 1000,
+      backoff = 2,
+      onRetry = null
+    } = options;
+
+    let lastError;
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastError = error;
+
+        if (attempt < maxRetries) {
+          const waitTime = delay * Math.pow(backoff, attempt);
+          logger.warn(
+            `Attempt ${attempt + 1} failed, retrying in ${waitTime}ms:`,
+            error.message
+          );
+
+          if (onRetry) {
+            onRetry(attempt, error);
+          }
+
+          await sleep(waitTime);
+        }
+      }
+    }
+
+    throw lastError;
+  }
+}
+```
+
+---
+
+## 部署运维
+
+### 启动命令
+
+**开发环境**:
+```bash
+cd packages/worker
+WORKER_ID=worker-1 PORT=4000 npm start
+
+# 多个 Worker
+WORKER_ID=worker-1 PORT=4000 npm start &
+WORKER_ID=worker-2 PORT=4001 npm start &
+```
+
+**生产环境 (PM2)**:
+```bash
+pm2 start packages/worker/src/index.js \
+  --name "hiscrm-worker-1" \
+  --env WORKER_ID=worker-1 \
+  --env PORT=4000 \
+  --env NODE_ENV=production
+
+pm2 list
+pm2 logs hiscrm-worker-1
+pm2 restart hiscrm-worker-1
+```
+
+### 环境变量
+
+```bash
+WORKER_ID=worker-1
+PORT=4000
+MASTER_HOST=localhost
+MASTER_PORT=3000
+NODE_ENV=production
+LOG_LEVEL=info
+MAX_ACCOUNTS=10
+HEADLESS=true
+DATA_DIR=./data/browser
+```
+
+---
+
+## 常见问题
+
+### Q1: Browser 启动失败
+
+```bash
+npx playwright install
+npm ls
+```
+
+### Q2: 内存泄漏
+- 检查浏览器是否正确关闭
+- 清理旧的 Browser 实例
+- 限制活跃任务数
+
+### Q3: 网络超时
+- 检查网络连接
+- 尝试使用代理
+- 增加超时时间
+
+### Q4: 登录失败
+- 检查选择器是否正确
+- 查看调试截图
+- 尝试关闭无头模式
+
+---
+
+## 性能优化和安全
+
+### 性能优化
+
+```javascript
+// 定期清理未使用的 Browser
+setInterval(async () => {
+  const activeTasks = taskRunner.getActiveTasks();
+  const allBrowsers = browserManager.getBrowserIds();
+
+  for (const browserId of allBrowsers) {
+    if (!activeTasks.includes(browserId)) {
+      await browserManager.closeBrowser(browserId);
+    }
+  }
+}, 300000);  // 每5分钟检查一次
+
+// 限制同时爬取数量
+const MAX_CONCURRENT = 3;
+```
+
+### 安全建议
+
+- **Cookie 加密** - 使用 AES-256-CBC 加密敏感数据
+- **指纹隔离** - 每账户独立的浏览器指纹
+- **代理验证** - 验证代理配置的有效性
+
+---
+
+**文档版本**: 2.0.0
+**最后更新**: 2025-10-20
+**维护者**: 开发团队
