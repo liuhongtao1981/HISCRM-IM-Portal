@@ -44,6 +44,41 @@ class ReplyExecutor {
   }
 
   /**
+   * 规范化回复请求参数 (Phase 9: 支持新旧两种格式)
+   * 向后兼容: target_id 可能是 platform_message_id (Phase 8) 或 conversation_id (Phase 9)
+   *
+   * @param {Object} request - 原始请求对象
+   * @returns {Object} 规范化后的请求对象
+   */
+  normalizeReplyRequest(request) {
+    const {
+      target_id,           // Phase 8: platform_message_id 或 Phase 9: conversation_id
+      conversation_id,     // Phase 9 新增
+      platform_message_id, // Phase 9 新增
+      ...rest
+    } = request;
+
+    // Phase 9 优先级: conversation_id > target_id
+    const finalConversationId = conversation_id || target_id;
+    const finalPlatformMessageId = platform_message_id ||
+                                   (conversation_id ? null : target_id);
+
+    logger.debug('Normalized reply request', {
+      originalTargetId: target_id,
+      finalConversationId,
+      finalPlatformMessageId,
+      hasNewFormat: !!conversation_id || !!platform_message_id,
+    });
+
+    return {
+      ...rest,
+      target_id,  // 保留原始值以兼容调试
+      conversation_id: finalConversationId,
+      platform_message_id: finalPlatformMessageId,
+    };
+  }
+
+  /**
    * 检查是否已经处理过该请求
    */
   isRequestAlreadyProcessing(requestId) {
@@ -51,19 +86,34 @@ class ReplyExecutor {
   }
 
   /**
-   * 执行回复
+   * 执行回复 (Phase 9 改进版)
    * @param {Object} replyRequest - 回复请求对象
    *   - reply_id: string
    *   - request_id: string
    *   - platform: string ('douyin', 'xiaohongshu', etc.)
    *   - account_id: string
    *   - target_type: string ('comment' | 'direct_message')
-   *   - target_id: string
+   *   - target_id: string (向后兼容，旧版本为 platform_message_id)
+   *   - conversation_id: string (Phase 9 新增，私信用)
+   *   - platform_message_id: string (Phase 9 新增，私信用，可选)
    *   - reply_content: string
    *   - context: object
    */
   async executeReply(replyRequest) {
-    const { reply_id, request_id, platform, account_id, target_type, target_id, reply_content, context } = replyRequest;
+    // Phase 9: 规范化回复请求参数 (支持新旧两种格式)
+    const normalizedRequest = this.normalizeReplyRequest(replyRequest);
+    const {
+      reply_id,
+      request_id,
+      platform,
+      account_id,
+      target_type,
+      target_id,           // 向后兼容
+      conversation_id,     // Phase 9 新增
+      platform_message_id, // Phase 9 新增
+      reply_content,
+      context
+    } = normalizedRequest;
 
     try {
       logger.info(`Executing reply: ${reply_id}`, {
@@ -112,8 +162,11 @@ class ReplyExecutor {
           browserManager: this.browserManager,
         });
       } else if (target_type === 'direct_message') {
+        // Phase 9: 传递新的参数 (conversation_id + platform_message_id)
         result = await platformInstance.replyToDirectMessage(account_id, {
-          target_id,
+          target_id,           // 向后兼容
+          conversation_id,     // Phase 9 新增
+          platform_message_id, // Phase 9 新增 (可选)
           reply_content,
           context,
           browserManager: this.browserManager,

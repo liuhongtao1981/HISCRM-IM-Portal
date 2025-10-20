@@ -2423,14 +2423,28 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<{platform_reply_id?, data?}>}
    */
   async replyToDirectMessage(accountId, options) {
-    const { target_id, reply_content, context = {}, browserManager } = options;
-    const { sender_id, conversation_id } = context;
+    // Phase 9: 支持新的参数结构 (conversation_id 为主标识)
+    const {
+      target_id,           // 向后兼容
+      conversation_id,     // Phase 9 新增 (优先使用)
+      platform_message_id, // Phase 9 新增 (可选，用于精确定位消息)
+      reply_content,
+      context = {},
+      browserManager
+    } = options;
+
+    // 确定最终使用的会话 ID
+    const finalConversationId = conversation_id || target_id;
+    const finalPlatformMessageId = platform_message_id;
+    const { sender_id, platform_user_id } = context;
 
     let page = null;
 
     try {
-      logger.info(`[Douyin] Replying to direct message: ${target_id}`, {
+      logger.info(`[Douyin] Replying to conversation: ${finalConversationId}`, {
         accountId,
+        conversationId: finalConversationId,
+        platformMessageId: finalPlatformMessageId,  // Phase 9: 新增
         senderId: sender_id,
         replyContent: reply_content.substring(0, 50),
       });
