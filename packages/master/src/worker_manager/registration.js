@@ -175,14 +175,17 @@ class WorkerRegistry {
    * @returns {Object} 格式化后的账号数据
    */
   _formatAccountForWorker(account) {
-    // 解析 credentials (包含 cookies 和 fingerprint)
+    // 解析 credentials (JSON格式)
     let parsedCredentials = {};
     try {
-      parsedCredentials = typeof account.credentials === 'string'
-        ? JSON.parse(account.credentials)
-        : account.credentials || {};
+      if (typeof account.credentials === 'string') {
+        parsedCredentials = JSON.parse(account.credentials);
+      } else if (typeof account.credentials === 'object') {
+        parsedCredentials = account.credentials || {};
+      }
     } catch (error) {
-      logger.error(`Failed to parse credentials for account ${account.id}:`, error);
+      logger.warn(`Failed to parse credentials for account ${account.id}: ${error.message}`);
+      parsedCredentials = {};
     }
 
     // 解析 user_info

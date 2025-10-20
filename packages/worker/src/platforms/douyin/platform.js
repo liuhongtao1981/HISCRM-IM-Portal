@@ -21,8 +21,7 @@ class DouyinPlatform extends PlatformBase {
     // 复用现有的登录处理器（传入 bridge 的 socket）
     this.loginHandler = new DouyinLoginHandler(browserManager, workerBridge.socket);
 
-    // 爬虫状态
-    this.currentPage = null;
+    // ⭐ 页面现在由 BrowserManager 统一管理，不再需要 this.currentPage
   }
 
   /**
@@ -55,8 +54,8 @@ class DouyinPlatform extends PlatformBase {
       // 1. 确保账户的浏览器上下文有效（自动检测并重启）
       const context = await this.ensureAccountContext(accountId, proxy);
 
-      // 2. 创建新页面
-      const page = await context.newPage();
+      // 2. 使用统一的页面管理接口获取页面（自动保存到页面池中供后续使用）
+      const page = await this.getAccountPage(accountId);
       
       // 3. 访问抖音创作者中心登录页
       logger.info('Navigating to Douyin Creator Center...');
@@ -1094,15 +1093,9 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<Page>}
    */
   async getOrCreatePage(accountId) {
-    if (this.currentPage && !this.currentPage.isClosed()) {
-      return this.currentPage;
-    }
-
-    const context = await this.ensureAccountContext(accountId);
-    this.currentPage = await context.newPage();
-    logger.info(`Created new page for crawling account ${accountId}`);
-
-    return this.currentPage;
+    // ⭐ 现在使用 PlatformBase 的统一接口代替
+    // 这会自动使用 BrowserManager 的页面池管理
+    return await super.getAccountPage(accountId);
   }
 
   /**
@@ -1996,6 +1989,7 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<ElementHandle>} 找到的消息项元素
    */
   async findMessageItemInVirtualList(page, targetId, criteria = {}) {
+    // Phase 10: 增强 ID 处理，使用 API 拦截获取完整 ID 信息
     // 正确的虚拟列表选择器（已验证）
     // 抖音使用 ReactVirtualized，直接子元素是消息行，不是 [role="listitem"]
     const innerContainer = await page.$('.ReactVirtualized__Grid__innerScrollContainer');
@@ -2036,17 +2030,72 @@ class DouyinPlatform extends PlatformBase {
       }
     }
 
-    // 第二阶段：ID 属性匹配
+    // 第二阶段：增强 ID 属性匹配 (Phase 10 改进)
     if (targetId && targetId !== 'first') {
+      // Phase 10: 规范化 targetId (处理冒号分隔的 conversation_id)
+      // 示例: "douyin:user_123:conv_456" → 提取最后部分 "conv_456"
+      const normalizedTargetId = this.normalizeConversationId(targetId);
+      logger.debug(`原始 ID: ${targetId}, 规范化 ID: ${normalizedTargetId}`);
+
+      // 2a: 直接 HTML/文本匹配 (同时检查原始 ID 和规范化 ID)
       for (let i = 0; i < messageItems.length; i++) {
         const itemHTML = await messageItems[i].evaluate(el => el.outerHTML);
         const itemText = await messageItems[i].textContent();
 
-        // 检查 ID 是否在 HTML 或文本中
-        if (itemHTML.includes(targetId) || itemText.includes(targetId)) {
+        // 检查 ID 是否在 HTML 或文本中（原始和规范化都检查）
+        if (itemHTML.includes(targetId) || itemText.includes(targetId) ||
+            itemHTML.includes(normalizedTargetId) || itemText.includes(normalizedTargetId)) {
           logger.debug(`在索引 ${i} 找到 ID 匹配的消息`);
           return messageItems[i];
         }
+      }
+
+      // 2b: 使用 React Fiber 树提取 platform_message_id (Phase 10 新增)
+      try {
+        const fiberMessageIds = await this.extractMessageIdsFromReactFiber(page, messageItems);
+        logger.debug(`从 React Fiber 提取的 ID 集合:`, fiberMessageIds);
+
+        // 在 ID 集合中查找目标 ID (同时检查原始和规范化的 ID)
+        for (let i = 0; i < messageItems.length; i++) {
+          const messageIdData = fiberMessageIds[i];
+          if (messageIdData) {
+            // 对提取的 ID 也进行规范化处理
+            const normalizedFiberId = this.normalizeConversationId(messageIdData.conversationId || '');
+
+            if (messageIdData.id === targetId ||
+                messageIdData.serverId === targetId ||
+                messageIdData.platformMessageId === targetId ||
+                messageIdData.conversationId === targetId ||
+                // 规范化后的 ID 比对
+                messageIdData.id === normalizedTargetId ||
+                messageIdData.serverId === normalizedTargetId ||
+                messageIdData.platformMessageId === normalizedTargetId ||
+                messageIdData.conversationId === normalizedTargetId ||
+                normalizedFiberId === normalizedTargetId
+            ) {
+              logger.debug(`通过 React Fiber 在索引 ${i} 找到 ID 匹配的消息`, {
+                fiberConversationId: messageIdData.conversationId,
+                normalizedFiberId,
+                targetId,
+                normalizedTargetId
+              });
+              return messageItems[i];
+            }
+          }
+        }
+      } catch (fiberError) {
+        logger.debug(`React Fiber 提取失败:`, fiberError.message);
+      }
+
+      // 2c: 使用哈希匹配处理转换过的 ID (Phase 10 新增)
+      try {
+        const hashMatch = await this.findMessageByContentHash(page, messageItems, targetId);
+        if (hashMatch) {
+          logger.debug(`通过内容哈希在索引 ${hashMatch} 找到消息`);
+          return messageItems[hashMatch];
+        }
+      } catch (hashError) {
+        logger.debug(`内容哈希匹配失败:`, hashError.message);
       }
     }
 
@@ -2070,6 +2119,223 @@ class DouyinPlatform extends PlatformBase {
     // 最后备选：使用第一条消息
     logger.warn(`未找到匹配的消息，使用第一条作为备选`);
     return messageItems[0];
+  }
+
+  /**
+   * 从 React Fiber 树中提取消息 ID 信息 (Phase 10)
+   * @private
+   */
+  async extractMessageIdsFromReactFiber(page, messageItems) {
+    try {
+      const messageIds = await page.evaluate((items) => {
+        const results = [];
+        items.forEach((el, index) => {
+          try {
+            // 尝试访问 React Fiber 树
+            const fiberKey = Object.keys(el).find(key => key.startsWith('__reactFiber'));
+            if (fiberKey) {
+              let fiber = el[fiberKey];
+              let props = null;
+
+              // 遍历 Fiber 树查找 props
+              while (fiber && !props) {
+                if (fiber.memoizedProps) {
+                  props = fiber.memoizedProps;
+                  break;
+                }
+                fiber = fiber.return;
+              }
+
+              if (props) {
+                results.push({
+                  index,
+                  id: props.id || props.message_id,
+                  serverId: props.serverId,
+                  platformMessageId: props.platformMessageId || props.platform_message_id,
+                  conversationId: props.conversationId || props.conversation_id,
+                  content: props.content || props.text,
+                  senderId: props.senderId || props.sender_id,
+                  timestamp: props.timestamp || props.time
+                });
+              } else {
+                results.push(null);
+              }
+            } else {
+              results.push(null);
+            }
+          } catch (e) {
+            results.push(null);
+          }
+        });
+        return results;
+      }, messageItems);
+
+      return messageIds;
+    } catch (error) {
+      logger.warn(`Failed to extract IDs from React Fiber:`, error.message);
+      return [];
+    }
+  }
+
+  /**
+   * 通过内容哈希查找消息 (Phase 10)
+   * @private
+   */
+  async findMessageByContentHash(page, messageItems, targetId) {
+    try {
+      // 如果 targetId 看起来像是内容哈希（例如 msg_account_hash）
+      if (!targetId.startsWith('msg_') && !targetId.includes('_')) {
+        return null;
+      }
+
+      // 尝试从 targetId 中提取账户 ID
+      const idParts = targetId.split('_');
+      if (idParts.length < 2) {
+        return null;
+      }
+
+      const hashPart = idParts[idParts.length - 1]; // 最后一部分应该是哈希
+
+      // 遍历消息，计算内容哈希并比较
+      for (let i = 0; i < messageItems.length; i++) {
+        const itemText = await messageItems[i].textContent();
+        const contentHash = this.hashContent(itemText);
+
+        if (contentHash === hashPart) {
+          logger.debug(`内容哈希匹配成功:`, contentHash);
+          return i;
+        }
+      }
+
+      return null;
+    } catch (error) {
+      logger.debug(`内容哈希查找失败:`, error.message);
+      return null;
+    }
+  }
+
+  /**
+   * 规范化会话 ID (Phase 10)
+   * 处理冒号分隔的 conversation_id 格式
+   * 示例: "douyin:user_123:conv_456" → "conv_456"
+   * @private
+   */
+  normalizeConversationId(conversationId) {
+    if (!conversationId) return '';
+
+    // 如果包含冒号，提取最后一部分
+    if (typeof conversationId === 'string' && conversationId.includes(':')) {
+      const parts = conversationId.split(':');
+      return parts[parts.length - 1]; // 获取最后一部分
+    }
+
+    return conversationId;
+  }
+
+  /**
+   * 计算内容哈希值 (复用 DM 提取的逻辑)
+   * @private
+   */
+  hashContent(content) {
+    if (!content) return 'empty';
+
+    // 简单的哈希: 使用内容的前 100 个字符
+    const str = content.substring(0, 100);
+    return str.split('').reduce((acc, char) => {
+      return ((acc << 5) - acc) + char.charCodeAt(0);
+    }, 0).toString(36);
+  }
+
+  /**
+   * 设置私信 API 拦截器以获取完整 ID 信息 (Phase 10)
+   * @private
+   */
+  async setupDMAPIInterceptors(page, apiResponses) {
+    const requestCache = {
+      conversations: new Set(),
+      history: new Set()
+    };
+
+    const interceptAPI = async (route, apiType, cacheSet) => {
+      const request = route.request();
+      const method = request.method();
+      const url = request.url();
+
+      try {
+        const response = await route.fetch();
+        let body;
+
+        const contentType = response.headers()['content-type'] || '';
+
+        if (contentType.includes('application/json') || contentType.includes('json')) {
+          body = await response.json();
+        } else {
+          try {
+            const text = await response.text();
+            body = JSON.parse(text);
+          } catch (parseError) {
+            logger.debug(`[${apiType}] Response is not JSON, skipping interception`);
+            await route.fulfill({ response });
+            return;
+          }
+        }
+
+        // 验证响应
+        if (!body || typeof body !== 'object') {
+          await route.fulfill({ response });
+          return;
+        }
+
+        // 生成请求签名用于去重
+        const signature = JSON.stringify({ method, url, dataHash: this.hashContent(JSON.stringify(body)) });
+
+        if (cacheSet.has(signature)) {
+          logger.debug(`[${apiType}] Duplicate request detected`);
+        } else {
+          cacheSet.add(signature);
+          apiResponses[apiType].push(body);
+          logger.debug(`[${apiType}] Intercepted response`);
+        }
+
+        await route.fulfill({ response });
+
+      } catch (error) {
+        logger.debug(`[${apiType}] Interception error: ${error.message}`);
+        try {
+          await route.continue();
+        } catch (continueError) {
+          logger.debug(`[${apiType}] Failed to continue request`);
+          await route.abort('failed');
+        }
+      }
+    };
+
+    // 配置 DM 相关 API 端点
+    const apiConfigs = [
+      {
+        pattern: '**/v1/stranger/get_conversation_list**',
+        type: 'conversations',
+        description: '会话列表 API'
+      },
+      {
+        pattern: '**/v1/im/message/history**',
+        type: 'history',
+        description: '消息历史 API'
+      }
+    ];
+
+    for (const config of apiConfigs) {
+      try {
+        await page.route(config.pattern, async (route) => {
+          await interceptAPI(route, config.type, requestCache[config.type] || new Set());
+        });
+        logger.debug(`[DM API] Registered interceptor for: ${config.description}`);
+      } catch (error) {
+        logger.warn(`[DM API] Failed to register interceptor: ${error.message}`);
+      }
+    }
+
+    logger.debug(`✅ DM API interceptors configured`);
   }
 
   /**
@@ -2423,7 +2689,7 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<{platform_reply_id?, data?}>}
    */
   async replyToDirectMessage(accountId, options) {
-    // Phase 9: 支持新的参数结构 (conversation_id 为主标识)
+    // Phase 10: 增强 ID 处理 + API 拦截 (支持 conversation_id 为主标识)
     const {
       target_id,           // 向后兼容
       conversation_id,     // Phase 9 新增 (优先使用)
@@ -2439,6 +2705,7 @@ class DouyinPlatform extends PlatformBase {
     const { sender_id, platform_user_id } = context;
 
     let page = null;
+    const apiResponses = { conversationMessages: [] }; // Phase 10: 新增 API 响应缓存
 
     try {
       logger.info(`[Douyin] Replying to conversation: ${finalConversationId}`, {
@@ -2449,12 +2716,22 @@ class DouyinPlatform extends PlatformBase {
         replyContent: reply_content.substring(0, 50),
       });
 
-      // 1. 获取浏览器上下文
+      // 1. 获取浏览器上下文 - 新开标签页处理回复（Phase 10 改进）
+      // 重要：新开独立标签页，不干扰主标签页的常规爬取任务
       const browserContext = await this.ensureAccountContext(accountId);
       page = await browserContext.newPage();
 
+      logger.info(`[Douyin] 为回复任务开启新浏览器标签页`, {
+        accountId,
+        purpose: 'direct_message_reply',
+        conversationId: finalConversationId
+      });
+
       // 设置超时
       page.setDefaultTimeout(30000);
+
+      // Phase 10: 新增 API 拦截以获取完整 ID 信息
+      await this.setupDMAPIInterceptors(page, apiResponses);
 
       // 2. 导航到创作者中心私信管理页面（已验证的真实页面）
       const dmUrl = 'https://creator.douyin.com/creator-micro/data/following/chat';
@@ -2712,13 +2989,17 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // 清理资源
+      // Phase 10: 清理资源 - 关闭为回复任务开启的标签页
       if (page) {
         try {
           await page.close();
-          logger.debug('Page closed');
+          logger.info(`[Douyin] 回复任务标签页已关闭`, {
+            accountId,
+            conversationId: finalConversationId,
+            status: '已释放资源，不影响主标签页'
+          });
         } catch (closeError) {
-          logger.warn('Failed to close page:', closeError.message);
+          logger.warn('Failed to close reply page:', closeError.message);
         }
       }
     }
@@ -2832,15 +3113,8 @@ class DouyinPlatform extends PlatformBase {
   async cleanup(accountId) {
     logger.info(`Cleaning up Douyin platform for account ${accountId}`);
 
-    // 清理当前页面
-    if (this.currentPage) {
-      try {
-        await this.currentPage.close();
-        this.currentPage = null;
-      } catch (error) {
-        logger.error(`Failed to close page for account ${accountId}:`, error);
-      }
-    }
+    // ⭐ 页面现在由 BrowserManager 统一管理和清理
+    // 不再需要手动管理 this.currentPage
 
     // 调用基类清理（清理浏览器上下文等）
     await super.cleanup(accountId);

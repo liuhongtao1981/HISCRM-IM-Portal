@@ -102,7 +102,7 @@ class LoginHandler {
 
       // 推送给所有管理员客户端
       if (this.adminNamespace) {
-        this.adminNamespace.broadcastToAdmins('login:qrcode:ready', {
+        this.adminNamespace.emit('login:qrcode:ready', {
           session_id: sessionId,
           account_id: session.account_id,
           worker_id: session.worker_id,
@@ -169,6 +169,21 @@ class LoginHandler {
         fingerprint ? JSON.stringify(fingerprint) : null,
       ];
 
+      // 🔑 从 userInfo 中提取 platform_user_id (抖音号/uid)，仅在为空时更新
+      if (userInfo && (userInfo.douyin_id || userInfo.uid)) {
+        const currentAccount = this.db.prepare('SELECT platform_user_id FROM accounts WHERE id = ?').get(session.account_id);
+
+        // 只在当前 platform_user_id 为空时才更新，避免重复登录时的冲突
+        if (!currentAccount || !currentAccount.platform_user_id) {
+          updateSql += ', platform_user_id = ?';
+          const platformUserId = userInfo.douyin_id || userInfo.uid;
+          params.push(platformUserId);
+          logger.info(`Updated platform_user_id to: ${platformUserId}`);
+        } else {
+          logger.info(`platform_user_id already set to: ${currentAccount.platform_user_id}, skipping update`);
+        }
+      }
+
       // 如果提供了真实ID且当前是临时ID，则更新 account_id
       if (realAccountId && isTemporaryId) {
         updateSql += ', account_id = ?';
@@ -191,7 +206,7 @@ class LoginHandler {
 
       // 推送给管理员
       if (this.adminNamespace) {
-        this.adminNamespace.broadcastToAdmins('login:success', {
+        this.adminNamespace.emit('login:success', {
           session_id: sessionId,
           account_id: session.account_id,
           worker_id: session.worker_id,
@@ -247,7 +262,7 @@ class LoginHandler {
 
       // 推送给管理员
       if (this.adminNamespace) {
-        this.adminNamespace.broadcastToAdmins('login:failed', {
+        this.adminNamespace.emit('login:failed', {
           session_id: sessionId,
           account_id: session.account_id,
           worker_id: session.worker_id,
@@ -294,7 +309,7 @@ class LoginHandler {
 
       // 推送新二维码给所有管理员客户端
       if (this.adminNamespace) {
-        this.adminNamespace.broadcastToAdmins('login:qrcode:refreshed', {
+        this.adminNamespace.emit('login:qrcode:refreshed', {
           session_id: sessionId,
           account_id: session.account_id,
           worker_id: session.worker_id,
@@ -337,7 +352,7 @@ class LoginHandler {
 
       // 推送给管理员
       if (this.adminNamespace) {
-        this.adminNamespace.broadcastToAdmins('login:qrcode:expired', {
+        this.adminNamespace.emit('login:qrcode:expired', {
           session_id: sessionId,
           account_id: session.account_id,
           worker_id: session.worker_id,
@@ -453,7 +468,7 @@ class LoginHandler {
 
         // 推送过期通知给管理员
         if (this.adminNamespace) {
-          this.adminNamespace.broadcastToAdmins('login:qrcode:expired', {
+          this.adminNamespace.emit('login:qrcode:expired', {
             session_id: session.id,
             timestamp: Date.now(),
           });

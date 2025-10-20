@@ -170,14 +170,17 @@ class TaskScheduler {
    * @returns {Object} 格式化后的数据
    */
   _formatAccountData(account) {
-    // 解析 credentials
+    // 解析 credentials (JSON格式)
     let credentials = {};
     try {
-      credentials = typeof account.credentials === 'string'
-        ? JSON.parse(account.credentials)
-        : account.credentials || {};
+      if (typeof account.credentials === 'string') {
+        credentials = JSON.parse(account.credentials);
+      } else if (typeof account.credentials === 'object') {
+        credentials = account.credentials || {};
+      }
     } catch (error) {
-      logger.error(`Failed to parse credentials for account ${account.id}:`, error);
+      logger.warn(`Failed to parse credentials for account ${account.id}: ${error.message}`);
+      credentials = {};
     }
 
     // 解析 user_info

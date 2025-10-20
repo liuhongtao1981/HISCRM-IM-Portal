@@ -95,35 +95,74 @@ class PlatformBase {
             return;
           }
           
-          // 每隔 qrRefreshInterval 检查二维码是否变化
+          // 🆕 优化：每隔 qrRefreshInterval 检查二维码是否变化（使用高效的src比对）
           qrCheckCounter++;
           const shouldCheckQR = qrSelector && (qrCheckCounter * checkInterval >= qrRefreshInterval);
-          
+
           if (shouldCheckQR) {
             qrCheckCounter = 0; // 重置计数器
-            
+
             try {
               logger.debug(`[QR Monitor] Checking if QR code has changed...`);
               const qrElement = await page.$(qrSelector);
-              
+
               if (qrElement) {
-                const qrImage = await qrElement.screenshot();
-                const currentQrBase64 = qrImage.toString('base64');
-                
-                // 对比二维码是否变化
-                if (lastQrBase64 && currentQrBase64 !== lastQrBase64) {
-                  logger.info(`[QR Monitor] ⚠️  QR code has changed! Sending updated QR code...`);
-                  
+                // 🆕 改进v3：直接从浏览器canvas提取base64（无URL，完全离线）
+                const qrBase64Data = await page.evaluate((selector) => {
+                  const element = document.querySelector(selector);
+                  if (!element) return null;
+
+                  let base64String = null;
+
+                  // 情况1: CANVAS 标签 - 直接转换为base64（推荐）
+                  if (element.tagName === 'CANVAS') {
+                    try {
+                      base64String = element.toDataURL('image/png');
+                    } catch (e) {
+                      return null;
+                    }
+                  }
+                  // 情况2: IMG 标签 - 只有当src已是base64时才使用，否则无效
+                  else if (element.tagName === 'IMG') {
+                    const src = element.src;
+                    // 只接受已经是base64的src（以data:开头）
+                    if (src && src.startsWith('data:image')) {
+                      base64String = src;
+                    }
+                  }
+
+                  if (base64String) {
+                    // 计算hash用于快速对比（只用前300个字符作为指纹）
+                    const hash = base64String.substring(0, 300);
+                    return {
+                      hash,
+                      data: base64String, // 完整的 data:image/png;base64,...
+                    };
+                  }
+
+                  return null;
+                }, qrSelector);
+
+                // 对比二维码base64是否变化
+                if (qrBase64Data && lastQrBase64 && qrBase64Data.hash !== lastQrBase64.hash) {
+                  logger.info(`[QR Monitor] 🔄 QR code change detected! Base64 hash changed`);
+                  logger.info(`[QR Monitor] ⚠️  Sending updated QR code (base64) to client...`);
+
                   // 发送新的二维码到前端
+                  // qrBase64Data.data 是完整的 data:image/png;base64,... 格式
+                  // 可直接在 <img src="..."/> 中使用，或通过 Socket 发送给 Web 客户端
                   await this.sendLoginStatus(sessionId, 'qrcode_refreshed', {
                     account_id: accountId,
-                    qr_code_data: `data:image/png;base64,${currentQrBase64}`,
+                    qr_code_data: qrBase64Data.data,
                     expires_at: Math.floor((Date.now() + 300000) / 1000),
                     message: '二维码已刷新',
                   });
+
+                  lastQrBase64 = qrBase64Data;
+                } else if (qrBase64Data && !lastQrBase64) {
+                  // 首次记录hash
+                  lastQrBase64 = qrBase64Data;
                 }
-                
-                lastQrBase64 = currentQrBase64;
               }
             } catch (qrError) {
               logger.warn(`[QR Monitor] Failed to check QR code:`, qrError.message);
@@ -311,11 +350,11 @@ class PlatformBase {
     logger.info(`[QRCode Login] Starting QR code monitoring and login monitoring...`);
     const loginSuccess = await this.waitForLogin(page, accountId, sessionId, {
       timeout: 300000, // 5分钟
-      checkInterval: 2000, // 每2秒检查一次
+      checkInterval: 2000, // 每2秒检查一次登录状态
       qrSelector,  // 传递二维码选择器用于监控变化
-      qrRefreshInterval: 3000,  // 每3秒检查二维码是否变化
+      qrRefreshInterval: 500,  // 🆕 极速刷新：每500ms检查一次二维码变化（响应延迟 < 600ms）
     });
-    
+
     return loginSuccess;
   }
 
@@ -663,6 +702,32 @@ class PlatformBase {
       logger.info(`Saved storage state for account ${accountId}`);
     } catch (error) {
       logger.error(`Failed to save state for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取或创建账户页面（统一的页面管理接口）
+   * ⭐ 所有平台应该使用这个方法而不是自己创建页面
+   *
+   * 这个方法会：
+   * 1. 检查是否已有页面在池中
+   * 2. 如果没有，创建新页面
+   * 3. 将页面保存到池中供后续使用
+   * 4. 在失败时自动恢复
+   *
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 选项
+   * @returns {Promise<Page>} Playwright 页面对象
+   */
+  async getAccountPage(accountId, options = {}) {
+    try {
+      // 使用 BrowserManager 的统一页面管理接口
+      const page = await this.browserManager.getAccountPage(accountId, options);
+      logger.info(`[PlatformBase] Got page for account ${accountId} from unified manager`);
+      return page;
+    } catch (error) {
+      logger.error(`[PlatformBase] Failed to get page for account ${accountId}:`, error);
       throw error;
     }
   }

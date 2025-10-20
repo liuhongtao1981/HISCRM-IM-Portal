@@ -34,6 +34,13 @@ class BrowserManagerV2 {
     // Storage state 路径管理 (accountId -> path)
     this.storageStatePaths = new Map();
 
+    // 🆕 页面池管理 (accountId -> page)
+    // ⭐ 特点：按需创建，自动清理
+    this.accountPages = new Map();
+
+    // 🆕 页面使用统计 (accountId -> { usage, lastUsedTime, createdAt })
+    this.pageUsageStats = new Map();
+
     // 确保数据目录存在
     this.ensureDataDir();
 
@@ -552,6 +559,243 @@ class BrowserManagerV2 {
 
       throw error;
     }
+  }
+
+  /**
+   * 🆕 获取账户的可用页面（主要入口）
+   * 这是所有平台操作的统一页面获取接口
+   *
+   * 逻辑：
+   * 1️⃣ 先检查页面池中是否有现有页面
+   * 2️⃣ 如果页面存在且可用，直接复用
+   * 3️⃣ 如果页面不可用或不存在，创建新页面
+   * 4️⃣ 将页面保存到池中
+   *
+   * @param {string} accountId - 账户ID
+   * @param {Object} options - 选项 { purpose: 'login'|'crawl'|'general', reuseExisting: boolean }
+   * @returns {Page} 可用的页面对象
+   */
+  async getAccountPage(accountId, options = {}) {
+    const {
+      purpose = 'general',  // 'login' | 'crawl' | 'general'
+      reuseExisting = true, // 是否尝试复用现有页面
+    } = options;
+
+    try {
+      // 1️⃣ 尝试复用已有页面
+      if (reuseExisting) {
+        const existingPage = this.getExistingPage(accountId);
+
+        // ⭐ 关键：检查页面是否仍然有效
+        // 如果浏览器被关闭或页面已销毁，直接重新创建
+        if (existingPage && !existingPage.isClosed()) {
+          logger.debug(`✅ Reusing existing page for account ${accountId} (purpose: ${purpose})`);
+          this.recordPageUsage(accountId);
+          return existingPage;
+        } else if (existingPage) {
+          // 页面已关闭，从池中删除
+          logger.warn(`Page closed for account ${accountId}, removing from pool and creating new one`);
+          this.accountPages.delete(accountId);
+        }
+      }
+
+      // 2️⃣ 检查/创建上下文（如果页面已关闭，需要重新创建）
+      let context = this.contexts.get(accountId);
+
+      if (context) {
+        const isValid = await this.isBrowserContextValid(accountId);
+        if (!isValid) {
+          logger.warn(`Context invalid for account ${accountId}, recreating...`);
+          await this.forceCleanupContext(accountId);
+          context = null;
+        }
+      }
+
+      // 3️⃣ 如果上下文不可用，创建新的
+      if (!context) {
+        logger.debug(`Creating new context for account ${accountId}...`);
+        context = await this.createContextForAccount(accountId);
+      }
+
+      // 4️⃣ 创建新页面
+      const page = await context.newPage();
+      logger.info(`✅ Created new page for account ${accountId} (purpose: ${purpose})`);
+
+      // 5️⃣ 保存页面到池
+      this.savePageForAccount(accountId, page);
+
+      // 6️⃣ 记录页面使用
+      this.recordPageUsage(accountId);
+
+      return page;
+
+    } catch (error) {
+      logger.error(`Failed to get account page for ${accountId}:`, error.message);
+
+      // 浏览器关闭错误处理
+      if (error.message.includes('closed') || error.message.includes('disconnected')) {
+        logger.warn(`Browser closed detected, clearing and retrying for account ${accountId}...`);
+
+        // 清理页面池
+        this.accountPages.delete(accountId);
+
+        // 尝试恢复
+        try {
+          return await this.recoverPage(accountId, 'browser_closed');
+        } catch (recoveryError) {
+          logger.error(`Failed to recover page for account ${accountId}:`, recoveryError);
+          throw recoveryError;
+        }
+      }
+
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 检查页面是否仍然活跃
+   * @param {string} accountId - 账户ID
+   * @returns {Promise<boolean>} 页面是否活跃
+   */
+  async isPageAlive(accountId) {
+    try {
+      const page = this.getExistingPage(accountId);
+
+      if (!page) {
+        logger.debug(`No page found for account ${accountId}`);
+        return false;
+      }
+
+      if (page.isClosed()) {
+        logger.debug(`Page is closed for account ${accountId}`);
+        return false;
+      }
+
+      // 快速检查：尝试获取URL
+      try {
+        const url = page.url();
+        logger.debug(`Page check passed for account ${accountId}: ${url}`);
+        return true;
+      } catch (error) {
+        logger.warn(`Page health check failed for account ${accountId}:`, error.message);
+        return false;
+      }
+    } catch (error) {
+      logger.warn(`Error checking page status for account ${accountId}:`, error.message);
+      return false;
+    }
+  }
+
+  /**
+   * 🆕 保存页面到池
+   * @param {string} accountId - 账户ID
+   * @param {Page} page - 页面对象
+   */
+  savePageForAccount(accountId, page) {
+    this.accountPages.set(accountId, page);
+
+    if (!this.pageUsageStats.has(accountId)) {
+      this.pageUsageStats.set(accountId, {
+        usage: 0,
+        createdAt: Date.now(),
+        lastUsedTime: null,
+      });
+    }
+
+    logger.debug(`Page saved to pool for account ${accountId}`);
+  }
+
+  /**
+   * 🆕 获取现有页面（不创建）
+   * @param {string} accountId - 账户ID
+   * @returns {Page|null} 页面对象或null
+   */
+  getExistingPage(accountId) {
+    return this.accountPages.get(accountId);
+  }
+
+  /**
+   * 🆕 记录页面使用
+   * @param {string} accountId - 账户ID
+   */
+  recordPageUsage(accountId) {
+    if (!this.pageUsageStats.has(accountId)) {
+      this.pageUsageStats.set(accountId, {
+        usage: 0,
+        createdAt: Date.now(),
+        lastUsedTime: null,
+      });
+    }
+
+    const stats = this.pageUsageStats.get(accountId);
+    stats.usage++;
+    stats.lastUsedTime = Date.now();
+
+    logger.debug(`Page usage recorded for account ${accountId} (usage: ${stats.usage})`);
+  }
+
+  /**
+   * 🆕 自动恢复页面
+   * 当页面操作失败时，自动清理并重建
+   * @param {string} accountId - 账户ID
+   * @param {string} reason - 恢复原因
+   * @returns {Page} 新建的页面
+   */
+  async recoverPage(accountId, reason) {
+    logger.warn(`Recovering page for account ${accountId}: ${reason}`);
+
+    try {
+      // 1️⃣ 清理旧页面
+      this.accountPages.delete(accountId);
+
+      // 2️⃣ 清理旧上下文
+      await this.forceCleanupContext(accountId);
+
+      // 3️⃣ 创建新页面
+      const page = await this.getAccountPage(accountId, { reuseExisting: false });
+
+      logger.info(`✅ Page recovered for account ${accountId}`);
+      return page;
+    } catch (error) {
+      logger.error(`Failed to recover page for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 🆕 启动页面健康检查
+   * 定期检查所有页面是否仍然活跃
+   * @param {number} interval - 检查间隔（毫秒，默认30秒）
+   */
+  // ⭐ 注意: 页面健康检查已移除！
+  // 原因: 页面生命周期现在由 getAccountPage() 完全管理
+  // - 每次调用 getAccountPage() 都会检查页面是否已关闭
+  // - 如果已关闭，自动删除并重新创建
+  // - 无需额外的定期维护进程
+  //
+  // 优势:
+  // ✅ 按需创建，零浪费
+  // ✅ 无额外 CPU 占用
+  // ✅ 代码更简洁
+  // ✅ 自动响应（无延迟）
+
+  /**
+   * 🆕 获取页面统计信息
+   * @returns {Object} 统计信息
+   */
+  getPageStats() {
+    const stats = {};
+
+    for (const [accountId, { usage, createdAt, lastUsedTime }] of this.pageUsageStats.entries()) {
+      stats[accountId] = {
+        usage,
+        createdAt: new Date(createdAt).toISOString(),
+        lastUsedTime: lastUsedTime ? new Date(lastUsedTime).toISOString() : null,
+        isAlive: this.getExistingPage(accountId) && !this.getExistingPage(accountId).isClosed(),
+      };
+    }
+
+    return stats;
   }
 
   /**

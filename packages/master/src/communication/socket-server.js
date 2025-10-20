@@ -319,9 +319,11 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
 
   // Admin命名空间（可选，用于管理平台）
   let adminNamespaceInstance = null;
+  let adminNamespaceHelpers = null;
   if (masterServer) {
     const adminResult = initAdminNamespace(io, masterServer);
     adminNamespaceInstance = adminResult.namespace; // 提取真正的 Socket.IO Namespace
+    adminNamespaceHelpers = adminResult; // 保留完整的 result 对象（包含 broadcastToAdmins）
     logger.info('Socket.IO admin namespace initialized');
   }
 
@@ -332,6 +334,7 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
     workerNamespace,
     clientNamespace,
     adminNamespace: adminNamespaceInstance,
+    adminNamespaceHelpers: adminNamespaceHelpers, // 返回辅助方法（包含 broadcastToAdmins）
   };
 }
 

@@ -33,7 +33,11 @@ class DouyinLoginHandler {
     this.POPUP_WAIT_TIME = 5000; // 等待登录浮层弹出的时间
     this.LOGIN_CHECK_INTERVAL = 2000; // 2秒检查一次登录状态
     this.LOGIN_TIMEOUT = 300000; // 5分钟登录超时
-    this.QR_CODE_LIFETIME = 150000; // 二维码有效期：2分30秒
+    this.QR_CODE_LIFETIME = 150000; // 二维码有效期：2分30秒（备选方案）
+
+    // 实时检测配置（新方案）
+    this.ENABLE_REALTIME_QR_DETECTION = true; // 启用实时二维码变化检测
+    this.QR_POLL_INTERVAL = 1000; // 轮询间隔（方案2备选）：1秒
 
     // 重试策略
     this.retryStrategies = {
@@ -144,6 +148,11 @@ class DouyinLoginHandler {
       session.qrCodeData = qrCodeData;
       session.qrCodeGeneratedAt = Date.now(); // 记录二维码生成时间
       session.status = 'scanning';
+
+      // 🆕 启动实时二维码变化检测（替代被动等待时间）
+      if (this.ENABLE_REALTIME_QR_DETECTION) {
+        await this.setupQRCodeChangeDetection(page, accountId, sessionId);
+      }
 
       // 开始轮询登录状态
       this.startLoginStatusPolling(accountId, sessionId);
@@ -378,6 +387,122 @@ class DouyinLoginHandler {
 
     } catch (error) {
       logger.error('Failed to notify QR code ready:', error);
+    }
+  }
+
+  /**
+   * 启动实时二维码变化检测（新方案）
+   * 主动监听二维码变化，而不是被动等待时间
+   * @param {Page} page - Playwright 页面
+   * @param {string} accountId - 账户ID
+   * @param {string} sessionId - 会话ID
+   */
+  async setupQRCodeChangeDetection(page, accountId, sessionId) {
+    try {
+      logger.info(`Setting up real-time QR code change detection for session ${sessionId}`);
+
+      const session = this.loginSessions.get(accountId);
+      if (!session) {
+        logger.warn(`Session not found for account ${accountId}`);
+        return;
+      }
+
+      // 方案1: 使用轮询检测二维码变化（更可靠）
+      let lastQRHash = null;
+
+      // 计算二维码的简单hash值
+      const getQRHash = async () => {
+        try {
+          const hash = await page.evaluate(() => {
+            const qrImg = document.querySelector('img[alt="二维码"]') ||
+                         document.querySelector('img[aria-label="二维码"]') ||
+                         document.querySelector('img[src^="data:image/png"]');
+
+            if (!qrImg) return null;
+
+            // 使用src作为hash值（最可靠的方法）
+            const src = qrImg.src || qrImg.getAttribute('data-src');
+            if (src) {
+              // 取前200个字符作为hash（足以区分不同的二维码）
+              return src.substring(0, 200);
+            }
+
+            return null;
+          });
+
+          return hash;
+        } catch (error) {
+          logger.debug('Error getting QR hash:', error.message);
+          return null;
+        }
+      };
+
+      // 初始化hash
+      lastQRHash = await getQRHash();
+      logger.info(`Initial QR code hash recorded (first ${Math.min(100, lastQRHash?.length || 0)} chars)`);
+
+      // 启动轮询
+      const pollInterval = setInterval(async () => {
+        try {
+          const currentQRHash = await getQRHash();
+
+          if (!currentQRHash) {
+            logger.debug('QR code element not found');
+            return;
+          }
+
+          // 检测到二维码变化
+          if (currentQRHash !== lastQRHash) {
+            logger.info(`🔄 [Real-time] QR code changed detected!`);
+            lastQRHash = currentQRHash;
+
+            // 立即提取新二维码
+            try {
+              const newQRCode = await this.extractQRCode(page, accountId, sessionId);
+
+              // 更新会话信息
+              session.qrCodeData = newQRCode;
+              session.qrCodeGeneratedAt = Date.now();
+              session.qrCodeRefreshCount++;
+
+              // 通知Master二维码已刷新
+              this.notifyQRCodeRefreshed(accountId, sessionId, newQRCode);
+
+              logger.info(`✅ New QR code extracted and sent (refresh count: ${session.qrCodeRefreshCount})`);
+
+            } catch (error) {
+              logger.error('Failed to extract new QR code:', error);
+            }
+          }
+        } catch (error) {
+          logger.error('Error in QR code change detection polling:', error);
+        }
+      }, this.QR_POLL_INTERVAL);
+
+      // 保存轮询的interval ID以便后续清理
+      session.qrChangeDetectorInterval = pollInterval;
+      logger.info(`✅ Real-time QR code detection started (polling every ${this.QR_POLL_INTERVAL}ms)`);
+
+    } catch (error) {
+      logger.error('Failed to setup QR code change detection:', error);
+    }
+  }
+
+  /**
+   * 清理二维码变化检测
+   */
+  cleanupQRCodeChangeDetection(accountId) {
+    try {
+      const session = this.loginSessions.get(accountId);
+      if (!session) return;
+
+      if (session.qrChangeDetectorInterval) {
+        clearInterval(session.qrChangeDetectorInterval);
+        session.qrChangeDetectorInterval = null;
+        logger.info(`QR code change detection stopped for account ${accountId}`);
+      }
+    } catch (error) {
+      logger.warn('Error cleaning up QR code detection:', error);
     }
   }
 
@@ -687,6 +812,9 @@ class DouyinLoginHandler {
       if (session.pollInterval) {
         clearInterval(session.pollInterval);
       }
+
+      // 🆕 停止实时二维码变化检测
+      this.cleanupQRCodeChangeDetection(accountId);
 
       // 关闭页面
       if (session.page && !session.page.isClosed()) {

@@ -35,8 +35,8 @@ CREATE TABLE comments_new (
 );
 
 -- 迁移数据
-INSERT INTO comments_new
-SELECT * FROM comments;
+INSERT INTO comments_new (id, account_id, platform_user_id, platform_comment_id, content, author_name, author_id, post_id, post_title, is_read, detected_at, created_at, is_new)
+SELECT id, account_id, platform_user_id, platform_comment_id, content, author_name, author_id, post_id, post_title, is_read, detected_at, created_at, is_new FROM comments;
 
 -- 删除旧索引
 DROP INDEX IF EXISTS idx_comments_account;
@@ -70,8 +70,11 @@ CREATE TABLE direct_messages_new (
   platform_user_id TEXT,              -- 平台用户ID
   platform_message_id TEXT,
   content TEXT NOT NULL,
-  sender_name TEXT,
-  sender_id TEXT,
+  platform_sender_id TEXT,
+  platform_sender_name TEXT,
+  platform_receiver_id TEXT,
+  platform_receiver_name TEXT,
+  message_type TEXT DEFAULT 'text',
   direction TEXT NOT NULL,
   is_read BOOLEAN DEFAULT 0,
   detected_at INTEGER NOT NULL,
@@ -85,8 +88,8 @@ CREATE TABLE direct_messages_new (
 );
 
 -- 迁移数据
-INSERT INTO direct_messages_new
-SELECT * FROM direct_messages;
+INSERT INTO direct_messages_new (id, account_id, platform_user_id, platform_message_id, content, platform_sender_id, platform_sender_name, platform_receiver_id, platform_receiver_name, message_type, direction, is_read, detected_at, created_at, conversation_id)
+SELECT id, account_id, platform_user_id, platform_message_id, content, platform_sender_id, platform_sender_name, platform_receiver_id, platform_receiver_name, message_type, direction, is_read, detected_at, created_at, conversation_id FROM direct_messages;
 
 -- 删除旧索引
 DROP INDEX IF EXISTS idx_dm_account;
@@ -104,10 +107,12 @@ ALTER TABLE direct_messages_new RENAME TO direct_messages;
 
 -- 创建新索引
 CREATE INDEX IF NOT EXISTS idx_dm_account ON direct_messages(account_id);
+CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_dm_read ON direct_messages(is_read);
 CREATE INDEX IF NOT EXISTS idx_dm_detected ON direct_messages(detected_at);
+CREATE INDEX IF NOT EXISTS idx_dm_created ON direct_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_dm_platform_id ON direct_messages(platform_message_id);
 CREATE INDEX IF NOT EXISTS idx_dm_platform_user ON direct_messages(platform_user_id);
-CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_dm_account_platform_user_platform_message ON direct_messages(account_id, platform_user_id, platform_message_id);
 
 -- ============================================

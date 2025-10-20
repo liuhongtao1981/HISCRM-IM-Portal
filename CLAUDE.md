@@ -262,7 +262,7 @@ Key tables:
 - `accounts.status`: 'active', 'inactive', 'error'
 - `workers.status`: 'connected', 'disconnected', 'offline'
 
-Refer to [.docs/数据库字典.md](.docs/数据库字典.md) for full schema (1200+ lines).
+Refer to [docs/数据库字典.md](docs/数据库字典.md) for full schema (1200+ lines).
 
 ## Code Conventions
 
@@ -433,17 +433,17 @@ open packages/worker/data/browser/worker-1/screenshots/
 2. Create migration script
 3. Test migration with backup
 4. Update DAOs in `packages/master/src/database/`
-5. Update documentation in `.docs/数据库字典.md`
+5. Update documentation in `docs/数据库字典.md`
 
 ## Documentation Conventions
 
 - **All generated documentation must be in Chinese**
-- **Save documentation to `.docs/` directory**
+- **Save documentation to `docs/` directory**
 - Reference key docs:
-  - [.docs/README.md](.docs/README.md) - Documentation hub
-  - [.docs/系统使用指南.md](.docs/系统使用指南.md) - System usage guide
-  - [.docs/worker-通用平台脚本系统设计方案.md](.docs/worker-通用平台脚本系统设计方案.md) - Platform system design
-  - [.docs/worker-平台系统快速参考.md](.docs/worker-平台系统快速参考.md) - Quick reference
+  - [docs/README.md](docs/README.md) - Documentation hub
+  - [docs/系统使用指南.md](docs/系统使用指南.md) - System usage guide
+  - [docs/worker-通用平台脚本系统设计方案.md](docs/worker-通用平台脚本系统设计方案.md) - Platform system design
+  - [docs/worker-平台系统快速参考.md](docs/worker-平台系统快速参考.md) - Quick reference
 
 ## Key Files to Know
 
@@ -483,3 +483,5 @@ open packages/worker/data/browser/worker-1/screenshots/
 - Proxy support for IP rotation
 - Random monitoring intervals (anti-bot detection)
 - Each account isolated in separate Browser process (no data leakage)
+- 文档放入 /docs 文件夹内
+- 测试放在 /tests 文件夹内

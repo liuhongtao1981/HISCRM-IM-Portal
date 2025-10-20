@@ -8,8 +8,29 @@ const { v4: uuidv4 } = require('uuid');
 
 // 加密算法配置
 const ALGORITHM = 'aes-256-cbc';
-const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-32-character-key-change-me!!'; // 必须是32字符
+const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY || 'default-32-character-key-change-me!!'; // 必须是32字节
 const IV_LENGTH = 16; // AES block size
+
+/**
+ * 生成正确大小的加密密钥 (32字节)
+ * @param {string} keyStr - 密钥字符串
+ * @returns {Buffer} 32字节的密钥Buffer
+ */
+function getEncryptionKey(keyStr) {
+  const keyBuffer = Buffer.from(keyStr, 'utf8');
+
+  if (keyBuffer.length < 32) {
+    // 密钥太短，用0填充
+    const padded = Buffer.alloc(32);
+    keyBuffer.copy(padded);
+    return padded;
+  } else if (keyBuffer.length > 32) {
+    // 密钥太长，截断到32字节
+    return keyBuffer.slice(0, 32);
+  }
+
+  return keyBuffer;
+}
 
 /**
  * 加密凭证数据
@@ -23,7 +44,7 @@ function encryptCredentials(credentials) {
 
   const credentialsStr = JSON.stringify(credentials);
   const iv = crypto.randomBytes(IV_LENGTH);
-  const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
+  const key = getEncryptionKey(ENCRYPTION_KEY);
 
   const cipher = crypto.createCipheriv(ALGORITHM, key, iv);
   let encrypted = cipher.update(credentialsStr, 'utf8', 'hex');
@@ -53,7 +74,7 @@ function decryptCredentials(encryptedCredentials) {
   try {
     const iv = Buffer.from(parts[0], 'hex');
     const encrypted = parts[1];
-    const key = Buffer.from(ENCRYPTION_KEY.slice(0, 32), 'utf8');
+    const key = getEncryptionKey(ENCRYPTION_KEY);
 
     const decipher = crypto.createDecipheriv(ALGORITHM, key, iv);
     let decrypted = decipher.update(encrypted, 'hex', 'utf8');
@@ -143,7 +164,7 @@ class Account {
       platform: this.platform,
       account_name: this.account_name,
       account_id: this.account_id,
-      credentials: encryptCredentials(this.credentials), // 加密
+      credentials: typeof this.credentials === 'string' ? this.credentials : JSON.stringify(this.credentials || {}), // 以JSON格式存储，不加密
       status: this.status,
       monitor_interval: this.monitor_interval,
       last_check_time: this.last_check_time,
@@ -161,9 +182,14 @@ class Account {
   static fromDbRow(row) {
     const data = { ...row };
 
-    // 解密凭证（如果解密失败，decryptCredentials 会返回 null）
-    if (data.credentials) {
-      data.credentials = decryptCredentials(data.credentials);
+    // 解析凭证（从JSON格式解析，不解密）
+    if (data.credentials && typeof data.credentials === 'string') {
+      try {
+        data.credentials = JSON.parse(data.credentials);
+      } catch (e) {
+        // 如果解析失败，保持原值
+        console.warn('Failed to parse credentials JSON:', e.message);
+      }
     }
 
     return new Account(data);
