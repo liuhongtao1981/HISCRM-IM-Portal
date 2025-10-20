@@ -5,6 +5,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const child_process = require('child_process');
 
 // 确保必要的目录存在
 const dataDir = path.join(__dirname, '../data');
@@ -22,6 +23,9 @@ if (!fs.existsSync(logsDir)) {
 
 // 加载环境变量
 require('dotenv').config();
+
+// 加载Debug配置
+const debugConfig = require('./config/debug-config');
 
 // 验证关键环境变量
 if (!process.env.PORT) {
@@ -366,9 +370,29 @@ function handleReplyResult(data, socket) {
   }
 }
 
+/**
+ * Debug 模式：检查并仅允许第一个 Worker 连接
+ * 同时将debug参数传递给连接的Worker
+ */
+function initializeDebugMode() {
+  if (!debugConfig.enabled) {
+    return;
+  }
+
+  logger.info(`🔍 Debug 模式已启用`);
+  logger.info(`   - 单 Worker 模式: ${debugConfig.singleWorker.maxWorkers === 1 ? '✓ 启用' : '✗ 禁用'}`);
+  logger.info(`   - MCP 调试接口: ${debugConfig.mcp.enabled ? `✓ 启用 (http://localhost:${debugConfig.mcp.port})` : '✗ 禁用'}`);
+  logger.info(`   - 账户限制: 每个 Worker 最多 ${debugConfig.accounts.maxPerWorker} 个账户`);
+}
+
 // 启动服务
 async function start() {
   try {
+    // 0. 打印Debug配置信息（如果Debug模式启用）
+    if (debugConfig.enabled) {
+      debugConfig.print();
+    }
+
     // 1. 初始化数据库
     db = initDatabase(DB_PATH);
     logger.info('Database initialized');
@@ -1055,7 +1079,10 @@ async function start() {
 
     logger.info('API routes mounted');
 
-    // 12. 启动HTTP服务器
+    // 12. 初始化Debug模式配置
+    initializeDebugMode();
+
+    // 13. 启动HTTP服务器
     server.listen(PORT, () => {
       logger.info(`╔═══════════════════════════════════════════╗`);
       logger.info(`║  Master Server Started                    ║`);
@@ -1066,7 +1093,7 @@ async function start() {
       logger.info(`╚═══════════════════════════════════════════╝`);
     });
 
-    // 13. 优雅退出处理
+    // 14. 优雅退出处理
     let isShuttingDown = false;
     let forceShutdownTimer = null;
 

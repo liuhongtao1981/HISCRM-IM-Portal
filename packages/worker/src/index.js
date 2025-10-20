@@ -19,6 +19,8 @@ const IsNewPushTask = require('./tasks/is-new-push-task');
 const { getCacheManager } = require('./services/cache-manager');
 const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE, MASTER_ACCOUNT_LOGOUT, WORKER_ACCOUNT_LOGOUT_ACK, createMessage } = require('@hiscrm-im/shared/protocol/messages');
 const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
+const ChromeDevToolsMCP = require('./debug/chrome-devtools-mcp');
+const debugConfig = require('./config/debug-config');
 
 // 初始化logger
 const logger = createLogger('worker', './logs');
@@ -40,12 +42,18 @@ let platformManager;
 let accountInitializer;
 let accountStatusReporter;
 let isNewPushTask;
+let chromeDevToolsMCP; // Chrome DevTools MCP 调试接口
 
 /**
  * 启动Worker
  */
 async function start() {
   try {
+    // 打印Debug配置信息（如果Debug模式启用）
+    if (debugConfig.enabled) {
+      debugConfig.print();
+    }
+
     logger.info(`╔═══════════════════════════════════════════╗`);
     logger.info(`║  Worker Starting                          ║`);
     logger.info(`╠═══════════════════════════════════════════╣`);
@@ -68,42 +76,37 @@ async function start() {
     logger.info('✓ Connected to master');
 
     // 2. 初始化浏览器管理器（在注册前初始化）
+    // 如果Debug模式启用，使用Debug配置的headless设置；否则使用环境变量
+    const headless = debugConfig.enabled ? debugConfig.browser.headless : (process.env.HEADLESS !== 'false');
     browserManager = getBrowserManager(WORKER_ID, {
-      headless: process.env.HEADLESS !== 'false',
-      dataDir: `./data/browser/${WORKER_ID}`,
+      headless: headless,
+      dataDir: `./data/browser/${WORKER_ID}`,  // Worker 专属目录,实现数据隔离
+      devtools: debugConfig.enabled ? debugConfig.browser.devtools : false,
     });
+    // 不立即启动浏览器，等到需要时再启动
     logger.info('✓ Browser manager initialized');
 
-    // 3. 初始化 Worker Bridge
     // 3. 启动心跳发送器
     heartbeatSender = new HeartbeatSender(socketClient, WORKER_ID);
     heartbeatSender.start();
     logger.info('✓ Heartbeat sender started');
 
-    // 4. 初始化浏览器管理器 (多Browser架构)
-    browserManager = getBrowserManager(WORKER_ID, {
-      headless: process.env.HEADLESS !== 'false', // 默认 headless
-      dataDir: `./data/browser/${WORKER_ID}`,  // Worker 专属目录,实现数据隔离
-    });
-    // 不立即启动浏览器，等到需要时再启动
-    logger.info('✓ Browser manager initialized');
-
-    // 5. 初始化 Worker Bridge
+    // 4. 初始化 Worker Bridge
     workerBridge = new WorkerBridge(socketClient, WORKER_ID);
     logger.info('✓ Worker bridge initialized');
 
-    // 6. 初始化平台管理器并加载平台脚本
+    // 5. 初始化平台管理器并加载平台脚本
     platformManager = new PlatformManager(workerBridge, browserManager);
     await platformManager.loadPlatforms();
     
     const supportedPlatforms = platformManager.getSupportedPlatforms();
     logger.info(`✓ Platform manager initialized with platforms: ${supportedPlatforms.join(', ')}`);
 
-    // 7. 初始化账号初始化器
+    // 6. 初始化账号初始化器
     accountInitializer = new AccountInitializer(browserManager, platformManager);
     logger.info('✓ Account initializer created');
 
-    // 8. 注册Worker（使用动态加载的平台能力）
+    // 7. 注册Worker（使用动态加载的平台能力）
     workerRegistration = new WorkerRegistration(socketClient, WORKER_ID, {
       host: '127.0.0.1',
       port: WORKER_PORT,
@@ -115,21 +118,21 @@ async function start() {
     const assignedAccounts = await workerRegistration.register();
     logger.info(`✓ Registered with master (${assignedAccounts.length} accounts assigned)`);
 
-    // 9. 为所有分配的账号初始化浏览器环境
+    // 8. 为所有分配的账号初始化浏览器环境
     logger.info(`Initializing browsers for ${assignedAccounts.length} accounts...`);
     const initResults = await accountInitializer.initializeAccounts(assignedAccounts);
     const successCount = initResults.filter(r => r.success).length;
     logger.info(`✓ Browsers initialized: ${successCount}/${assignedAccounts.length} succeeded`);
 
-    // 10. 初始化账号状态上报器（在 TaskRunner 之前创建）
+    // 9. 初始化账号状态上报器（在 TaskRunner 之前创建）
     accountStatusReporter = new AccountStatusReporter(socketClient.socket, WORKER_ID);
 
-    // 11. 启动任务执行器（传入 platformManager、accountStatusReporter 和 browserManager）
+    // 10. 启动任务执行器（传入 platformManager、accountStatusReporter 和 browserManager）
     taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager, accountStatusReporter, browserManager);
     taskRunner.start();
     logger.info('✓ Task runner started');
 
-    // 12. 添加已成功初始化的账户到任务执行器
+    // 11. 添加已成功初始化的账户到任务执行器
     let addedTasksCount = 0;
     for (const account of assignedAccounts) {
       if (accountInitializer.isInitialized(account.id)) {
@@ -141,7 +144,7 @@ async function start() {
     }
     logger.info(`✓ Added ${addedTasksCount} monitoring tasks`);
 
-    // 13. 为所有账号设置初始在线状态（在启动前设置）
+    // 12. 为所有账号设置初始在线状态（在启动前设置）
     for (const account of assignedAccounts) {
       if (accountInitializer.isInitialized(account.id)) {
         accountStatusReporter.setAccountOnline(account.id);
@@ -149,17 +152,17 @@ async function start() {
       }
     }
 
-    // 14. 启动上报器（此时已有账号状态数据）
+    // 13. 启动上报器（此时已有账号状态数据）
     accountStatusReporter.start();
     logger.info('✓ Account status reporter started');
 
-    // 15. 初始化并启动 IsNewPushTask（用于新数据推送）
+    // 14. 初始化并启动 IsNewPushTask（用于新数据推送）
     const cacheManager = getCacheManager();
     isNewPushTask = new IsNewPushTask(cacheManager, workerBridge);
     isNewPushTask.start();
     logger.info('✓ IsNewPushTask started (new data push scanning every 60s)');
 
-    // 16. 监听任务分配消息
+    // 15. 监听任务分配消息
     socketClient.onMessage(MASTER_TASK_ASSIGN, (msg) => {
       handleTaskAssign(msg);
     });
@@ -172,12 +175,12 @@ async function start() {
       handleAccountLogout(msg);
     });
 
-    // 9. 监听登录请求
+    // 16. 监听登录请求
     socketClient.socket.on('master:login:start', (data) => {
       handleLoginRequest(data);
     });
 
-    // 10. 监听用户输入（用于短信验证码等场景）
+    // 17. 监听用户输入（用于短信验证码等场景）
     socketClient.socket.on('master:login:user_input', (data) => {
       handleUserInput(data);
     });
@@ -185,6 +188,14 @@ async function start() {
     logger.info('╔═══════════════════════════════════════════╗');
     logger.info('║  Worker Ready                             ║');
     logger.info('╚═══════════════════════════════════════════╝');
+
+    // 18. 启动 Chrome DevTools MCP 调试接口 (使用配置文件)
+    if (debugConfig.mcp.enabled) {
+      chromeDevToolsMCP = new ChromeDevToolsMCP(debugConfig.mcp.port);
+      await chromeDevToolsMCP.start(WORKER_ID);
+      logger.info(`🔍 Chrome DevTools MCP 调试接口已启动: http://${debugConfig.mcp.host}:${debugConfig.mcp.port}`);
+    }
+
   } catch (error) {
     logger.error('Failed to start worker:', error);
     process.exit(1);
@@ -390,6 +401,12 @@ async function shutdown(signal) {
   if (browserManager) {
     await browserManager.closeAll();
     logger.info('All browsers closed');
+  }
+
+  // 关闭 Chrome DevTools MCP 调试接口
+  if (chromeDevToolsMCP) {
+    await chromeDevToolsMCP.stop();
+    logger.info('Chrome DevTools MCP stopped');
   }
 
   // 断开Socket连接
