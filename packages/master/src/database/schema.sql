@@ -52,30 +52,64 @@ CREATE INDEX IF NOT EXISTS idx_comments_read ON comments(is_read);
 CREATE INDEX IF NOT EXISTS idx_comments_detected ON comments(detected_at);
 
 -- ============================================
--- 3. direct_messages - 私信表
+-- 3. conversations - 私信会话表 (新增)
+-- ============================================
+CREATE TABLE IF NOT EXISTS conversations (
+  id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  platform_user_id TEXT NOT NULL,
+  platform_user_name TEXT,
+  platform_user_avatar TEXT,
+  is_group BOOLEAN DEFAULT 0,
+  unread_count INTEGER DEFAULT 0,
+  platform_message_id TEXT,
+  last_message_time INTEGER,
+  last_message_content TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+  UNIQUE(account_id, platform_user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_conversations_account ON conversations(account_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_user ON conversations(platform_user_id);
+CREATE INDEX IF NOT EXISTS idx_conversations_updated ON conversations(updated_at);
+CREATE INDEX IF NOT EXISTS idx_conversations_unread ON conversations(unread_count);
+
+-- ============================================
+-- 4. direct_messages - 私信表 (改进)
 -- ============================================
 CREATE TABLE IF NOT EXISTS direct_messages (
   id TEXT PRIMARY KEY,
   account_id TEXT NOT NULL,
-  platform_message_id TEXT,
+  conversation_id TEXT NOT NULL,
+  platform_message_id TEXT NOT NULL,
   content TEXT NOT NULL,
-  sender_name TEXT,
-  sender_id TEXT,
+  platform_sender_id TEXT NOT NULL,
+  platform_sender_name TEXT,
+  platform_receiver_id TEXT,
+  platform_receiver_name TEXT,
+  message_type TEXT DEFAULT 'text',
   direction TEXT NOT NULL,
   is_read BOOLEAN DEFAULT 0,
   detected_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
   is_new BOOLEAN DEFAULT 1,
   push_count INTEGER DEFAULT 0,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
+  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
+  FOREIGN KEY (conversation_id) REFERENCES conversations(id) ON DELETE CASCADE,
+  UNIQUE(platform_message_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_dm_account ON direct_messages(account_id);
+CREATE INDEX IF NOT EXISTS idx_dm_conversation ON direct_messages(conversation_id);
 CREATE INDEX IF NOT EXISTS idx_dm_read ON direct_messages(is_read);
 CREATE INDEX IF NOT EXISTS idx_dm_detected ON direct_messages(detected_at);
+CREATE INDEX IF NOT EXISTS idx_dm_created ON direct_messages(created_at);
+CREATE INDEX IF NOT EXISTS idx_dm_platform_id ON direct_messages(platform_message_id);
 
 -- ============================================
--- 4. notifications - 通知队列表
+-- 5. notifications - 通知队列表
 -- ============================================
 CREATE TABLE IF NOT EXISTS notifications (
   id TEXT PRIMARY KEY,
@@ -95,7 +129,7 @@ CREATE INDEX IF NOT EXISTS idx_notifications_sent ON notifications(is_sent);
 CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at);
 
 -- ============================================
--- 5. workers - Worker节点注册表
+-- 6. workers - Worker节点注册表
 -- ============================================
 CREATE TABLE IF NOT EXISTS workers (
   id TEXT PRIMARY KEY,
@@ -112,7 +146,7 @@ CREATE TABLE IF NOT EXISTS workers (
 CREATE INDEX IF NOT EXISTS idx_workers_status ON workers(status);
 
 -- ============================================
--- 6. client_sessions - 客户端会话表
+-- 7. client_sessions - 客户端会话表
 -- ============================================
 CREATE TABLE IF NOT EXISTS client_sessions (
   id TEXT PRIMARY KEY,
@@ -129,7 +163,7 @@ CREATE TABLE IF NOT EXISTS client_sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_status ON client_sessions(status);
 
 -- ============================================
--- 7. notification_rules - 通知规则表
+-- 8. notification_rules - 通知规则表
 -- ============================================
 CREATE TABLE IF NOT EXISTS notification_rules (
   id TEXT PRIMARY KEY,
@@ -144,7 +178,7 @@ CREATE TABLE IF NOT EXISTS notification_rules (
 CREATE INDEX IF NOT EXISTS idx_rules_enabled ON notification_rules(enabled);
 
 -- ============================================
--- 8. login_sessions - 登录会话表
+-- 9. login_sessions - 登录会话表
 -- ============================================
 CREATE TABLE IF NOT EXISTS login_sessions (
   id TEXT PRIMARY KEY,
@@ -166,7 +200,7 @@ CREATE INDEX IF NOT EXISTS idx_login_sessions_account ON login_sessions(account_
 CREATE INDEX IF NOT EXISTS idx_login_sessions_created ON login_sessions(created_at);
 
 -- ============================================
--- 9. proxies - 代理服务器表
+-- 10. proxies - 代理服务器表
 -- ============================================
 CREATE TABLE IF NOT EXISTS proxies (
   id TEXT PRIMARY KEY,
