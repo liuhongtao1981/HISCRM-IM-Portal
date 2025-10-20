@@ -7,7 +7,8 @@
     "start": "node src/index.js",
     "dev": "nodemon src/index.js",
     "test": "jest",
-    "test:watch": "jest --watch"
+    "test:watch": "jest --watch",
+    "clean:db": "node scripts/clean-database.js"
   },
   "dependencies": {
     "@hiscrm-im/shared": "file:../shared",
