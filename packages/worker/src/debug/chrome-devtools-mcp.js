@@ -192,6 +192,28 @@ class ChromeDevToolsMCP {
   }
 
   /**
+   * 广播消息给所有已连接的 WebSocket 客户端
+   * 用于通知 MCP 客户端（如监控面板）Worker 的状态更新
+   */
+  broadcastToClients(message) {
+    if (!this.wsClients || this.wsClients.size === 0) {
+      return;
+    }
+
+    const payload = JSON.stringify({
+      type: message.type || 'notification',
+      data: message,
+      timestamp: Date.now(),
+    });
+
+    for (const client of this.wsClients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(payload);
+      }
+    }
+  }
+
+  /**
    * 处理 HTTP 请求
    */
   handleRequest(req, res) {

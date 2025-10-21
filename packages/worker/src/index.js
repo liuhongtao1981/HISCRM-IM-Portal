@@ -194,6 +194,10 @@ async function start() {
       chromeDevToolsMCP = new ChromeDevToolsMCP(debugConfig.mcp.port);
       await chromeDevToolsMCP.start(WORKER_ID);
       logger.info(`🔍 Chrome DevTools MCP 调试接口已启动: http://${debugConfig.mcp.host}:${debugConfig.mcp.port}`);
+
+      // 将 MCP 实例设置到 AccountInitializer，以便浏览器就绪时通知 MCP 客户端
+      accountInitializer.chromeDevToolsMCP = chromeDevToolsMCP;
+      logger.info(`✓ AccountInitializer linked to MCP for browser ready notifications`);
     }
 
   } catch (error) {

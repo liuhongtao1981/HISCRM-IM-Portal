@@ -9,9 +9,10 @@ const debugConfig = require('../config/debug-config');
 const logger = createLogger('account-initializer');
 
 class AccountInitializer {
-  constructor(browserManager, platformManager) {
+  constructor(browserManager, platformManager, chromeDevToolsMCP = null) {
     this.browserManager = browserManager;
     this.platformManager = platformManager;
+    this.chromeDevToolsMCP = chromeDevToolsMCP;
 
     // 记录已初始化的账号
     this.initializedAccounts = new Set();
@@ -72,8 +73,16 @@ class AccountInitializer {
         await this.loadLocalStorage(context, account);
       }
 
-      // 6. 标记为已初始化
+      // 6. 加载平台首页
+      await this.loadPlatformHomepage(context, account);
+
+      // 7. 标记为已初始化
       this.initializedAccounts.add(account.id);
+
+      // 8. 在 DEBUG 模式下通知 MCP 浏览器已就绪
+      if (debugConfig.enabled && this.chromeDevToolsMCP) {
+        this.notifyMCPBrowserReady(account.id);
+      }
 
       logger.info(`✓ Account ${account.id} initialized successfully`);
 
@@ -170,6 +179,57 @@ class AccountInitializer {
   }
 
   /**
+   * 加载平台首页
+   * 在浏览器初始化完成后，自动打开对应平台的首页
+   * @param {BrowserContext} context - 浏览器上下文
+   * @param {Object} account - 账号数据
+   */
+  async loadPlatformHomepage(context, account) {
+    try {
+      // 获取平台配置
+      const platform = this.platformManager.getPlatform(account.platform);
+      if (!platform || !platform.config) {
+        logger.warn(`No platform config for ${account.platform}, skipping homepage load`);
+        return;
+      }
+
+      // 确定要加载的 URL（优先使用 home URL，否则使用 login URL）
+      const homepageUrl = platform.config.urls.home || platform.config.urls.login;
+      if (!homepageUrl) {
+        logger.warn(`No homepage URL configured for platform ${account.platform}`);
+        return;
+      }
+
+      logger.info(`Loading homepage for account ${account.id}: ${homepageUrl}`);
+
+      // 创建新页面并导航到首页
+      const page = await context.newPage();
+
+      try {
+        // 导航到首页，设置合理的超时时间
+        await page.goto(homepageUrl, {
+          waitUntil: 'networkidle',  // 等待网络空闲
+          timeout: 30000,             // 30秒超时
+        });
+
+        logger.info(`✓ Loaded homepage for account ${account.id}`);
+
+        // 保存页面到浏览器管理器的页面池（这样其他操作可以复用）
+        this.browserManager.savePageForAccount(account.id, page);
+
+      } catch (error) {
+        logger.warn(`Failed to navigate to homepage for account ${account.id}: ${error.message}`);
+        // 即使导航失败，也不关闭页面，让它保持打开状态
+        this.browserManager.savePageForAccount(account.id, page);
+      }
+
+    } catch (error) {
+      logger.error(`Failed to load homepage for account ${account.id}:`, error);
+      // 不抛出异常，初始化继续
+    }
+  }
+
+  /**
    * 批量初始化账号
    * @param {Array} accounts - 账号列表
    * @returns {Promise<void>}
@@ -253,6 +313,32 @@ class AccountInitializer {
    */
   isInitialized(accountId) {
     return this.initializedAccounts.has(accountId);
+  }
+
+  /**
+   * 通知 MCP 浏览器已就绪（仅在 DEBUG 模式）
+   * 用于告知监控面板浏览器进程已启动并加载了平台首页
+   * @param {string} accountId - 账号ID
+   */
+  notifyMCPBrowserReady(accountId) {
+    try {
+      if (!this.chromeDevToolsMCP || !this.chromeDevToolsMCP.broadcastToClients) {
+        return;
+      }
+
+      // 广播浏览器就绪消息到所有连接的 MCP 客户端
+      this.chromeDevToolsMCP.broadcastToClients({
+        type: 'browser_ready',
+        accountId,
+        timestamp: Date.now(),
+        message: `Browser initialized and homepage loaded for account ${accountId}`,
+      });
+
+      logger.info(`✓ Notified MCP: Browser ready for account ${accountId}`);
+
+    } catch (error) {
+      logger.warn(`Failed to notify MCP about browser ready for ${accountId}:`, error.message);
+    }
   }
 
   /**
