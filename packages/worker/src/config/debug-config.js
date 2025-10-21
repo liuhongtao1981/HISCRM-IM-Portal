@@ -1,10 +1,13 @@
 /**
  * Debug 模式配置
  * 用于开发调试，启用 MCP 接口和单账户模式
+ *
+ * 启用方式：
+ * 命令行: DEBUG=true npm start:worker
+ * 或设置环境变量: set DEBUG=true && npm start:worker
  */
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env.debug') });
 
 module.exports = {
   /**
@@ -36,8 +39,8 @@ module.exports = {
   browser: {
     // Debug 模式下禁用 headless，便于观察浏览器行为
     headless: process.env.DEBUG_HEADLESS === 'true' ? true : false,
-    // 启用浏览器开发者工具
-    devtools: process.env.DEBUG === 'true',
+    // 由 Master 通过 DEBUG_DEVTOOLS 环境变量控制（默认不启用）
+    devtools: process.env.DEBUG_DEVTOOLS === 'true',
     // 减少日志详细度
     verbose: process.env.DEBUG_VERBOSE === 'true',
   },

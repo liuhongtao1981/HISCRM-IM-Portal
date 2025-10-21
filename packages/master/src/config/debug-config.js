@@ -1,10 +1,13 @@
 /**
  * Master Debug 模式配置
  * 用于开发调试，启用单 Worker 模式和自动启动 Worker
+ *
+ * 启用方式：
+ * 命令行: DEBUG=true npm start:master
+ * 或设置环境变量: set DEBUG=true && npm start:master
  */
 
 const path = require('path');
-require('dotenv').config({ path: path.join(__dirname, '../../.env.debug') });
 
 // Helper to check if a value represents true (handles '1', 'true', true)
 const isDebugEnabled = () => {
@@ -42,6 +45,7 @@ module.exports = {
       DEBUG_HEADLESS: process.env.DEBUG_HEADLESS !== 'true' ? 'false' : 'true', // 默认显示浏览器
       DEBUG_VERBOSE: process.env.DEBUG_VERBOSE,
       DEBUG_LOG_FILE: process.env.DEBUG_LOG_FILE,
+      DEBUG_DEVTOOLS: 'false', // Worker 不启用开发者工具
     },
 
     // Worker 启动超时
