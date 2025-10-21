@@ -2483,14 +2483,21 @@ class DouyinPlatform extends PlatformBase {
       // 4. 定位要回复的评论（从虚拟列表/DOM中查找）
       logger.info(`Locating comment: ${target_id}`);
 
-      // 尝试多个评论定位选择器
+      // 抖音创作者中心评论列表结构分析：
+      // - 评论项 class: .container-sXKyMs
+      // - 没有 data-comment-id 或 id 属性
+      // - 通过内容（用户名、时间戳、评论文本）来定位
+
+      // 方案 1: 通过 target_id 如果它是用户名或内容哈希
+      let commentElement = null;
+
+      // 首先尝试通过标准 data 属性（备选）
       const commentSelectors = [
         `[data-comment-id="${target_id}"]`,
         `[data-cid="${target_id}"]`,
         `[class*="comment"][id*="${target_id}"]`,
       ];
 
-      let commentElement = null;
       for (const selector of commentSelectors) {
         try {
           commentElement = await page.$(selector);
@@ -2503,12 +2510,32 @@ class DouyinPlatform extends PlatformBase {
         }
       }
 
+      // 方案 2: 如果上述方法失败，通过内容在 .container-sXKyMs 中查找
       if (!commentElement) {
-        logger.warn(`Comment ${target_id} not found in DOM, will try to reply by scrolling`);
-        // 备选方案：通过滚动查找
-        const comments = await page.$$('[class*="comment"], [data-comment-id]');
+        logger.warn(`Comment not found via data attributes, trying content matching`);
+
+        // 获取所有评论项
+        const allComments = await page.$$('.container-sXKyMs');
+        logger.info(`Found ${allComments.length} comment items in DOM`);
+
+        // 尝试通过内容匹配找到目标评论
+        for (let i = 0; i < allComments.length; i++) {
+          const text = await allComments[i].textContent();
+          // target_id 可能是用户名、或内容的一部分、或时间戳
+          if (text.includes(target_id) || target_id.includes(text.substring(0, 10))) {
+            commentElement = allComments[i];
+            logger.info(`Found comment by content matching at index ${i}`);
+            break;
+          }
+        }
+      }
+
+      // 方案 3: 备选方案 - 使用第一条评论
+      if (!commentElement) {
+        logger.warn(`Comment ${target_id} not found by content, will try first comment`);
+        const comments = await page.$$('.container-sXKyMs');
         if (comments.length > 0) {
-          commentElement = comments[0]; // 使用第一条评论
+          commentElement = comments[0];
           logger.info(`Using first comment in list as fallback`);
         }
       }
@@ -2517,11 +2544,18 @@ class DouyinPlatform extends PlatformBase {
         throw new Error(`Comment ${target_id} not found on page`);
       }
 
-      // 4. 点击回复按钮
+      // 5. 点击回复按钮
       logger.info('Clicking reply button');
 
+      // 抖音创作者中心的回复按钮结构：
+      // - 在 operations-WFV7Am 容器中
+      // - 是一个 div.item-M3fSkJ 元素
+      // - 包含文本"回复"
+
       const replyButtonSelectors = [
-        '[class*="reply"]',
+        '.item-M3fSkJ',  // 抖音创作者中心的标准回复按钮 class
+        'div:has-text("回复")',  // 包含"回复"文本的 div
+        '[class*="reply"]',  // 通用回复按钮
         'button:has-text("回复")',
         '[class*="reply-btn"]',
       ];
@@ -2540,16 +2574,16 @@ class DouyinPlatform extends PlatformBase {
       }
 
       if (!replyBtn) {
-        // 尝试找到整个评论区域的回复按钮
-        replyBtn = await page.$(`${commentSelectors[0]} [class*="reply"]`);
+        // 尝试找到整个页面上的回复按钮（备选方案）
+        replyBtn = await page.$('.item-M3fSkJ');
       }
 
       if (replyBtn) {
         await replyBtn.click();
         await page.waitForTimeout(1000);
-        logger.info('Reply button clicked');
+        logger.info('Reply button clicked successfully');
       } else {
-        logger.warn('Reply button not found, trying to focus comment input');
+        logger.warn('Reply button not found, will try to proceed with input');
       }
 
       // 5. 定位并填充回复输入框

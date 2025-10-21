@@ -33,6 +33,9 @@ function initDatabase(dbPath = './data/master.db', options = {}) {
     db.pragma('synchronous = NORMAL');
     db.pragma('foreign_keys = ON');
 
+    // 明确设置编码为UTF-8 (防止字符编码问题)
+    db.pragma('encoding = "UTF-8"');
+
     logger.info(`Database opened: ${dbPath}`);
 
     // 执行schema.sql创建表

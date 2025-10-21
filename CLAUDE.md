@@ -1,4 +1,7 @@
 # CLAUDE.md
+- 请使用中文回答
+- /docs 所有文档放在这里
+- /tests 所有测试脚本放在这里
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
@@ -483,5 +486,3 @@ open packages/worker/data/browser/worker-1/screenshots/
 - Proxy support for IP rotation
 - Random monitoring intervals (anti-bot detection)
 - Each account isolated in separate Browser process (no data leakage)
-- 文档放入 /docs 文件夹内
-- 测试放在 /tests 文件夹内

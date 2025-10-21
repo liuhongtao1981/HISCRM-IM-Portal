@@ -6,17 +6,23 @@
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '../../.env.debug') });
 
+// Helper to check if a value represents true (handles '1', 'true', true)
+const isDebugEnabled = () => {
+  const val = process.env.DEBUG;
+  return val === 'true' || val === '1' || val === true;
+};
+
 module.exports = {
   /**
    * Debug 模式开启
    */
-  enabled: process.env.DEBUG === 'true',
+  enabled: isDebugEnabled(),
 
   /**
    * 单 Worker 模式 (Debug 时只启动一个 worker)
    */
   singleWorker: {
-    enabled: process.env.DEBUG === 'true',
+    enabled: isDebugEnabled(),
     maxWorkers: 1,
     autoStart: process.env.DEBUG_AUTO_START === 'true' || process.env.DEBUG === 'true',
   },
@@ -31,13 +37,11 @@ module.exports = {
     // Worker 环境变量 - DEBUG 模式下自动传递
     env: {
       DEBUG: process.env.DEBUG,
-      DEBUG_MCP: process.env.DEBUG_MCP === 'true' || process.env.DEBUG === 'true',
+      DEBUG_MCP: process.env.DEBUG_MCP === 'true' || isDebugEnabled(),
       DEBUG_LOG_LEVEL: process.env.DEBUG_LOG_LEVEL || 'debug',
       DEBUG_HEADLESS: process.env.DEBUG_HEADLESS !== 'true' ? 'false' : 'true', // 默认显示浏览器
       DEBUG_VERBOSE: process.env.DEBUG_VERBOSE,
       DEBUG_LOG_FILE: process.env.DEBUG_LOG_FILE,
-      MCP_PORT: process.env.MCP_PORT || '9222',
-      MCP_HOST: process.env.MCP_HOST || 'localhost',
     },
 
     // Worker 启动超时
@@ -48,11 +52,21 @@ module.exports = {
   },
 
   /**
+   * 浏览器事件处理配置
+   * 浏览器事件通过 Socket.IO 直接发送给 Master (端口 3000)
+   * Anthropic MCP (端口 9222) 用于 Claude 实时调试浏览器
+   */
+  browser: {
+    enabled: process.env.DEBUG_MCP === 'true' || isDebugEnabled(),
+    // 浏览器事件由 Master 的 Socket.IO 处理，无需额外端口
+  },
+
+  /**
    * 账户管理配置
    */
   accounts: {
     // Debug 时自动分配账户到 Worker (如果有的话)
-    autoAssign: process.env.DEBUG === 'true',
+    autoAssign: isDebugEnabled(),
     // 最多监控 1 个账户
     maxPerWorker: 1,
   },
@@ -70,8 +84,8 @@ module.exports = {
    * 日志配置
    */
   logging: {
-    level: process.env.DEBUG === 'true' ? 'debug' : 'info',
-    showWorkerLogs: process.env.DEBUG === 'true',
+    level: isDebugEnabled() ? 'debug' : 'info',
+    showWorkerLogs: isDebugEnabled(),
   },
 
   /**

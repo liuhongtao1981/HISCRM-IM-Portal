@@ -50,7 +50,20 @@ function createRepliesRouter(db, options = {}) {
         video_id,
         user_id,
         platform_target_id,
+        context,  // 支持在context对象中传递这些字段
       } = req.body;
+
+      // 重要：优先从context中提取字段（如果存在），否则使用顶级字段
+      const finalVideoId = context?.video_id || video_id;
+      const finalUserId = context?.user_id || user_id;
+      const finalPlatformTargetId = context?.platform_target_id || platform_target_id;
+
+      logger.info('Received reply request', {
+        targetType: target_type,
+        hasVideoId: !!finalVideoId,
+        videoIdPreview: finalVideoId ? finalVideoId.substring(0, 20) : 'NULL',
+        contextUsed: !!context,
+      });
 
       // 验证必填字段
       if (!request_id || !account_id || !target_type || !target_id || !reply_content) {
@@ -60,6 +73,27 @@ function createRepliesRouter(db, options = {}) {
           required: ['request_id', 'account_id', 'target_type', 'target_id', 'reply_content'],
         });
       }
+
+      // 修复编码问题 - GB2312被误解为UTF-8
+      let fixed_reply_content = reply_content;
+      if (reply_content.includes('\ufffd')) {
+        // 检测到替换字符，尝试恢复
+        try {
+          const buffer = Buffer.from(reply_content, 'utf8');
+          const latin1 = buffer.toString('latin1');
+          // 尝试重新编码 - 假设原始是GB2312
+          fixed_reply_content = Buffer.from(latin1, 'binary').toString('utf8');
+          logger.debug('Encoding fixed for reply_content', {
+            original: reply_content.substring(0, 50),
+            fixed: fixed_reply_content.substring(0, 50),
+          });
+        } catch (e) {
+          logger.warn('Failed to fix encoding:', e.message);
+          // 保持原值
+        }
+      }
+      // 使用修复后的内容
+      const final_reply_content = fixed_reply_content;
 
       // 验证 target_type
       if (!['comment', 'direct_message'].includes(target_type)) {
@@ -104,7 +138,7 @@ function createRepliesRouter(db, options = {}) {
         });
       }
 
-      // 创建回复记录
+      // 创建回复记录（使用提取的最终值）
       const reply = replyDAO.createReply({
         requestId: request_id,
         platform: account.platform,
@@ -112,9 +146,9 @@ function createRepliesRouter(db, options = {}) {
         targetType: target_type,
         targetId: target_id,
         replyContent: reply_content,
-        videoId: video_id,
-        userId: user_id,
-        platformTargetId: platform_target_id,
+        videoId: finalVideoId,        // 使用从context提取的video_id
+        userId: finalUserId,          // 使用从context提取的user_id
+        platformTargetId: finalPlatformTargetId,  // 使用从context提取的platform_target_id
         assignedWorkerId: account.assigned_worker_id,
       });
 

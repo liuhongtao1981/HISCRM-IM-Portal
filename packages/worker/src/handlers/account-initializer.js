@@ -200,7 +200,16 @@ class AccountInitializer {
         return;
       }
 
-      logger.info(`Loading homepage for account ${account.id}: ${homepageUrl}`);
+      // Debug 模式下：使用更短的超时或跳过首页加载，避免反复失败导致浏览器重启
+      const isDebugMode = process.env.DEBUG === 'true';
+      const navigationTimeout = isDebugMode ? 10000 : 30000;  // Debug模式: 10秒，否则 30秒
+      const waitUntilOption = isDebugMode ? 'domcontentloaded' : 'networkidle';  // Debug模式：DOM加载即可
+
+      logger.info(`Loading homepage for account ${account.id}: ${homepageUrl}`, {
+        debugMode: isDebugMode,
+        timeout: navigationTimeout,
+        waitUntil: waitUntilOption
+      });
 
       // 创建新页面并导航到首页
       const page = await context.newPage();
@@ -208,8 +217,8 @@ class AccountInitializer {
       try {
         // 导航到首页，设置合理的超时时间
         await page.goto(homepageUrl, {
-          waitUntil: 'networkidle',  // 等待网络空闲
-          timeout: 30000,             // 30秒超时
+          waitUntil: waitUntilOption,  // Debug模式用 domcontentloaded，否则 networkidle
+          timeout: navigationTimeout,   // Debug模式用 10秒，否则 30秒
         });
 
         logger.info(`✓ Loaded homepage for account ${account.id}`);

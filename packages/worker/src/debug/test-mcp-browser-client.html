@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP Browser Client Test</title>
+    <style>
+        body {
+            font-family: monospace;
+            background: #1e1e1e;
+            color: #00ff00;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            color: #00ccff;
+            border-bottom: 2px solid #00ccff;
+            padding-bottom: 10px;
+        }
+        .status {
+            background: #2d2d2d;
+            padding: 15px;
+            border-left: 3px solid #00ff00;
+            margin: 10px 0;
+        }
+        .error {
+            border-left-color: #ff0000;
+            color: #ff6b6b;
+        }
+        .success {
+            border-left-color: #00ff00;
+            color: #00ff00;
+        }
+        button {
+            background: #00ccff;
+            color: #000;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            margin: 10px 5px 10px 0;
+        }
+        button:hover {
+            background: #00ffff;
+        }
+        #log {
+            background: #000;
+            border: 1px solid #00ff00;
+            padding: 15px;
+            margin-top: 20px;
+            max-height: 400px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+        .log-entry {
+            margin: 5px 0;
+            padding: 5px;
+            border-left: 2px solid #00ff00;
+            padding-left: 10px;
+        }
+        .log-error {
+            border-left-color: #ff0000;
+            color: #ff6b6b;
+        }
+        .log-success {
+            border-left-color: #00ff00;
+            color: #00ff00;
+        }
+        .log-info {
+            border-left-color: #00ccff;
+            color: #00ccff;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔌 MCP Browser Client Test</h1>
+
+        <div class="status">
+            <strong>连接状态:</strong> <span id="connection-status">未连接</span>
+        </div>
+
+        <div>
+            <button onclick="connectToMCP()">连接 MCP</button>
+            <button onclick="sendTestMessage()">发送测试消息</button>
+            <button onclick="sendNavigationEvent()">发送导航事件 (转到私信页面)</button>
+            <button onclick="clearLog()">清除日志</button>
+        </div>
+
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let accountId = 'test-account-123';
+
+        function addLog(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = `log-entry log-${type}`;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function updateConnectionStatus(connected) {
+            const status = document.getElementById('connection-status');
+            if (connected) {
+                status.textContent = '✅ 已连接';
+                status.style.color = '#00ff00';
+            } else {
+                status.textContent = '❌ 未连接';
+                status.style.color = '#ff0000';
+            }
+        }
+
+        function connectToMCP() {
+            addLog('🔌 正在连接到 MCP WebSocket...', 'info');
+
+            try {
+                ws = new WebSocket('ws://localhost:9222/');
+
+                ws.onopen = () => {
+                    addLog('✅ WebSocket 已连接!', 'success');
+                    updateConnectionStatus(true);
+
+                    // 立即发送注册消息
+                    const registerMsg = {
+                        type: 'register',
+                        accountId: accountId,
+                        capabilities: ['navigation', 'events', 'logging']
+                    };
+                    ws.send(JSON.stringify(registerMsg));
+                    addLog(`📤 已发送注册消息: ${JSON.stringify(registerMsg)}`, 'info');
+                };
+
+                ws.onmessage = (event) => {
+                    try {
+                        const data = JSON.parse(event.data);
+                        addLog(`📥 收到消息: ${JSON.stringify(data)}`, 'success');
+                    } catch (e) {
+                        addLog(`📥 收到原始数据: ${event.data}`, 'info');
+                    }
+                };
+
+                ws.onerror = (error) => {
+                    addLog(`❌ WebSocket 错误: ${error.message}`, 'error');
+                };
+
+                ws.onclose = () => {
+                    addLog('❌ WebSocket 已断开', 'error');
+                    updateConnectionStatus(false);
+                };
+
+            } catch (error) {
+                addLog(`❌ 连接失败: ${error.message}`, 'error');
+                updateConnectionStatus(false);
+            }
+        }
+
+        function sendTestMessage() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addLog('⚠️ WebSocket 未连接，请先连接', 'error');
+                return;
+            }
+
+            const msg = {
+                type: 'event',
+                accountId: accountId,
+                event: 'test_click',
+                content: '这是一个测试消息，代表用户在浏览器中进行了点击操作'
+            };
+
+            ws.send(JSON.stringify(msg));
+            addLog(`📤 已发送测试消息: ${JSON.stringify(msg)}`, 'success');
+        }
+
+        function sendNavigationEvent() {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                addLog('⚠️ WebSocket 未连接，请先连接', 'error');
+                return;
+            }
+
+            const msg = {
+                type: 'event',
+                accountId: accountId,
+                event: 'navigation',
+                content: {
+                    from: window.location.href,
+                    to: 'https://creator.douyin.com/creator-micro/data/following/chat',
+                    description: '导航到私信页面'
+                }
+            };
+
+            ws.send(JSON.stringify(msg));
+            addLog(`📤 已发送导航事件: 准备跳转到私信页面`, 'success');
+
+            // 实际导航
+            setTimeout(() => {
+                addLog('🔄 浏览器开始导航...', 'info');
+                window.location.href = 'https://creator.douyin.com/creator-micro/data/following/chat';
+            }, 500);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+            addLog('📝 日志已清除', 'info');
+        }
+
+        // 页面加载时自动连接
+        window.addEventListener('load', () => {
+            addLog('🌐 页面已加载', 'info');
+            connectToMCP();
+        });
+
+        // 页面卸载时断开连接
+        window.addEventListener('beforeunload', () => {
+            if (ws) {
+                ws.close();
+            }
+        });
+    </script>
+</body>
+</html>
