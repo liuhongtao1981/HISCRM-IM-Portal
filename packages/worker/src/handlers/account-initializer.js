@@ -180,7 +180,8 @@ class AccountInitializer {
 
   /**
    * 加载平台首页
-   * 在浏览器初始化完成后，自动打开对应平台的首页
+   * ⭐ 改进: 使用 Spider1 (Tab 1) 加载首页，而不是创建新页面
+   * 这样充分利用默认标签页，避免浪费标签页资源
    * @param {BrowserContext} context - 浏览器上下文
    * @param {Object} account - 账号数据
    */
@@ -211,8 +212,21 @@ class AccountInitializer {
         waitUntil: waitUntilOption
       });
 
-      // 创建新页面并导航到首页
-      const page = await context.newPage();
+      // ⭐ 获取 Spider1 (Tab 1) 来加载首页
+      // 这样充分利用默认标签页，而不是创建新页面
+      let page = null;
+      try {
+        page = await this.browserManager.getSpiderPage(account.id, 'spider1');
+        if (!page || page.isClosed()) {
+          logger.warn(`Spider1 page not available, falling back to creating new page`);
+          page = await context.newPage();
+        } else {
+          logger.info(`📌 Using Spider1 (Tab 1) to load homepage for account ${account.id}`);
+        }
+      } catch (error) {
+        logger.warn(`Failed to get Spider1 page: ${error.message}, falling back to creating new page`);
+        page = await context.newPage();
+      }
 
       try {
         // 导航到首页，设置合理的超时时间
