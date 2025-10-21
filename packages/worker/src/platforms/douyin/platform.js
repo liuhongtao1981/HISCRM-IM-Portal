@@ -2420,32 +2420,46 @@ class DouyinPlatform extends PlatformBase {
               keys: Object.keys(json)
             });
 
-            // 检查返回的状态 - 优先看 status_code 字段
-            if (json.status_code === 0 || json.data?.reply_id) {
-              // 成功 - status_code=0 表示成功
+            // ⭐ 改进: 正确处理成功和失败的状态返回
+            // 成功响应: { status_code: 0, comment_info: {...}, ... }
+            // 失败响应: { status_code: 15421, status_msg: "私密作品无法评论", ... }
+
+            const statusCode = json.status_code;
+            const statusMsg = json.status_msg || '';
+            const commentInfo = json.comment_info;
+
+            if (statusCode === 0 && commentInfo) {
+              // ✅ 成功 - status_code=0 且有 comment_info
               apiResponses.replySuccess = {
                 timestamp: Date.now(),
                 url,
                 status,
-                statusCode: json.status_code,
-                statusMsg: json.status_msg,
+                statusCode: statusCode,
+                statusMsg: statusMsg,
+                commentId: commentInfo.comment_id,
                 data: json
               };
-              logger.info(`✅ Reply SUCCESS - reply_id: ${json.data?.reply_id || 'N/A'}`);
-            } else if (json.status_code && json.status_code !== 0) {
-              // API 返回了错误码 (非0都是错误)
+              logger.info(`✅✅✅ Reply SUCCESS ✅✅✅`);
+              logger.info(`    Status Code: ${statusCode}`);
+              logger.info(`    Comment ID: ${commentInfo.comment_id}`);
+              logger.info(`    Create Time: ${commentInfo.create_time}`);
+              logger.info(`    Reply Text: ${commentInfo.text}`);
+            } else if (statusCode !== 0 && statusCode !== undefined) {
+              // ❌ 失败 - status_code 非 0（表示 API 错误）
               apiResponses.replyError = {
                 timestamp: Date.now(),
                 url,
                 status,
-                status_code: json.status_code,
-                status_msg: json.status_msg || json.message,
-                error_msg: json.error_msg || json.status_msg || json.message || '未知错误',
+                status_code: statusCode,
+                status_msg: statusMsg,
+                error_msg: statusMsg || '未知错误',
                 data: json
               };
-              logger.warn(`❌ Reply FAILED - status_code=${json.status_code}, message=${json.status_msg || json.error_msg || json.message}`);
+              logger.warn(`❌❌❌ Reply FAILED ❌❌❌`);
+              logger.warn(`    Status Code: ${statusCode}`);
+              logger.warn(`    Error Message: ${statusMsg}`);
             } else if (status >= 400) {
-              // HTTP 错误状态码
+              // ❌ HTTP 错误状态码
               apiResponses.replyError = {
                 timestamp: Date.now(),
                 url,
@@ -2456,7 +2470,7 @@ class DouyinPlatform extends PlatformBase {
               };
               logger.warn(`❌ HTTP Error: ${status}`);
             } else {
-              logger.warn('⚠️ Unexpected response format - checking for error indicators...');
+              logger.warn('⚠️ Unexpected response format');
               if (json.status_msg) {
                 apiResponses.replyError = {
                   timestamp: Date.now(),
