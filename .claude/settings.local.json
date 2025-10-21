@@ -13,7 +13,8 @@
       "Bash(do mv \"docs/$file\" \"docs/_archived/$file\")",
       "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 清理 docs 目录 - 移动调试文档到 _archived\n\n文档整理：\n- 移动 19 个临时/调试文档到 docs/_archived/\n- 包括：MCP 测试报告、DM 提取调试、PHASE 实现总结等\n- 保留核心功能文档在 docs 根目录：\n  - 系统文档（ADMIN/MASTER/WORKER）\n  - 平台扩展和实现细节\n  - 调试指南\n  - 验证报告\n\ndocs 根目录现仅包含：\n- 40 个主要参考文档\n- 37 个已完成/过时的实现文档在 _archived/\n- 25+ 个 Phase 文档在 _archived_session/\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 更新 INDEX.md - 完成文档整理统计\n\n更新文档索引：\n- 修正主要文档列表和编号\n- 移除已归档的 MCP 文档\n- 添加文档统计表（21 + 56 + 37 = 114 个文档）\n- 更新版本到 1.1\n- 记录最近四次归档操作\n\n文档组织现已完成：\n✅ 根目录文档归档 (11 个)\n✅ packages 测试脚本整理 (3 个)\n✅ .docs 实现文档归档 (19 个)\n✅ 调试临时文档归档 (19 个)\n\n项目现拥有：\n- 21 个主要参考文档\n- 56 个已完成的实现文档\n- 37 个历史 Phase 文档\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
-      "Bash(for file in \"docs/WORKER-DEBUG-MODE-GUIDE.md\" \"docs/WORKER-BROWSER-DEBUG-GUIDE.md\" \"docs/VIRTUAL-LIST-INVESTIGATION-COMPLETE.md\" \"docs/VIRTUAL-LIST-DOM-MAPPING.md\" \"docs/MCP-ARCHITECTURE-OVERVIEW.md\" \"docs/MASTER-TEST-REPORT.md\" \"docs/INDEX.md\" \"docs/FINAL-VERIFICATION-REPORT.md\" \"docs/Debug模式使用指南.md\" \"docs/ANTHROPIC-MCP-SETUP-GUIDE.md\" \"docs/项目完成度状态报告.md\")"
+      "Bash(for file in \"docs/WORKER-DEBUG-MODE-GUIDE.md\" \"docs/WORKER-BROWSER-DEBUG-GUIDE.md\" \"docs/VIRTUAL-LIST-INVESTIGATION-COMPLETE.md\" \"docs/VIRTUAL-LIST-DOM-MAPPING.md\" \"docs/MCP-ARCHITECTURE-OVERVIEW.md\" \"docs/MASTER-TEST-REPORT.md\" \"docs/INDEX.md\" \"docs/FINAL-VERIFICATION-REPORT.md\" \"docs/Debug模式使用指南.md\" \"docs/ANTHROPIC-MCP-SETUP-GUIDE.md\" \"docs/项目完成度状态报告.md\")",
+      "Bash(git add \"docs/08-DOUYIN-Phase8-私信爬虫改进实现路线图.md\")"
     ],
     "deny": [],
     "ask": []
