@@ -167,8 +167,40 @@ class MonitorTask {
 
       logger.info(`Account ${this.account.id} is logged in, starting crawl...`);
 
-      // 1. 爬取评论（通过平台实例）- 返回 { comments, stats }
-      const commentResult = await this.platformInstance.crawlComments(this.account);
+      // ⭐ 关键改进: 并行执行评论和私信爬取 (使用 Promise.all)
+      // 现在评论爬虫 (spider2) 和私信爬虫 (spider1) 可以独立运行，互不干扰
+      logger.info(`Starting parallel crawling: spider1 (DM) and spider2 (Comments)`);
+
+      const [commentResult, dmResult] = await Promise.all([
+        // 1. 爬取评论（通过平台实例）- 返回 { comments, stats }
+        // 使用 spider2 (Tab 2) 独立运行
+        (async () => {
+          try {
+            logger.info(`Spider2 (Comments) started for account ${this.account.id}`);
+            const result = await this.platformInstance.crawlComments(this.account);
+            logger.info(`Spider2 (Comments) completed for account ${this.account.id}`);
+            return result;
+          } catch (error) {
+            logger.error(`Spider2 (Comments) failed: ${error.message}`);
+            throw error;
+          }
+        })(),
+
+        // 4. 爬取私信（通过平台实例）- 返回 { conversations, directMessages, stats } (Phase 8)
+        // 使用 spider1 (Tab 1) 独立运行
+        (async () => {
+          try {
+            logger.info(`Spider1 (DM) started for account ${this.account.id}`);
+            const result = await this.platformInstance.crawlDirectMessages(this.account);
+            logger.info(`Spider1 (DM) completed for account ${this.account.id}`);
+            return result;
+          } catch (error) {
+            logger.error(`Spider1 (DM) failed: ${error.message}`);
+            throw error;
+          }
+        })(),
+      ]);
+
       const rawComments = commentResult.comments || commentResult;  // 兼容旧版本
       const commentStats = commentResult.stats || {};
 
@@ -182,8 +214,6 @@ class MonitorTask {
         'platform_comment_id'
       );
 
-      // 4. 爬取私信（通过平台实例）- 返回 { conversations, directMessages, stats } (Phase 8)
-      const dmResult = await this.platformInstance.crawlDirectMessages(this.account);
       const conversations = dmResult.conversations || [];  // Phase 8 新增
       const rawDMs = dmResult.directMessages || dmResult;  // 兼容旧版本
       const dmStats = dmResult.stats || {};

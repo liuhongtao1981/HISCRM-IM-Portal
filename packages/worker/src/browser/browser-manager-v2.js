@@ -34,9 +34,12 @@ class BrowserManagerV2 {
     // Storage state 路径管理 (accountId -> path)
     this.storageStatePaths = new Map();
 
-    // 🆕 页面池管理 (accountId -> page)
-    // ⭐ 特点：按需创建，自动清理
-    this.accountPages = new Map();
+    // 🆕 页面池管理 - 分类管理不同用途的页面
+    // spider1: 私信爬取蜘蛛（Tab 1）- 长期运行，不关闭
+    // spider2: 评论爬取蜘蛛（Tab 2）- 长期运行，不关闭
+    // temporary: 临时页面（Tab 3+）- 完成后关闭
+    this.spiderPages = new Map();    // { accountId -> { spider1: page, spider2: page } }
+    this.temporaryPages = new Map(); // { accountId -> [page1, page2, ...] }
 
     // 🆕 页面使用统计 (accountId -> { usage, lastUsedTime, createdAt })
     this.pageUsageStats = new Map();
@@ -332,6 +335,18 @@ class BrowserManagerV2 {
       // 启动 PersistentContext（会自动创建并管理 Browser）
       const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 
+      // 📌 获取第一个默认标签页用于登录和平台首页访问
+      const pages = context.pages();
+      if (pages.length > 0) {
+        const defaultPage = pages[0];
+        logger.info(`📌 Tab 1 (默认) 用于登录和平台首页导航 - 账户 ${accountId}`);
+        // 将默认页面设为 spider1（登录后会被spider1使用）
+        if (!this.spiderPages.has(accountId)) {
+          this.spiderPages.set(accountId, {});
+        }
+        this.spiderPages.get(accountId).spider1 = defaultPage;
+      }
+
       // 注入指纹脚本
       await this.applyFingerprintScripts(context, fingerprint);
 
@@ -344,6 +359,7 @@ class BrowserManagerV2 {
         logger.warn(`Browser disconnected for account ${accountId}, cleaning up...`);
         this.contexts.delete(accountId);
         this.browsers.delete(accountId);
+        this.accountPages.delete(accountId);
       });
 
       // 保存引用
@@ -558,6 +574,112 @@ class BrowserManagerV2 {
       }
 
       throw error;
+    }
+  }
+
+  /**
+   * 获取蜘蛛页面（spider1 或 spider2）
+   * spider1: Tab 1 - 登录后用于私信爬取（默认页面，保留）
+   * spider2: Tab 2+ - 评论爬取（按需创建）
+   * @param {string} accountId - 账户ID
+   * @param {string} spiderType - 蜘蛛类型 ('spider1' | 'spider2')
+   * @returns {Page} 蜘蛛页面对象
+   */
+  async getSpiderPage(accountId, spiderType = 'spider1') {
+    try {
+      let spiders = this.spiderPages.get(accountId);
+
+      // 初始化蜘蛛页面对象
+      if (!spiders) {
+        spiders = {};
+        this.spiderPages.set(accountId, spiders);
+      }
+
+      // spider1 应该已在 launchPersistentContext 时创建（默认第一个页面）
+      if (spiderType === 'spider1') {
+        if (!spiders.spider1) {
+          throw new Error(`Spider1 page not found for account ${accountId} - context may not be initialized`);
+        }
+        if (spiders.spider1.isClosed()) {
+          throw new Error(`Spider1 page is closed for account ${accountId}`);
+        }
+        logger.debug(`🕷️ Using spider1 (Tab 1) for account ${accountId}`);
+        return spiders.spider1;
+      }
+
+      // spider2 按需创建
+      if (spiderType === 'spider2') {
+        if (!spiders.spider2 || spiders.spider2.isClosed()) {
+          const context = this.contexts.get(accountId);
+          if (!context) {
+            throw new Error(`Context not found for account ${accountId}`);
+          }
+
+          spiders.spider2 = await context.newPage();
+          logger.info(`🕷️ Created spider2 (Tab 2) for account ${accountId}`);
+        }
+        logger.debug(`🕷️ Using spider2 (Tab 2) for account ${accountId}`);
+        return spiders.spider2;
+      }
+
+      throw new Error(`Unknown spider type: ${spiderType}`);
+    } catch (error) {
+      logger.error(`Failed to get ${spiderType} for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取临时页面（用于一次性操作，完成后需要关闭）
+   * @param {string} accountId - 账户ID
+   * @returns {Page} 临时页面对象
+   */
+  async getTemporaryPage(accountId) {
+    try {
+      const context = this.contexts.get(accountId);
+
+      if (!context) {
+        throw new Error(`Context not found for account ${accountId}`);
+      }
+
+      const page = await context.newPage();
+      logger.info(`✨ Created temporary page for account ${accountId}`);
+
+      // 记录临时页面
+      if (!this.temporaryPages.has(accountId)) {
+        this.temporaryPages.set(accountId, []);
+      }
+      this.temporaryPages.get(accountId).push(page);
+
+      return page;
+    } catch (error) {
+      logger.error(`Failed to create temporary page for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 关闭并删除临时页面
+   * @param {string} accountId - 账户ID
+   * @param {Page} page - 要关闭的页面
+   */
+  async closeTemporaryPage(accountId, page) {
+    try {
+      if (page && !page.isClosed()) {
+        await page.close();
+        logger.info(`✅ Closed temporary page for account ${accountId}`);
+      }
+
+      // 从记录中移除
+      const pages = this.temporaryPages.get(accountId);
+      if (pages) {
+        const index = pages.indexOf(page);
+        if (index > -1) {
+          pages.splice(index, 1);
+        }
+      }
+    } catch (error) {
+      logger.error(`Failed to close temporary page for account ${accountId}:`, error);
     }
   }
 
