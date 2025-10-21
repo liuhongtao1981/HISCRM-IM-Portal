@@ -559,8 +559,9 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取或创建页面
-      const page = await this.getOrCreatePage(account.id);
+      // 1. 获取或创建页面 - 使用 spider2 (Tab 2) 用于评论爬取
+      // ⭐ 关键改进: 现在使用独立的 spider2 标签页，与私信爬虫 (spider1) 并行运行
+      const page = await this.getOrCreatePage(account.id, 'spider2');
 
       // 2. 设置全局API拦截器 - 持续监听所有评论API
       const allApiResponses = [];
@@ -1008,10 +1009,11 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取或创建页面
-      logger.debug(`[crawlDirectMessages] Step 1: Getting or creating page for account ${account.id}`);
-      const page = await this.getOrCreatePage(account.id);
-      logger.info(`[crawlDirectMessages] Page created/retrieved successfully`);
+      // 1. 获取或创建页面 - 使用 spider1 (Tab 1) 用于私信爬取
+      // ⭐ 关键改进: 现在使用独立的 spider1 标签页，与评论爬虫 (spider2) 并行运行
+      logger.debug(`[crawlDirectMessages] Step 1: Getting or creating spider1 page for account ${account.id}`);
+      const page = await this.getOrCreatePage(account.id, 'spider1');
+      logger.info(`[crawlDirectMessages] Spider1 page retrieved successfully`);
 
       // 2. 执行 Phase 8 爬虫 (包括 API 拦截、虚拟列表提取、数据合并等)
       logger.debug(`[crawlDirectMessages] Step 2: Running Phase 8 crawler (crawlDirectMessagesV2)`);
@@ -1088,13 +1090,20 @@ class DouyinPlatform extends PlatformBase {
   // ==================== 爬虫辅助方法 ====================
 
   /**
-   * 获取或创建页面
+   * 获取或创建页面 - 支持指定蜘蛛类型
    * @param {string} accountId - 账户ID
+   * @param {string} spiderType - 蜘蛛类型 ('spider1' 私信, 'spider2' 评论)
    * @returns {Promise<Page>}
    */
-  async getOrCreatePage(accountId) {
-    // ⭐ 现在使用 PlatformBase 的统一接口代替
-    // 这会自动使用 BrowserManager 的页面池管理
+  async getOrCreatePage(accountId, spiderType = 'spider1') {
+    // ⭐ 使用 BrowserManager 的蜘蛛页面管理系统
+    // spider1 (Tab 1): 私信爬虫 - 长期运行
+    // spider2 (Tab 2): 评论爬虫 - 长期运行
+    if (this.browserManager && this.browserManager.getSpiderPage) {
+      return await this.browserManager.getSpiderPage(accountId, spiderType);
+    }
+
+    // 降级: 使用 PlatformBase 的统一接口
     return await super.getAccountPage(accountId);
   }
 
@@ -2369,15 +2378,16 @@ class DouyinPlatform extends PlatformBase {
         replyContent: reply_content.substring(0, 50),
       });
 
-      // 1. 获取浏览器上下文 - 新开标签页处理回复（与私信回复保持一致）
-      // 重要：新开独立标签页，不干扰主标签页的常规爬取任务
-      const browserContext = await this.ensureAccountContext(accountId);
-      page = await browserContext.newPage();
+      // 1. 获取临时标签页处理回复
+      // ⭐ 关键改进: 使用 BrowserManager 的临时页面系统
+      // 临时页面会在回复完成后立即关闭，不干扰常规爬虫任务
+      page = await this.browserManager.getTemporaryPage(accountId);
 
-      logger.info(`[Douyin] 为评论回复任务开启新浏览器标签页`, {
+      logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
         accountId,
         purpose: 'comment_reply',
-        commentId: target_id
+        commentId: target_id,
+        tempPageId: page._targetId || 'unknown'
       });
 
       // 设置超时
@@ -3027,22 +3037,24 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // 清理页面 - 保持标签页打开，以便 API 拦截器继续工作（与私信回复保持一致）
+      // 清理临时标签页 - 回复完成后立即关闭
+      // ⭐ 关键改进: 使用 BrowserManager 的临时页面关闭系统
       if (page) {
         try {
           if (!page.isClosed()) {
-            logger.info('✅ Comment reply task completed - page kept open for API interception', {
+            logger.info('✅ Comment reply task completed - closing temporary page', {
               hasReplySuccess: !!apiResponses?.replySuccess,
               hasReplyError: !!apiResponses?.replyError,
               accountId
             });
-            // DO NOT CLOSE PAGE - 页面保持打开状态，允许 API 响应继续被拦截
-            // await page.close();
+            // 关闭临时标签页并从管理器中移除
+            await this.browserManager.closeTemporaryPage(accountId, page);
+            logger.info('✅ Temporary page closed and removed from manager');
           } else {
-            logger.warn('ℹ️ Page was already closed');
+            logger.warn('ℹ️ Temporary page was already closed');
           }
         } catch (closeError) {
-          logger.warn('Error in finally block:', closeError.message);
+          logger.warn('Error closing temporary page:', closeError.message);
         }
       }
     }
@@ -3086,15 +3098,16 @@ class DouyinPlatform extends PlatformBase {
         replyContent: reply_content.substring(0, 50),
       });
 
-      // 1. 获取浏览器上下文 - 新开标签页处理回复（Phase 10 改进）
-      // 重要：新开独立标签页，不干扰主标签页的常规爬取任务
-      const browserContext = await this.ensureAccountContext(accountId);
-      page = await browserContext.newPage();
+      // 1. 获取临时标签页处理回复
+      // ⭐ 关键改进: 使用 BrowserManager 的临时页面系统
+      // 临时页面会在回复完成后立即关闭，不干扰常规爬虫任务
+      page = await this.browserManager.getTemporaryPage(accountId);
 
-      logger.info(`[Douyin] 为回复任务开启新浏览器标签页`, {
+      logger.info(`[Douyin] 为私信回复任务获取临时标签页`, {
         accountId,
         purpose: 'direct_message_reply',
-        conversationId: finalConversationId
+        conversationId: finalConversationId,
+        tempPageId: page._targetId || 'unknown'
       });
 
       // 设置超时
@@ -3390,21 +3403,24 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // Phase 10: 清理资源 - 小心关闭为回复任务开启的标签页（不关闭浏览器）
+      // 清理临时标签页 - 回复完成后立即关闭
+      // ⭐ 关键改进: 使用 BrowserManager 的临时页面关闭系统
       if (page) {
         try {
-          // 确保只关闭这个特定page，不关闭整个context或browser
+          // 确保只关闭这个特定的临时页面
           if (!page.isClosed()) {
-            // await page.close(); // DO NOT CLOSE - breaks browserContext
-            logger.info(`[Douyin] 回复任务标签页已关闭`, {
+            logger.info(`[Douyin] Closing temporary page for DM reply`, {
               accountId,
               conversationId: finalConversationId,
-              status: '已释放资源，不影响主标签页'
+              status: 'Releasing temporary page resources'
             });
+            // 关闭临时标签页并从管理器中移除
+            await this.browserManager.closeTemporaryPage(accountId, page);
+            logger.info('✅ Temporary page closed and removed from manager');
           }
         } catch (closeError) {
           // 页面可能已经关闭，忽略这个错误
-          logger.debug('Page close error (may already be closed):', closeError.message);
+          logger.debug('Error closing temporary page:', closeError.message);
         }
       }
     }
