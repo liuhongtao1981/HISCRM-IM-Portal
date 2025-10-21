@@ -6,7 +6,8 @@
       "Bash(git push -v origin main)",
       "Bash(for file in DEBUG-API-GUIDE.md DEEP-DIVE-ANALYSIS.md FINAL-REPLY-FIX-STATUS.md FINAL-SUMMARY.md FINAL-TEST-REPORT.md PHASE-11-CHANGELOG.md REPLY-DEBUG-CHECKLIST.md REPLY-DEBUG-FINDINGS.md REPLY-FIX-CHECKLIST.md REPLY-FIX-SUMMARY.md SESSION-COMPLETION-SUMMARY.md)",
       "Bash(do mv \"$file\" \"docs/_archived/$file\")",
-      "Bash(done)"
+      "Bash(done)",
+      "Bash(git add -A)"
     ],
     "deny": [],
     "ask": []
