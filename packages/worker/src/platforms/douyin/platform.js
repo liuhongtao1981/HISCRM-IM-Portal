@@ -2905,10 +2905,13 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // 清理页面
+      // 清理页面 - 关闭为回复任务开启的标签页
       if (page) {
         try {
-          // await page.close(); // DO NOT CLOSE - breaks browserContext
+          if (!page.isClosed()) {
+            await page.close();
+            logger.info(`[Douyin] Reply tab closed for account: ${accountId}`);
+          }
         } catch (closeError) {
           logger.warn('Failed to close page:', closeError.message);
         }
