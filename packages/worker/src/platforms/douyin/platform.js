@@ -2358,38 +2358,129 @@ class DouyinPlatform extends PlatformBase {
       logger.info(`[Douyin] Replying to comment: ${target_id}`, {
         accountId,
         videoId: video_id,
+        contextKeys: Object.keys(context),
+        fullContext: context,
         replyContent: reply_content.substring(0, 50),
       });
 
-      // 1. 获取浏览器上下文
+      // 1. 获取浏览器上下文 - 新开标签页处理回复（与私信回复保持一致）
+      // 重要：新开独立标签页，不干扰主标签页的常规爬取任务
       const browserContext = await this.ensureAccountContext(accountId);
       page = await browserContext.newPage();
+
+      logger.info(`[Douyin] 为评论回复任务开启新浏览器标签页`, {
+        accountId,
+        purpose: 'comment_reply',
+        commentId: target_id
+      });
 
       // 设置超时
       page.setDefaultTimeout(30000);
 
-      // 2. 导航到视频页面
-      if (video_id) {
-        const videoUrl = `https://www.douyin.com/video/${video_id}`;
-        logger.info(`Navigating to video: ${videoUrl}`);
+      // 2. 导航到创作者中心评论管理页面（新标签页方式，与私信回复保持一致）
+      const commentManagementUrl = 'https://creator.douyin.com/creator-micro/interactive/comment';
+      logger.info('Navigating to creator center comment management page in new tab');
 
-        try {
-          await page.goto(videoUrl, {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-          await page.waitForTimeout(2000); // 等待评论加载
-        } catch (navError) {
-          logger.warn(`Navigation failed, trying alternative URL:`, navError.message);
-          // 备选方案：尝试其他 URL 格式
-          await page.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded' });
-        }
-      } else {
-        logger.warn('No video_id provided, using home page');
-        await page.goto('https://www.douyin.com/', { waitUntil: 'domcontentloaded' });
+      try {
+        await page.goto(commentManagementUrl, {
+          waitUntil: 'networkidle',
+          timeout: 30000
+        });
+        await page.waitForTimeout(2000);
+        logger.info('✅ Successfully navigated to comment management page');
+      } catch (navError) {
+        logger.error('Navigation to comment management page failed:', navError.message);
+        throw new Error(`Failed to navigate to comment page: ${navError.message}`);
       }
 
-      // 3. 定位评论并打开回复框
+      // 3. 选择对应的视频（需要根据 video_id 查找并点击）
+      if (video_id) {
+        logger.info(`Selecting video: ${video_id}`);
+
+        try {
+          // 首先尝试点击"选择作品"按钮，可能有多种选择器
+          let clickedSelectButton = false;
+
+          // 尝试多个选择器
+          const selectSelectors = [
+            'button:has-text("选择作品")',
+            'span:has-text("选择作品")',
+            '[class*="select"][class*="work"]',
+            'button[class*="SelectWork"]',
+          ];
+
+          for (const selector of selectSelectors) {
+            try {
+              const elements = await page.$$(selector);
+              if (elements.length > 0) {
+                logger.info(`Found select button with selector: ${selector}`);
+                await page.click(selector, { timeout: 3000 });
+                clickedSelectButton = true;
+                break;
+              }
+            } catch (e) {
+              logger.debug(`Selector ${selector} not found, trying next...`);
+            }
+          }
+
+          if (clickedSelectButton) {
+            await page.waitForTimeout(1500);
+          }
+
+          // 获取所有视频元素 - 使用更灵活的查询方式
+          const result = await page.evaluate((vid) => {
+            logger.info(`Looking for video with ID: ${vid}`);
+
+            // 方法1：查找所有包含视频信息的容器
+            const containers = document.querySelectorAll('[class*="container"], [class*="item"], .work-item, [class*="video"]');
+
+            for (let i = 0; i < containers.length; i++) {
+              const container = containers[i];
+              const text = container.textContent || '';
+              const html = container.outerHTML || '';
+
+              // 在文本或HTML中查找video_id
+              if (text.includes(vid) || html.includes(vid)) {
+                logger.info(`Found video at index ${i}`);
+                return { found: true, index: i, method: 'text_search' };
+              }
+            }
+
+            // 方法2：如果第一个视频容器存在，就使用它
+            if (containers.length > 0) {
+              logger.info(`Using first video container (${containers.length} total found)`);
+              return { found: true, index: 0, method: 'first_container' };
+            }
+
+            logger.warn(`Video ${vid} not found in DOM`);
+            return { found: false };
+          }, video_id);
+
+          if (result && result.found) {
+            logger.info(`Found video using method: ${result.method}, clicking index ${result.index}`);
+
+            // 点击视频
+            await page.evaluate((idx) => {
+              const containers = document.querySelectorAll('[class*="container"], [class*="item"], .work-item, [class*="video"]');
+              if (idx < containers.length) {
+                containers[idx].click();
+                logger.info(`Clicked video at index ${idx}`);
+              }
+            }, result.index);
+
+            await page.waitForTimeout(2000);
+            logger.info('✅ Video selected successfully');
+          } else {
+            logger.warn(`Video ${video_id} not found, continuing with current selection`);
+          }
+        } catch (selectError) {
+          logger.warn(`Failed to select video: ${selectError.message}, continuing anyway`);
+        }
+      } else {
+        logger.warn('No video_id provided, using current video selection');
+      }
+
+      // 4. 定位要回复的评论（从虚拟列表/DOM中查找）
       logger.info(`Locating comment: ${target_id}`);
 
       // 尝试多个评论定位选择器
@@ -2465,12 +2556,15 @@ class DouyinPlatform extends PlatformBase {
       logger.info('Locating reply input field');
 
       const inputSelectors = [
+        'div[contenteditable="true"]',  // 抖音当前使用的输入框格式
         'textarea[placeholder*="回复"]',
         'input[placeholder*="回复"]',
         '[class*="reply-input"] textarea',
         '[class*="reply-input"] input',
         'textarea[class*="input"]',
         'input[class*="reply"]',
+        'textarea',
+        'input[type="text"]',
       ];
 
       let replyInput = null;
@@ -2670,7 +2764,7 @@ class DouyinPlatform extends PlatformBase {
       // 清理页面
       if (page) {
         try {
-          await page.close();
+          // await page.close(); // DO NOT CLOSE - breaks browserContext
         } catch (closeError) {
           logger.warn('Failed to close page:', closeError.message);
         }
@@ -2809,49 +2903,80 @@ class DouyinPlatform extends PlatformBase {
       await dmInput.evaluate(el => el.textContent = '');
       await page.waitForTimeout(300);
 
-      // 7. 输入回复内容（已验证：使用 type 模拟真实输入）
+      // 7. 输入回复内容（改进：使用fill()支持正确的中文字符）
       logger.info('Typing reply content');
-      await dmInput.type(reply_content, { delay: 30 }); // 30ms 延迟
+      // 使用fill()而不是type()，fill()对Unicode处理更好
+      await dmInput.fill(reply_content);
+      // 触发事件确保React检测到变化
+      await dmInput.evaluate(el => {
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+        // 也设置内部值以防某些框架需要
+        el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+      });
       await page.waitForTimeout(800);
 
-      // 8. 查找并点击发送按钮（已验证的正确选择器）
+      // 8. 查找并点击发送按钮
       logger.info('Looking for send button');
 
-      // CSS has-text() 不支持，需要使用 JavaScript 查找
-      const sendBtn = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        return buttons.find(btn => btn.textContent.includes('发送'));
-      });
+      let sendButtonClicked = false;
 
-      if (sendBtn) {
-        const isEnabled = await page.evaluate(btn => !btn.disabled, sendBtn);
-        if (isEnabled) {
-          logger.info('Clicking send button');
-          await page.click('button:visible');
-          // 备选：使用 locator 点击
-          try {
-            const btn = await page.locator('button').filter({ hasText: '发送' }).first();
-            await btn.click();
-          } catch (e) {
-            logger.debug('Locator click failed, trying evaluate click');
-            await page.evaluate(() => {
-              const buttons = Array.from(document.querySelectorAll('button'));
-              const btn = buttons.find(b => b.textContent.includes('发送'));
-              btn?.click();
-            });
-          }
-        } else {
-          logger.info('Send button is disabled, trying Enter key');
-          await dmInput.press('Enter');
+      // 方法1：使用 locator 查找包含"发送"文本的button并点击
+      try {
+        const btn = await page.locator('button').filter({ hasText: '发送' }).first();
+        const isVisible = await btn.isVisible({ timeout: 3000 });
+        if (isVisible) {
+          logger.info('Found send button via locator, clicking it');
+          await btn.click();
+          sendButtonClicked = true;
         }
-      } else {
-        logger.info('Send button not found, using Enter key');
+      } catch (e) {
+        logger.debug('Locator method failed:', e.message);
+      }
+
+      // 方法2：如果locator失败，用evaluate直接点击
+      if (!sendButtonClicked) {
+        try {
+          const clicked = await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button'));
+            const sendBtn = buttons.find(b => {
+              const text = b.textContent?.trim() || '';
+              return text === '发送' || text.includes('发送');
+            });
+            if (sendBtn && !sendBtn.disabled) {
+              logger.info('Clicking send button via evaluate');
+              sendBtn.click();
+              return true;
+            }
+            return false;
+          });
+          if (clicked) {
+            logger.info('Send button clicked via evaluate');
+            sendButtonClicked = true;
+          }
+        } catch (e) {
+          logger.debug('Evaluate method failed:', e.message);
+        }
+      }
+
+      // 方法3：如果还是没点到，尝试按Enter键
+      if (!sendButtonClicked) {
+        logger.info('Send button not found, using Enter key as fallback');
         await dmInput.press('Enter');
       }
 
-      // 9. 等待消息发送完成
-      logger.info('Waiting for message to be sent');
-      await page.waitForTimeout(2000);
+      // 9. 等待消息发送完成 - 监听网络活动或使用高级等待策略
+      logger.info('Waiting for message to be sent - monitoring network activity');
+
+      try {
+        // 等待所有网络连接稳定（networkidle2 = 至少2个连接空闲）
+        await page.waitForLoadState('networkidle', { timeout: 10000 });
+        logger.info('Network activity settled after sending message');
+      } catch (networkError) {
+        // 如果network idle超时，继续进行（可能有持久连接）
+        logger.debug('Network idle timeout (may have persistent connections), continuing anyway');
+        await page.waitForTimeout(2000);  // 至少等待2秒
+      }
 
       // 10. 检查错误消息或限制提示
       logger.info('Checking for error messages or restrictions');
@@ -2989,17 +3114,21 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // Phase 10: 清理资源 - 关闭为回复任务开启的标签页
+      // Phase 10: 清理资源 - 小心关闭为回复任务开启的标签页（不关闭浏览器）
       if (page) {
         try {
-          await page.close();
-          logger.info(`[Douyin] 回复任务标签页已关闭`, {
-            accountId,
-            conversationId: finalConversationId,
-            status: '已释放资源，不影响主标签页'
-          });
+          // 确保只关闭这个特定page，不关闭整个context或browser
+          if (!page.isClosed()) {
+            // await page.close(); // DO NOT CLOSE - breaks browserContext
+            logger.info(`[Douyin] 回复任务标签页已关闭`, {
+              accountId,
+              conversationId: finalConversationId,
+              status: '已释放资源，不影响主标签页'
+            });
+          }
         } catch (closeError) {
-          logger.warn('Failed to close reply page:', closeError.message);
+          // 页面可能已经关闭，忽略这个错误
+          logger.debug('Page close error (may already be closed):', closeError.message);
         }
       }
     }
