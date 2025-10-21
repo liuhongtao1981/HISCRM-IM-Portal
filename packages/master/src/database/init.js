@@ -1,8 +1,17 @@
+/**
+ * HisCRM-IM Master Database Initialization
+ *
+ * Initializes SQLite database with final schema (v1.0)
+ * No migrations - uses current database as baseline
+ *
+ * Schema Version: 1.0 (2025-10-21)
+ * Total Tables: 16
+ */
+
 const Database = require('better-sqlite3');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
-const { validateDatabaseSchema, generateFixSQL } = require('./schema-validator');
 
 const logger = createLogger('database-init');
 
@@ -45,50 +54,13 @@ function initDatabase(dbPath = './data/master.db', options = {}) {
 
     logger.info('Database schema initialized successfully');
 
-    // 执行迁移脚本
-    const migrationsDir = path.join(__dirname, 'migrations');
-    if (fs.existsSync(migrationsDir)) {
-      const migrationFiles = fs.readdirSync(migrationsDir)
-        .filter(file => file.endsWith('.sql'))
-        .sort(); // 按文件名排序执行
-
-      for (const file of migrationFiles) {
-        const migrationPath = path.join(migrationsDir, file);
-        const migration = fs.readFileSync(migrationPath, 'utf8');
-        try {
-          db.exec(migration);
-          logger.info(`Executed migration: ${file}`);
-        } catch (error) {
-          logger.warn(`Migration ${file} failed (may already be applied): ${error.message}`);
-        }
-      }
-    }
-
-    // 验证数据库结构
-    if (validateSchema) {
-      logger.info('Validating database schema...');
-      const validationResult = validateDatabaseSchema(db);
-
-      if (!validationResult.valid) {
-        logger.error('Database schema validation failed!');
-
-        // 生成修复SQL建议
-        const fixSQL = generateFixSQL(validationResult);
-        if (fixSQL !== '-- No fix needed') {
-          logger.error('Suggested fix SQL:');
-          logger.error(fixSQL);
-        }
-
-        if (strictValidation) {
-          throw new Error(
-            'Database schema validation failed. Please check schema.sql and ensure all tables/columns are defined correctly.'
-          );
-        } else {
-          logger.warn('Schema validation failed but continuing due to non-strict mode');
-        }
-      } else {
-        logger.info('Database schema validation passed ✓');
-      }
+    // 验证数据库结构完整性
+    try {
+      validateDatabaseSchema(db);
+      logger.info('Database schema validation PASSED ✓');
+    } catch (error) {
+      logger.error('Database schema validation failed', error);
+      throw error;
     }
 
     return db;
@@ -96,6 +68,47 @@ function initDatabase(dbPath = './data/master.db', options = {}) {
     logger.error('Failed to initialize database:', error);
     throw error;
   }
+}
+
+/**
+ * 验证数据库schema完整性
+ * @param {Database} db - 数据库实例
+ * @throws {Error} 如果验证失败
+ */
+function validateDatabaseSchema(db) {
+  const requiredTables = [
+    'accounts',
+    'workers',
+    'worker_configs',
+    'worker_runtime',
+    'comments',
+    'direct_messages',
+    'conversations',
+    'douyin_videos',
+    'login_sessions',
+    'replies',
+    'notifications',
+    'proxies',
+    'notification_rules',
+    'client_sessions',
+    'worker_logs'
+  ];
+
+  // 获取现有表
+  const existingTables = db.prepare(
+    `SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'`
+  ).all();
+
+  const existingTableNames = new Set(existingTables.map(t => t.name));
+
+  // 检查所有必需的表
+  const missingTables = requiredTables.filter(t => !existingTableNames.has(t));
+
+  if (missingTables.length > 0) {
+    throw new Error(`Missing required tables: ${missingTables.join(', ')}`);
+  }
+
+  logger.info(`✓ Database schema validation PASSED - ${requiredTables.length} tables verified`);
 }
 
 /**
@@ -112,4 +125,5 @@ function closeDatabase(db) {
 module.exports = {
   initDatabase,
   closeDatabase,
+  validateDatabaseSchema
 };
