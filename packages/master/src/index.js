@@ -63,7 +63,50 @@ const app = express();
 const server = http.createServer(app);
 
 // Express中间件
-app.use(express.json());
+app.use(express.json({ limit: '10mb', strict: false }));
+
+// 编码修复中间件 - 处理GB2312或其他编码被误解为UTF-8的问题
+app.use((req, res, next) => {
+  // 如果是JSON请求，检查并修复编码问题
+  if (req.body && typeof req.body === 'object') {
+    const fixEncoding = (obj) => {
+      if (typeof obj !== 'object' || obj === null) return obj;
+
+      if (Array.isArray(obj)) {
+        return obj.map(item => fixEncoding(item));
+      }
+
+      const fixed = {};
+      for (const [key, value] of Object.entries(obj)) {
+        if (typeof value === 'string') {
+          // 检测是否包含替换字符，说明编码错误
+          if (value.includes('\ufffd')) {
+            // 尝试从错误的UTF-8恢复
+            try {
+              // GB2312 → UTF-8恢复
+              const buffer = Buffer.from(value, 'latin1');
+              fixed[key] = buffer.toString('utf8');
+            } catch (e) {
+              fixed[key] = value; // 如果失败，保持原值
+            }
+          } else {
+            fixed[key] = value;
+          }
+        } else if (typeof value === 'object') {
+          fixed[key] = fixEncoding(value);
+        } else {
+          fixed[key] = value;
+        }
+      }
+      return fixed;
+    };
+
+    req.body = fixEncoding(req.body);
+  }
+
+  next();
+});
+
 app.use(requestIdMiddleware);
 
 // CORS 中间件
@@ -337,10 +380,10 @@ function handleReplyResult(data, socket) {
         });
         logger.debug(`Pushed reply success to clients: ${reply_id}`);
       }
-    } else if (status === 'failed' || status === 'blocked') {
-      // 失败/被拦截：删除数据库记录，不保存失败的回复
+    } else if (status === 'failed' || status === 'blocked' || status === 'error') {
+      // 失败/被拦截/错误：删除数据库记录，不保存失败的回复
       replyDAO.deleteReply(reply_id);
-      logger.warn(`Reply failed and deleted from database: ${reply_id}`, {
+      logger.warn(`Reply ${status} and deleted from database: ${reply_id}`, {
         reason: status,
         errorCode: error_code,
         errorMessage: error_message,
@@ -348,18 +391,23 @@ function handleReplyResult(data, socket) {
 
       // 推送失败结果给客户端（仅通知，不记录）
       if (clientNamespace) {
+        const statusMap = {
+          'blocked': 'blocked',
+          'failed': 'failed',
+          'error': 'error'
+        };
         clientNamespace.emit('server:reply:result', {
           reply_id,
           request_id,
-          status: status === 'blocked' ? 'blocked' : 'failed',
+          status: statusMap[status] || 'failed',
           account_id: reply.account_id,
           platform: reply.platform,
           error_code: error_code,
           error_message: error_message,
-          message: `❌ 回复失败: ${error_message || 'Unknown error'}`,
+          message: `❌ 回复${status === 'blocked' ? '被拦截' : '失败'}: ${error_message || 'Unknown error'}`,
           timestamp: Date.now(),
         });
-        logger.debug(`Pushed reply failure to clients: ${reply_id}`);
+        logger.debug(`Pushed reply ${status} to clients: ${reply_id}`);
       }
     } else {
       // 其他状态：记录警告
@@ -381,7 +429,8 @@ function initializeDebugMode() {
 
   logger.info(`🔍 Debug 模式已启用`);
   logger.info(`   - 单 Worker 模式: ${debugConfig.singleWorker.maxWorkers === 1 ? '✓ 启用' : '✗ 禁用'}`);
-  logger.info(`   - MCP 调试接口: ${debugConfig.mcp.enabled ? `✓ 启用 (http://localhost:${debugConfig.mcp.port})` : '✗ 禁用'}`);
+  logger.info(`   - Anthropic MCP: ✓ 启用 (http://localhost:9222) - Chrome DevTools Protocol`);
+  logger.info(`   - DEBUG API: ✓ 启用 (http://localhost:3000/api/debug)`);
   logger.info(`   - 账户限制: 每个 Worker 最多 ${debugConfig.accounts.maxPerWorker} 个账户`);
 }
 
@@ -1068,7 +1117,7 @@ async function start() {
     // 回复功能路由
     const createRepliesRouter = require('./api/routes/replies');
     app.use('/api/v1/replies', createRepliesRouter(db, {
-      getSocketServer: () => socketNamespaces.io,
+      getSocketServer: () => socketNamespaces.workerNamespace,
     }));
 
     // 平台管理路由
@@ -1076,6 +1125,14 @@ async function start() {
     app.use('/api/v1/platforms', createPlatformsRouter(db, {
       getWorkerRegistry: () => workerRegistry,
     }));
+
+    // DEBUG API 路由 (仅在 DEBUG 模式启用)
+    if (debugConfig.enabled) {
+      const { router: debugRouter, initDebugAPI } = require('./api/routes/debug-api');
+      initDebugAPI(db);
+      app.use('/api/debug', debugRouter);
+      logger.info('DEBUG API routes mounted');
+    }
 
     logger.info('API routes mounted');
 
