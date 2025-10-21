@@ -323,9 +323,6 @@ CREATE INDEX IF NOT EXISTS idx_replies_created ON replies(created_at);
 CREATE INDEX IF NOT EXISTS idx_replies_executed ON replies(executed_at);
 
 -- ============================================================================
--- Table: sqlite_sequence
--- ============================================================================
-CREATE TABLE IF NOT EXISTS sqlite_sequence(name,seq);
 
 -- ============================================================================
 -- Table: worker_configs

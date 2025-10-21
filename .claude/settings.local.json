@@ -28,7 +28,9 @@
       "Bash(git add -A -- packages/master/database)",
       "Bash(git commit -m \"$(cat <<''EOF''\nchore: 删除已过时的 packages/master/database 目录\n\n整理：\n- 删除 packages/master/database/ 目录\n- 删除 packages/master/database/migrations/ 目录\n- 删除残留的 004_worker_lifecycle.sql 迁移文件\n\n原因：\n- 所有迁移逻辑已从 packages/master/src/database/ 中删除\n- 数据库已改为最终状态初始化（无迁移）\n- 此目录已无实际用途，仅为历史遗留\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
       "Bash(git log --diff-filter=D --summary -- \"packages/worker/.env.debug\" \"packages/master/.env.debug\")",
-      "Bash(git -C e:HISCRM-IM-main status --short)"
+      "Bash(git -C e:HISCRM-IM-main status --short)",
+      "Bash(git add docs/FILE-CLEANUP-SUMMARY.md)",
+      "Bash(git commit -m \"$(cat <<''EOF''\ndocs: 更新文件清理总结报告\n\n更新内容：\n- 添加 schema-final.sql 删除说明\n- 增加数据库初始化文件详细对比\n- 解释 schema.sql 与 schema-final.sql 的关系\n- 更新清理统计数据 (6 个删除文件，5 个提交)\n- 添加完整的 Git 提交日志\n- 工作流程图说明\n\n核心要点：\n✅ schema.sql - 主程序使用的版本\n❌ schema-final.sql - 脚本输出文件，已删除\n- 两个文件内容相同\n- schema.sql 是唯一需要版本控制的\n- schema-final.sql 由 export-schema.js 生成\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")"
     ],
     "deny": [],
     "ask": []
