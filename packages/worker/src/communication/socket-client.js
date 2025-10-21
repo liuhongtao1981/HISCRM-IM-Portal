@@ -41,6 +41,19 @@ class SocketClient {
       this.socket.on(CONNECT, () => {
         logger.info(`Connected to master (socket ID: ${this.socket.id})`);
         this.connected = true;
+
+        // 加入以 worker ID 命名的房间，以便 Master 可以发送目标消息
+        this.socket.emit('join_room', {
+          room: `worker:${this.workerId}`,
+          workerId: this.workerId,
+        }, (acknowledged) => {
+          if (acknowledged) {
+            logger.info(`Successfully joined room: worker:${this.workerId}`);
+          } else {
+            logger.warn(`Failed to join room: worker:${this.workerId}`);
+          }
+        });
+
         resolve();
       });
 
@@ -68,6 +81,28 @@ class SocketClient {
       this.socket.on(MESSAGE, (msg) => {
         this.handleMessage(msg);
       });
+
+      // DEBUG: 监听所有直接事件（用于调试）
+      this.socket.on('master:reply:request', (data) => {
+        logger.info('✅✅✅ Received DIRECT master:reply:request event at socket level', {
+          replyId: data.reply_id,
+          requestId: data.request_id,
+          timestamp: Date.now(),
+        });
+      });
+
+      // 额外调试：监听所有事件
+      const originalOn = this.socket.on.bind(this.socket);
+      this.socket.on = function(event, handler) {
+        if (event.startsWith('master:')) {
+          const wrappedHandler = function(...args) {
+            logger.debug(`🔔 Event '${event}' fired with args:`, args);
+            return handler.apply(this, args);
+          };
+          return originalOn(event, wrappedHandler);
+        }
+        return originalOn(event, handler);
+      };
 
       // 错误处理
       this.socket.on('error', (error) => {

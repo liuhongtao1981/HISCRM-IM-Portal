@@ -32,6 +32,18 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
   workerNamespace.on('connection', (socket) => {
     logger.info(`Worker connected: ${socket.id}`);
 
+    // 处理Worker加入房间请求
+    socket.on('join_room', (data, callback) => {
+      const { room, workerId } = data;
+      socket.join(room);
+      logger.info(`Worker ${workerId} (socket ${socket.id}) joined room: ${room}`);
+
+      // 确认加入成功
+      if (callback) {
+        callback(true);
+      }
+    });
+
     // 监听登录状态更新（新框架）
     socket.on('worker:login:status', (data) => {
       const { session_id, status, account_id } = data;

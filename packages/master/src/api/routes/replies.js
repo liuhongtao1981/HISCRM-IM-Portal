@@ -304,6 +304,11 @@ function forwardReplyToWorker(db, replyId, account, socketServer) {
 
     // 通过 Socket.IO 转发给 Worker
     if (socketServer) {
+      logger.debug(`Emitting master:reply:request to room: worker:${workerId}`, {
+        replyId: reply.id,
+        requestId: reply.request_id,
+      });
+
       socketServer.to(`worker:${workerId}`).emit('master:reply:request', {
         type: 'master:reply:request',
         reply_id: reply.id,
@@ -321,9 +326,10 @@ function forwardReplyToWorker(db, replyId, account, socketServer) {
         timestamp: Date.now(),
       });
 
-      logger.info(`Forwarded reply to worker: ${workerId}`, {
+      logger.info(`✅ Forwarded reply to worker: ${workerId}`, {
         replyId,
         accountId: account.id,
+        room: `worker:${workerId}`,
       });
     } else {
       logger.warn('Socket server not available, cannot forward reply to worker');
