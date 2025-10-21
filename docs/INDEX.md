@@ -28,22 +28,19 @@ HisCRM-IM 项目的完整文档索引。
 
 12. **[08-DOUYIN-Phase8-私信爬虫改进实现路线图.md](08-DOUYIN-Phase8-私信爬虫改进实现路线图.md)** - 私信功能改进计划
 
-### MCP 集成文档
-
-13. **[MCP-ARCHITECTURE-OVERVIEW.md](MCP-ARCHITECTURE-OVERVIEW.md)** - MCP 架构概览
-14. **[ANTHROPIC-MCP-SETUP-GUIDE.md](ANTHROPIC-MCP-SETUP-GUIDE.md)** - MCP 设置指南
-15. **[MCP-QUICK-REFERENCE.md](MCP-QUICK-REFERENCE.md)** - MCP 快速参考
-16. **[MCP-BROWSER-INTERACTION-SUCCESS.md](MCP-BROWSER-INTERACTION-SUCCESS.md)** - 浏览器交互成功案例
-
 ### 验证与报告
 
-17. **[FINAL-VERIFICATION-REPORT.md](FINAL-VERIFICATION-REPORT.md)** - 最终验证报告
-18. **[项目完成度状态报告.md](项目完成度状态报告.md)** - 项目状态报告
+13. **[FINAL-VERIFICATION-REPORT.md](FINAL-VERIFICATION-REPORT.md)** - 最终验证报告
+14. **[项目完成度状态报告.md](项目完成度状态报告.md)** - 项目状态报告
 
 ### 其他参考文档
 
-19. **[VIRTUAL-LIST-DOM-MAPPING.md](VIRTUAL-LIST-DOM-MAPPING.md)** - 虚拟列表与 DOM 映射
-20. **[VIRTUAL-LIST-INVESTIGATION-COMPLETE.md](VIRTUAL-LIST-INVESTIGATION-COMPLETE.md)** - 虚拟列表调查完整报告
+15. **[VIRTUAL-LIST-DOM-MAPPING.md](VIRTUAL-LIST-DOM-MAPPING.md)** - 虚拟列表与 DOM 映射
+16. **[VIRTUAL-LIST-INVESTIGATION-COMPLETE.md](VIRTUAL-LIST-INVESTIGATION-COMPLETE.md)** - 虚拟列表调查完整报告
+17. **[MASTER-TEST-REPORT.md](MASTER-TEST-REPORT.md)** - Master 测试报告
+18. **[README.md](README.md)** - 文档首页
+
+**主要文档总数: 18 个**
 
 ---
 
@@ -149,18 +146,37 @@ docs/
 
 ---
 
+## 📊 文档统计
+
+| 类别 | 数量 | 说明 |
+|------|------|------|
+| **主要文档** | 21 | 核心参考文档（docs/ 根目录）|
+| **归档文档** | 56 | 已完成/过时的实现文档（_archived/）|
+| **Session 文档** | 37 | 历史阶段报告（_archived_session/）|
+| **总计** | **114** | 完整文档集合 |
+
+---
+
 ## 📝 文档维护
 
 - **更新日期**: 2025-10-21
-- **最后更新**: 归档文档整理
-- **版本**: 1.0
+- **最后更新**: 清理调试文档，优化目录结构
+- **版本**: 1.1
 
 ### 如何贡献
 
 1. 新文档请放在 `docs/` 根目录
 2. 完成或过时的文档请移至 `docs/_archived/`
 3. 历史 Session 相关文档请保存在 `docs/_archived_session/`
-4. 更新此索引文件以保持最新
+4. 调试/临时文档也应归档到 `docs/_archived/`
+5. 更新此索引文件以保持最新
+
+### 最近更改
+
+- ✅ 根目录 session 文档移至 `docs/_archived/`（11 个）
+- ✅ packages 测试脚本移至 `tests/packages/`（3 个）
+- ✅ .docs 实现文档移至 `docs/_archived_session/`（19 个）
+- ✅ 调试/MCP 文档移至 `docs/_archived/`（19 个）
 
 ---
 
