@@ -312,7 +312,7 @@ CREATE TABLE IF NOT EXISTS replies (
   FOREIGN KEY (assigned_worker_id) REFERENCES workers(id) ON DELETE SET NULL
 );
 
-CREATE UNIQUE INDEX idx_replies_request_id ON replies(request_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_replies_request_id ON replies(request_id);
 CREATE INDEX IF NOT EXISTS idx_replies_idempotency_key ON replies(idempotency_key);
 CREATE INDEX IF NOT EXISTS idx_replies_account ON replies(account_id);
 CREATE INDEX IF NOT EXISTS idx_replies_worker ON replies(assigned_worker_id);
