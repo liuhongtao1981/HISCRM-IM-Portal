@@ -7,7 +7,10 @@
       "Bash(for file in DEBUG-API-GUIDE.md DEEP-DIVE-ANALYSIS.md FINAL-REPLY-FIX-STATUS.md FINAL-SUMMARY.md FINAL-TEST-REPORT.md PHASE-11-CHANGELOG.md REPLY-DEBUG-CHECKLIST.md REPLY-DEBUG-FINDINGS.md REPLY-FIX-CHECKLIST.md REPLY-FIX-SUMMARY.md SESSION-COMPLETION-SUMMARY.md)",
       "Bash(do mv \"$file\" \"docs/_archived/$file\")",
       "Bash(done)",
-      "Bash(git add -A)"
+      "Bash(git add -A)",
+      "Bash(git commit -m \"$(cat <<''EOF''\nchore: 将 .docs 目录下的实现文档移至 docs/_archived_session\n\n重组文档结构：\n- 移动 .docs 下的 19 个 Phase 11 实现文档到 docs/_archived_session\n- 删除空的 .docs 目录\n- 完整的文档归档包括：\n  - 页面管理系统实现文档\n  - 二维码检测改进方案\n  - 浏览器崩溃恢复机制\n  - Phase 11 优化总结等\n\n进一步提升项目整洁度，将临时实现笔记统一管理在文档系统内\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\nEOF\n)\")",
+      "Bash(for file in AFTERNOON_SESSION_SELECTOR_FIX.md BROWSER-MCP-CONNECTION.md DEBUG-DM-EXTRACTION.md DM-EXTRACTION-FIX-SUMMARY.md GIT-PUSH-REPORT.md PHASE-8-DM-EXTRACTION-FINAL-FIX.md REPLY-API-INTERCEPTOR-IMPLEMENTATION.md MCP-BROWSER-INTERACTION-SUCCESS.md MCP-BROWSER-INTERACTION-TEST.md MCP-CHROME-DEVTOOLS-TEST.md MCP-QUICK-REFERENCE.md PHASE-10-BUGFIX-SUMMARY.md PHASE-10-IMPLEMENTATION-SUMMARY.md PHASE-10-REPLY-MESSAGE-ID-PROCESSING.md PHASE-11-MCP-INTEGRATION-COMPLETE.md PHASE-8-DM-HISTORY-EXTRACTION-IMPLEMENTATION.md REPLY-FEATURE-TEST-REPORT.md REPLY-SELECTOR-FIX-SUMMARY.md REPLY-TESTING-REPORT.md)",
+      "Bash(do mv \"docs/$file\" \"docs/_archived/$file\")"
     ],
     "deny": [],
     "ask": []
