@@ -2377,7 +2377,59 @@ class DouyinPlatform extends PlatformBase {
       // 设置超时
       page.setDefaultTimeout(30000);
 
-      // 2. 导航到创作者中心评论管理页面（新标签页方式，与私信回复保持一致）
+      // 2. 设置 API 拦截器 - 监听回复发送的 API 响应
+      logger.info('Setting up API interceptor for reply validation');
+
+      const apiResponses = {
+        replySuccess: null,
+        replyError: null
+      };
+
+      // 拦截与回复相关的 API 响应
+      const apiInterceptHandler = async (response) => {
+        const url = response.url();
+        const status = response.status();
+
+        // 匹配回复 API: /aweme/v1/creator/comment/reply/
+        if (url.includes('comment/reply') && status === 200) {
+          try {
+            const json = await response.json();
+            logger.info('✅ Intercepted reply API response', {
+              url,
+              status,
+              responseKeys: Object.keys(json)
+            });
+
+            // 检查返回的状态
+            if (json.status_code === 0 || json.data?.reply_id) {
+              apiResponses.replySuccess = {
+                timestamp: Date.now(),
+                url,
+                status,
+                data: json
+              };
+              logger.debug(`Reply API success: reply_id=${json.data?.reply_id || 'unknown'}`);
+            } else if (json.status_code !== 0) {
+              apiResponses.replyError = {
+                timestamp: Date.now(),
+                url,
+                status,
+                status_code: json.status_code,
+                error_msg: json.error_msg || json.message,
+                data: json
+              };
+              logger.warn(`Reply API error: ${json.error_msg || json.message}`);
+            }
+          } catch (e) {
+            logger.debug('Failed to parse reply API response:', e.message);
+          }
+        }
+      };
+
+      page.on('response', apiInterceptHandler);
+      logger.info('API interceptor enabled for reply tracking');
+
+      // 3. 导航到创作者中心评论管理页面（新标签页方式，与私信回复保持一致）
       const commentManagementUrl = 'https://creator.douyin.com/creator-micro/interactive/comment';
       logger.info('Navigating to creator center comment management page in new tab');
 
@@ -2671,11 +2723,69 @@ class DouyinPlatform extends PlatformBase {
         await replyInput.press('Enter');
       }
 
-      // 等待回复成功
-      await page.waitForTimeout(2000);
+      // 7. 等待 API 响应（最多 5 秒）
+      logger.info('Waiting for reply API response...');
+      let waitCount = 0;
+      const maxWait = 50; // 5 秒（50 × 100ms）
 
-      // 7. 验证回复状态（检查错误消息或成功提示）
-      logger.info('Checking reply status...');
+      while (
+        !apiResponses.replySuccess &&
+        !apiResponses.replyError &&
+        waitCount < maxWait
+      ) {
+        await page.waitForTimeout(100);
+        waitCount++;
+      }
+
+      logger.info('Reply API response check completed', {
+        hasSuccess: !!apiResponses.replySuccess,
+        hasError: !!apiResponses.replyError,
+        waitTime: `${waitCount * 100}ms`
+      });
+
+      // 8. 根据 API 响应判断成功或失败
+      if (apiResponses.replySuccess) {
+        logger.info('✅ Reply API response success', {
+          commentId: target_id,
+          apiData: apiResponses.replySuccess.data
+        });
+
+        return {
+          success: true,
+          platform_reply_id: apiResponses.replySuccess.data?.data?.reply_id || `${target_id}_${Date.now()}`,
+          data: {
+            comment_id: target_id,
+            reply_content,
+            api_status_code: apiResponses.replySuccess.data?.status_code,
+            api_response: apiResponses.replySuccess.data,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      if (apiResponses.replyError) {
+        logger.warn('❌ Reply API response error', {
+          commentId: target_id,
+          statusCode: apiResponses.replyError.status_code,
+          errorMsg: apiResponses.replyError.error_msg
+        });
+
+        return {
+          success: false,
+          status: 'blocked',
+          reason: apiResponses.replyError.error_msg || '回复失败',
+          data: {
+            comment_id: target_id,
+            reply_content,
+            api_status_code: apiResponses.replyError.status_code,
+            api_error_msg: apiResponses.replyError.error_msg,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // 9. 如果没有拦截到 API 响应，退回到 DOM 错误检查
+      logger.warn('No reply API response intercepted, falling back to DOM error check');
 
       const replyStatus = await page.evaluate(() => {
         // 查找所有可能的错误或成功消息
@@ -2751,7 +2861,7 @@ class DouyinPlatform extends PlatformBase {
       }
 
       // 如果没有错误，认为回复成功
-      logger.info('Reply submitted successfully', {
+      logger.info('Reply submitted successfully (fallback: no errors detected)', {
         commentId: target_id,
       });
 
