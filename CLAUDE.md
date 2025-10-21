@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## 📌 项目规范 (Important Guidelines)
+
+- **请使用中文回答** - Please respond in Chinese
+- **所有文档放在 `/docs` 文件夹** - All documentation files go in `/docs` folder
+  - 使用中文名称，例如: `01-FEATURE-功能名称.md`
+  - 旧的或已完成的文档移到 `/docs/_archived/`
+- **所有测试脚本放在 `/tests` 文件夹** - All test scripts go in `/tests` folder
+  - 根目录不要创建 .js 测试文件
+  - 格式: `test-功能名称.js` 或 `check-功能名称.js`
+
 ## Project Overview
 
 HisCrm-IM is a Master-Worker distributed social media monitoring and notification system. It monitors comments and direct messages from social media platforms (currently Douyin/抖音) and provides real-time notifications to desktop and mobile clients.
@@ -483,8 +493,3 @@ open packages/worker/data/browser/worker-1/screenshots/
 - Proxy support for IP rotation
 - Random monitoring intervals (anti-bot detection)
 - Each account isolated in separate Browser process (no data leakage)
-
-# claude 上下文全局
-- 请使用中文回答
-- /docs 文档文件夹
-- /tests 测试脚本文件夹
