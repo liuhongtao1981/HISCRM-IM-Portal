@@ -7,6 +7,7 @@
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const http = require('http');
+const WebSocket = require('ws');
 
 const logger = createLogger('chrome-devtools-mcp');
 
@@ -14,6 +15,10 @@ class ChromeDevToolsMCP {
   constructor(port = 9222) {
     this.port = port;
     this.server = null;
+    this.wsServer = null;
+    this.wsClients = new Set(); // 连接的浏览器客户端
+    this.connectedBrowsers = new Map(); // browserId -> browser info
+
     this.monitoringData = {
       worker: {
         id: null,
@@ -34,11 +39,13 @@ class ChromeDevToolsMCP {
       },
       logs: [],
       maxLogs: 1000, // 最多保存 1000 条日志
+      browserEvents: [], // 浏览器事件日志
+      maxBrowserEvents: 500,
     };
   }
 
   /**
-   * 启动 MCP 服务器
+   * 启动 MCP 服务器（包含WebSocket支持用于浏览器直连调试）
    */
   async start(workerId) {
     this.monitoringData.worker.id = workerId;
@@ -48,12 +55,19 @@ class ChromeDevToolsMCP {
       this.handleRequest(req, res);
     });
 
+    // 启用WebSocket服务器（用于浏览器直连调试）
+    this.wsServer = new WebSocket.Server({ server: this.server });
+    this.wsServer.on('connection', (ws, req) => {
+      this.handleWebSocketConnection(ws, req);
+    });
+
     return new Promise((resolve, reject) => {
       this.server.listen(this.port, () => {
         logger.info(`Chrome DevTools MCP 调试接口启动成功`, {
           workerId,
           port: this.port,
-          url: `http://localhost:${this.port}/`,
+          httpUrl: `http://localhost:${this.port}/`,
+          wsUrl: `ws://localhost:${this.port}/`,
         });
         resolve();
       });
@@ -63,6 +77,118 @@ class ChromeDevToolsMCP {
         reject(err);
       });
     });
+  }
+
+  /**
+   * 处理WebSocket连接（浏览器直连调试）
+   */
+  handleWebSocketConnection(ws, req) {
+    const browserId = `browser_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+    logger.info(`🔗 浏览器已连接到MCP调试接口`, { browserId });
+
+    this.wsClients.add(ws);
+    this.connectedBrowsers.set(browserId, {
+      id: browserId,
+      connectedAt: Date.now(),
+      userAgent: req.headers['user-agent'],
+      accountId: null,
+    });
+
+    // 发送欢迎消息
+    ws.send(JSON.stringify({
+      type: 'welcome',
+      browserId,
+      message: 'Connected to MCP Debug Interface',
+      timestamp: Date.now(),
+    }));
+
+    // 处理浏览器发送的消息
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message);
+        this.handleBrowserMessage(browserId, data, ws);
+      } catch (error) {
+        logger.error('WebSocket消息解析失败:', error);
+      }
+    });
+
+    // 处理断开连接
+    ws.on('close', () => {
+      logger.info(`🔌 浏览器已断开连接`, { browserId });
+      this.wsClients.delete(ws);
+      this.connectedBrowsers.delete(browserId);
+    });
+
+    ws.on('error', (error) => {
+      logger.error('WebSocket错误:', error);
+    });
+  }
+
+  /**
+   * 处理浏览器消息
+   */
+  handleBrowserMessage(browserId, data, ws) {
+    const { type, accountId, event, content } = data;
+
+    // 更新浏览器信息
+    const browserInfo = this.connectedBrowsers.get(browserId);
+    if (browserInfo && accountId) {
+      browserInfo.accountId = accountId;
+    }
+
+    // 处理不同类型的消息
+    switch (type) {
+      case 'register':
+        logger.info(`🔍 浏览器已注册`, {
+          browserId,
+          accountId,
+          capabilities: data.capabilities
+        });
+        break;
+
+      case 'event':
+        // 记录浏览器事件
+        this.recordBrowserEvent({
+          browserId,
+          accountId,
+          eventType: event,
+          timestamp: Date.now(),
+          details: content,
+        });
+        logger.debug(`[浏览器事件] ${event}`, { browserId, accountId });
+        break;
+
+      case 'log':
+        // 记录浏览器日志
+        const level = data.level || 'info';
+        logger.log(level, `[浏览器] ${content}`, { browserId, accountId });
+        break;
+
+      default:
+        logger.debug(`未知的浏览器消息类型: ${type}`);
+    }
+  }
+
+  /**
+   * 记录浏览器事件
+   */
+  recordBrowserEvent(event) {
+    this.monitoringData.browserEvents.push({
+      ...event,
+      id: `${event.browserId}_${Date.now()}`,
+    });
+
+    if (this.monitoringData.browserEvents.length > this.monitoringData.maxBrowserEvents) {
+      this.monitoringData.browserEvents.shift();
+    }
+  }
+
+  /**
+   * 获取浏览器连接URL（供Worker使用）
+   */
+  getConnectUrl(browserId = null) {
+    return `ws://localhost:${this.port}/?browserId=${browserId || 'new'}`;
   }
 
   /**

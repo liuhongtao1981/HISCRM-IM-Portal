@@ -28,14 +28,16 @@ module.exports = {
     // Worker 启动命令
     command: process.env.WORKER_COMMAND || 'npm run start:worker',
 
-    // Worker 环境变量
+    // Worker 环境变量 - DEBUG 模式下自动传递
     env: {
       DEBUG: process.env.DEBUG,
       DEBUG_MCP: process.env.DEBUG_MCP === 'true' || process.env.DEBUG === 'true',
-      MCP_PORT: process.env.MCP_PORT || '9222',
-      DEBUG_HEADLESS: process.env.DEBUG_HEADLESS,
+      DEBUG_LOG_LEVEL: process.env.DEBUG_LOG_LEVEL || 'debug',
+      DEBUG_HEADLESS: process.env.DEBUG_HEADLESS !== 'true' ? 'false' : 'true', // 默认显示浏览器
       DEBUG_VERBOSE: process.env.DEBUG_VERBOSE,
       DEBUG_LOG_FILE: process.env.DEBUG_LOG_FILE,
+      MCP_PORT: process.env.MCP_PORT || '9222',
+      MCP_HOST: process.env.MCP_HOST || 'localhost',
     },
 
     // Worker 启动超时
