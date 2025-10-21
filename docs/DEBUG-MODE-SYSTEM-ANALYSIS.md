@@ -183,19 +183,19 @@ packages/worker/src/debug/test-mcp-browser-client.html
 
 ### 可以安全删除的文件
 
-以下文件已确认不被主程序引用，可以安全删除：
+以下文件已确认不被主程序引用，已删除或可以删除：
 
-| 文件路径 | 大小 | 理由 | 优先级 |
-|---------|------|------|--------|
-| `packages/worker/src/debug/browser-debug-client.js` | 5.9 KB | 无任何引用 | **高** |
-| `packages/worker/src/debug/test-browser-interaction.js` | 8.5 KB | 一次性测试脚本 | **高** |
-| `packages/worker/src/debug/test-mcp-browser-client.html` | 7.5 KB | 一次性测试页面 | **高** |
-| `packages/master/src/database/schema.sql.backup` | - | 备份文件 | 低 |
-| `packages/master/src/database/schema-v2.sql` | - | 旧版本 | 低 |
-| `packages/worker/src/platforms/douyin/debug-template.js` | - | 调试模板 | 低 |
-| `packages/worker/src/platforms/douyin/debug-mcp-helper.md` | - | 文档 | 低 |
-| 日志文件 `packages/master/logs/*.log` | 变化 | 临时日志 | 低 |
-| Chrome 调试日志 `packages/worker/data/browser/*` | 变化 | 临时数据 | 低 |
+| 文件路径 | 大小 | 理由 | 状态 |
+|---------|------|------|------|
+| `packages/worker/src/debug/browser-debug-client.js` | 5.9 KB | 无任何引用 | 🗑️ 待删除 |
+| `packages/worker/src/debug/test-browser-interaction.js` | 8.5 KB | 一次性测试脚本 | 🗑️ 待删除 |
+| `packages/worker/src/debug/test-mcp-browser-client.html` | 7.5 KB | 一次性测试页面 | 🗑️ 待删除 |
+| `packages/worker/src/platforms/douyin/debug-template.js` | - | 一次性调试模板 | ✅ 已删除 |
+| `packages/worker/src/platforms/douyin/debug-mcp-helper.md` | - | 调试辅助文档 | ✅ 已删除 |
+| `packages/master/src/database/schema.sql.backup` | - | 备份文件 | 🗑️ 待删除 |
+| `packages/master/src/database/schema-v2.sql` | - | 旧版本 | 🗑️ 待删除 |
+| 日志文件 `packages/master/logs/*.log` | 变化 | 临时日志 | 🗑️ 待删除 |
+| Chrome 调试日志 `packages/worker/data/browser/*` | 变化 | 临时数据 | 🗑️ 待删除 |
 
 ---
 
@@ -256,7 +256,14 @@ packages/worker/src/debug/test-mcp-browser-client.html
 | `packages/master/.env.debug` | 环境变量 | Master 环境配置 |
 | `packages/worker/.env.debug` | 环境变量 | Worker 环境配置 |
 
-### 可以删除的文件 (3 个)
+### 已删除的文件 (2 个)
+
+| 文件 | 理由 |
+|------|------|
+| `packages/worker/src/platforms/douyin/debug-template.js` | 一次性调试模板 |
+| `packages/worker/src/platforms/douyin/debug-mcp-helper.md` | 调试辅助文档 |
+
+### 待删除的文件 (3 个)
 
 | 文件 | 理由 |
 |------|------|
