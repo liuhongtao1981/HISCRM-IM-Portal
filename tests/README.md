@@ -26,6 +26,24 @@ tests/
 │   ├── test-new-data-push-system.js
 │   └── test-reply-integration.js                  # 回复功能集成测试
 │
+├── packages/                  # 包级测试脚本
+│   ├── worker/
+│   │   ├── test-dm-page-structure.js             # DM 页面结构测试
+│   │   ├── test-dm-with-session.js               # DM Session 测试
+│   │   └── test-message-extraction.js            # 消息提取测试
+│   └── master/
+│
+├── scripts/                   # 交互式测试脚本
+│   ├── check-accounts.js
+│   ├── check-db-schema.js
+│   ├── check-reply-status.js
+│   ├── test-api-fix-verify.js
+│   ├── test-api-intercept.js
+│   ├── test-final-reply.js
+│   ├── test-reply-api-direct.js
+│   ├── test-reply-status.js
+│   └── test-reply-with-logging.js
+│
 └── logs/                      # 测试日志
 
 ```
@@ -89,6 +107,26 @@ npm test -- tests/integration/
 - 数据库操作
 - Socket.IO 事件
 
+### 包级测试脚本 (Package Tests)
+
+**位置**: `tests/packages/`
+
+包含各包的特定测试脚本：
+- `packages/worker/` - Worker 爬虫特定测试
+  - test-dm-page-structure.js - 测试私信页面 DOM 结构
+  - test-dm-with-session.js - 测试带会话的私信功能
+  - test-message-extraction.js - 测试消息提取逻辑
+
+### 交互式测试脚本 (Interactive Scripts)
+
+**位置**: `tests/scripts/`
+
+用于调试和验证的交互式脚本：
+- API 拦截验证脚本
+- 数据库检查脚本
+- 回复状态检查脚本
+- 完整回复流程测试脚本
+
 ## 测试状态
 
 | 测试类型 | 状态 | 说明 |
@@ -121,4 +159,4 @@ npm test -- --testNamePattern="回复"
 
 ---
 
-Generated with Claude Code | 2025-10-20
+Generated with Claude Code | 2025-10-21
