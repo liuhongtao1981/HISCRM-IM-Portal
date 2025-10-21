@@ -2354,6 +2354,12 @@ class DouyinPlatform extends PlatformBase {
 
     let page = null;
 
+    // 在 try 块外定义 apiResponses，以便在 catch 和 finally 块中访问
+    const apiResponses = {
+      replySuccess: null,
+      replyError: null
+    };
+
     try {
       logger.info(`[Douyin] Replying to comment: ${target_id}`, {
         accountId,
@@ -2380,54 +2386,94 @@ class DouyinPlatform extends PlatformBase {
       // 2. 设置 API 拦截器 - 监听回复发送的 API 响应
       logger.info('Setting up API interceptor for reply validation');
 
-      const apiResponses = {
-        replySuccess: null,
-        replyError: null
-      };
-
-      // 拦截与回复相关的 API 响应
-      const apiInterceptHandler = async (response) => {
+      // 定义 API 拦截处理器 - 注意：不能使用 async，Playwright 的 page.on('response') 不支持异步处理器
+      const apiInterceptHandler = (response) => {
         const url = response.url();
         const status = response.status();
 
-        // 匹配回复 API: /aweme/v1/creator/comment/reply/
-        if (url.includes('comment/reply') && status === 200) {
-          try {
-            const json = await response.json();
-            logger.info('✅ Intercepted reply API response', {
-              url,
-              status,
-              responseKeys: Object.keys(json)
+        // 添加详细日志以诊断 API 拦截 - 记录所有响应用于调试
+        logger.debug(`[API Interceptor] All responses: ${url.substring(0, 100)}`);
+
+        // 匹配回复 API: /aweme/v1/creator/comment/reply/ 或 /comment/reply
+        if (url.includes('comment/reply')) {
+          logger.info(`🔍 [API Interceptor] Found comment/reply API!`);
+          logger.info(`    URL: ${url}`);
+          logger.info(`    HTTP Status: ${status}`);
+
+          // 异步处理 JSON 解析，但不阻塞处理器
+          response.json().then((json) => {
+            logger.info('✅ [API Interceptor] Successfully parsed JSON response');
+            logger.info('    Response data:', {
+              status_code: json.status_code,
+              status_msg: json.status_msg,
+              error_msg: json.error_msg,
+              keys: Object.keys(json)
             });
 
-            // 检查返回的状态
+            // 检查返回的状态 - 优先看 status_code 字段
             if (json.status_code === 0 || json.data?.reply_id) {
+              // 成功 - status_code=0 表示成功
               apiResponses.replySuccess = {
                 timestamp: Date.now(),
                 url,
                 status,
+                statusCode: json.status_code,
+                statusMsg: json.status_msg,
                 data: json
               };
-              logger.debug(`Reply API success: reply_id=${json.data?.reply_id || 'unknown'}`);
-            } else if (json.status_code !== 0) {
+              logger.info(`✅ Reply SUCCESS - reply_id: ${json.data?.reply_id || 'N/A'}`);
+            } else if (json.status_code && json.status_code !== 0) {
+              // API 返回了错误码 (非0都是错误)
               apiResponses.replyError = {
                 timestamp: Date.now(),
                 url,
                 status,
                 status_code: json.status_code,
-                error_msg: json.error_msg || json.message,
+                status_msg: json.status_msg || json.message,
+                error_msg: json.error_msg || json.status_msg || json.message || '未知错误',
                 data: json
               };
-              logger.warn(`Reply API error: ${json.error_msg || json.message}`);
+              logger.warn(`❌ Reply FAILED - status_code=${json.status_code}, message=${json.status_msg || json.error_msg || json.message}`);
+            } else if (status >= 400) {
+              // HTTP 错误状态码
+              apiResponses.replyError = {
+                timestamp: Date.now(),
+                url,
+                status,
+                status_code: status,
+                error_msg: json.error_msg || json.message || `HTTP ${status} Error`,
+                data: json
+              };
+              logger.warn(`❌ HTTP Error: ${status}`);
+            } else {
+              logger.warn('⚠️ Unexpected response format - checking for error indicators...');
+              if (json.status_msg) {
+                apiResponses.replyError = {
+                  timestamp: Date.now(),
+                  url,
+                  status,
+                  status_code: json.status_code || -1,
+                  status_msg: json.status_msg,
+                  error_msg: json.status_msg,
+                  data: json
+                };
+                logger.warn(`❌ Found status_msg: ${json.status_msg}`);
+              }
             }
-          } catch (e) {
-            logger.debug('Failed to parse reply API response:', e.message);
-          }
+          }).catch((parseError) => {
+            logger.error('❌ Failed to parse reply API response:', parseError.message);
+            // 尝试获取文本响应作为备选
+            response.text().then((text) => {
+              logger.error('    Response text:', text.substring(0, 200));
+            }).catch(() => {
+              logger.error('    Could not get response text either');
+            });
+          });
         }
       };
 
       page.on('response', apiInterceptHandler);
-      logger.info('API interceptor enabled for reply tracking');
+      logger.info('✅ API interceptor enabled for reply tracking');
 
       // 3. 导航到创作者中心评论管理页面（新标签页方式，与私信回复保持一致）
       const commentManagementUrl = 'https://creator.douyin.com/creator-micro/interactive/comment';
@@ -2631,9 +2677,52 @@ class DouyinPlatform extends PlatformBase {
       }
 
       if (replyBtn) {
-        await replyBtn.click();
-        await page.waitForTimeout(1000);
-        logger.info('Reply button clicked successfully');
+        try {
+          // 检查并关闭可能阻挡交互的模态框
+          const modalMasks = await page.$$('.douyin-creator-interactive-sidesheet-mask, [class*="mask"], [class*="modal"]');
+          if (modalMasks.length > 0) {
+            logger.info(`Found ${modalMasks.length} potential modal masks, attempting to close them`);
+
+            // 尝试找到关闭按钮
+            const closeButtons = await page.$$('[class*="close"], [aria-label*="close"], [title*="close"]');
+            for (const closeBtn of closeButtons) {
+              try {
+                if (await closeBtn.isVisible()) {
+                  await closeBtn.click();
+                  await page.waitForTimeout(300);
+                  logger.info('Closed modal via close button');
+                  break;
+                }
+              } catch (e) {
+                // Continue trying other close buttons
+              }
+            }
+          }
+
+          // 使用 JavaScript 点击而不是 Playwright 的 .click()
+          const clicked = await page.evaluate((selector) => {
+            const buttons = Array.from(document.querySelectorAll(selector));
+            for (const btn of buttons) {
+              if (btn.textContent.includes('回复')) {
+                btn.click();
+                return true;
+              }
+            }
+            return false;
+          }, '.item-M3fSkJ');
+
+          if (clicked) {
+            await page.waitForTimeout(1000);
+            logger.info('Reply button clicked successfully via JavaScript');
+          } else {
+            // Fallback to Playwright click
+            await replyBtn.click();
+            await page.waitForTimeout(1000);
+            logger.info('Reply button clicked successfully via Playwright');
+          }
+        } catch (error) {
+          logger.warn(`Error clicking reply button: ${error.message}, will try to proceed with input`);
+        }
       } else {
         logger.warn('Reply button not found, will try to proceed with input');
       }
@@ -2680,23 +2769,39 @@ class DouyinPlatform extends PlatformBase {
       await page.waitForTimeout(500);
 
       // 6. 提交回复
-      logger.info('Submitting reply');
+      logger.info('🔘 Submitting reply');
 
-      // 先尝试使用 JavaScript 查找发送按钮（更可靠）
-      let submitBtn = await page.evaluate(() => {
+      // 先尝试在浏览器中直接点击发送按钮
+      logger.debug('Attempting to click submit button via JavaScript...');
+      const submitBtnClicked = await page.evaluate(() => {
         const buttons = Array.from(document.querySelectorAll('button'));
-        return buttons.find(btn =>
+        const submitBtn = buttons.find(btn =>
           btn.textContent.includes('发送') ||
           btn.textContent.includes('回复') ||
           btn.getAttribute('type') === 'submit'
         );
+
+        if (submitBtn && !submitBtn.disabled) {
+          console.log('[JS] Clicking submit button:', submitBtn.textContent);
+          submitBtn.click();
+          return true;
+        }
+        console.log('[JS] No valid submit button found. Found buttons:', buttons.map(b => b.textContent).join(', '));
+        return false;
       });
 
-      if (!submitBtn) {
-        // 备选选择器列表
+      if (submitBtnClicked) {
+        logger.info('✅ Submit button clicked via JavaScript - 🔴 **API 拦截器应该立即被触发！**');
+        await page.waitForTimeout(500);
+      } else {
+        // 备选方案：通过选择器找到按钮后点击
+        logger.warn('⚠️ JavaScript click failed, trying selector approach');
+
+        let submitBtn = null;
         const submitButtonSelectors = [
-          '[class*="submit"]',
-          '[class*="send"]',
+          'button:has-text("发送")',  // Playwright 特定选择器
+          '[class*="submit"] button',
+          '[class*="send"] button',
           'button[type="submit"]',
           '[class*="reply-input"] button',
         ];
@@ -2706,25 +2811,24 @@ class DouyinPlatform extends PlatformBase {
             submitBtn = await page.$(selector);
             if (submitBtn && await submitBtn.isVisible()) {
               logger.debug(`Found submit button with selector: ${selector}`);
+              await submitBtn.click();
+              logger.info('Submit button clicked via selector');
               break;
             }
           } catch (e) {
             // 继续尝试
           }
         }
-      }
 
-      if (submitBtn) {
-        await submitBtn.click();
-        logger.info('Submit button clicked');
-      } else {
-        // 尝试按 Enter 键提交
-        logger.info('No submit button found, trying Enter key');
-        await replyInput.press('Enter');
+        // 最后的备选方案：按 Enter 键提交
+        if (!submitBtn) {
+          logger.info('No submit button found, trying Enter key');
+          await replyInput.press('Enter');
+        }
       }
 
       // 7. 等待 API 响应（最多 5 秒）
-      logger.info('Waiting for reply API response...');
+      logger.info('⏳ Waiting for reply API response (max 5 seconds)...');
       let waitCount = 0;
       const maxWait = 50; // 5 秒（50 × 100ms）
 
@@ -2733,20 +2837,27 @@ class DouyinPlatform extends PlatformBase {
         !apiResponses.replyError &&
         waitCount < maxWait
       ) {
+        if (waitCount % 10 === 0) {
+          logger.debug(`⏳ Still waiting for API response... (${waitCount * 100}ms elapsed)`);
+        }
         await page.waitForTimeout(100);
         waitCount++;
       }
 
-      logger.info('Reply API response check completed', {
+      logger.info('📊 Reply API response check completed', {
         hasSuccess: !!apiResponses.replySuccess,
         hasError: !!apiResponses.replyError,
-        waitTime: `${waitCount * 100}ms`
+        waitTime: `${waitCount * 100}ms`,
+        totalWaitIterations: waitCount,
+        maxIterations: maxWait
       });
 
       // 8. 根据 API 响应判断成功或失败
       if (apiResponses.replySuccess) {
-        logger.info('✅ Reply API response success', {
+        logger.info('✅ Reply API response SUCCESS intercepted!', {
           commentId: target_id,
+          statusCode: apiResponses.replySuccess.data?.status_code,
+          replyId: apiResponses.replySuccess.data?.data?.reply_id,
           apiData: apiResponses.replySuccess.data
         });
 
@@ -2764,10 +2875,11 @@ class DouyinPlatform extends PlatformBase {
       }
 
       if (apiResponses.replyError) {
-        logger.warn('❌ Reply API response error', {
+        logger.warn('❌ Reply API response ERROR intercepted!', {
           commentId: target_id,
           statusCode: apiResponses.replyError.status_code,
-          errorMsg: apiResponses.replyError.error_msg
+          errorMsg: apiResponses.replyError.error_msg,
+          apiData: apiResponses.replyError.data
         });
 
         return {
@@ -2877,15 +2989,25 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } catch (error) {
-      logger.error(`[Douyin] Failed to reply to comment: ${target_id}`, {
+      logger.error(`❌ [Douyin] Failed to reply to comment: ${target_id}`, {
         error: error.message,
+        errorStack: error.stack,
         accountId,
+      });
+
+      // 详细日志：捕获异常时检查 API 拦截器状态
+      logger.error('⚠️ Exception occurred - checking API interceptor state', {
+        hasReplySuccess: !!apiResponses?.replySuccess,
+        hasReplyError: !!apiResponses?.replyError,
+        errorName: error.name,
+        errorMessage: error.message,
       });
 
       // 保存错误截图用于调试
       if (page) {
         try {
           await this.takeScreenshot(accountId, `reply_error_${Date.now()}.png`);
+          logger.info('Error screenshot saved');
         } catch (screenshotError) {
           logger.warn('Failed to take screenshot:', screenshotError.message);
         }
@@ -2905,15 +3027,22 @@ class DouyinPlatform extends PlatformBase {
       };
 
     } finally {
-      // 清理页面 - 关闭为回复任务开启的标签页
+      // 清理页面 - 保持标签页打开，以便 API 拦截器继续工作（与私信回复保持一致）
       if (page) {
         try {
           if (!page.isClosed()) {
-            await page.close();
-            logger.info(`[Douyin] Reply tab closed for account: ${accountId}`);
+            logger.info('✅ Comment reply task completed - page kept open for API interception', {
+              hasReplySuccess: !!apiResponses?.replySuccess,
+              hasReplyError: !!apiResponses?.replyError,
+              accountId
+            });
+            // DO NOT CLOSE PAGE - 页面保持打开状态，允许 API 响应继续被拦截
+            // await page.close();
+          } else {
+            logger.warn('ℹ️ Page was already closed');
           }
         } catch (closeError) {
-          logger.warn('Failed to close page:', closeError.message);
+          logger.warn('Error in finally block:', closeError.message);
         }
       }
     }
