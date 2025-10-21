@@ -127,7 +127,37 @@ packages/worker/src/debug/chrome-devtools-mcp.js
 
 ---
 
-### 第四阶段：待删除的文件 (3 个)
+### 第四阶段：Master 测试文件整理
+
+#### ✅ 已移动的文件 (3 个)
+
+**1. packages/master/src/tests/test-dm-reply.js**
+```
+大小: 8709 字节
+类型: 直接消息回复测试
+移动到: tests/packages/master/test-dm-reply.js ✅
+状态: 已完成 (Commit: 808b507)
+```
+
+**2. packages/master/src/tests/test-dm-reply-api.js**
+```
+大小: 8434 字节
+类型: API 回复测试
+移动到: tests/packages/master/test-dm-reply-api.js ✅
+状态: 已完成 (Commit: 808b507)
+```
+
+**3. packages/master/src/tests/test-dm-reply-direct.js**
+```
+大小: 7184 字节
+类型: 直接回复测试
+移动到: tests/packages/master/test-dm-reply-direct.js ✅
+状态: 已完成 (Commit: 808b507)
+```
+
+---
+
+### 第五阶段：待删除的文件 (3 个)
 
 #### ⏳ 可以删除的文件清单
 
@@ -176,29 +206,40 @@ packages/worker/src/debug/chrome-devtools-mcp.js
 |------|------|------|
 | 核心系统文件验证 | 5 + 1 | ✅ 完成 |
 | 已删除文件 | 5 | ✅ 完成 |
+| 已移动文件 | 3 | ✅ 完成 |
 | 待删除文件 | 3 | ⏳ 待处理 |
-| **总计** | **13** | |
+| **总计** | **16** | |
 
 ### 代码变更
 
 ```
-提交数量: 3 个
-删除行数: 1,006 行
+提交数量: 4 个
+删除行数: 1,323 行
 删除文件: 5 个
-新增文件: 1 个 (DEBUG-MODE-SYSTEM-ANALYSIS.md)
+移动文件: 3 个
+新增文件: 2 个 (DEBUG-MODE-SYSTEM-ANALYSIS.md, FILE-CLEANUP-SUMMARY.md)
 ```
 
 ### Git 提交日志
 
 ```
+Commit 808b507: chore: 将 Master 测试文件移至 tests/packages/master
+- 移动 test-dm-reply.js
+- 移动 test-dm-reply-api.js
+- 移动 test-dm-reply-direct.js
+- 删除 packages/master/src/tests/ 目录
+
+Commit 6e5a3ed: chore: 删除数据库备份和旧版本文件
+- 删除 schema.sql.backup
+- 删除 schema-v2.sql
+
 Commit 0d13a58: chore: 删除一次性调试文件
 - 删除 debug-template.js, debug-mcp-helper.md
 - 删除 comment-page-before-reply.png
 - 移动测试结果到 tests/ 目录
 
-Commit 6e5a3ed: chore: 删除数据库备份和旧版本文件
-- 删除 schema.sql.backup
-- 删除 schema-v2.sql
+Commit bec759c: docs: 更新 Debug Mode 系统文件分析报告
+- 新增 DEBUG-MODE-SYSTEM-ANALYSIS.md
 ```
 
 ---
