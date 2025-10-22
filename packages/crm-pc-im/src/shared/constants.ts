@@ -2,15 +2,27 @@
  * 全局常量
  */
 
-// WebSocket 事件类型
+// WebSocket 事件类型（Master 协议）
 export const WS_EVENTS = {
+  // 基础连接事件
   CONNECT: 'connect',
   DISCONNECT: 'disconnect',
+  ERROR: 'error',
+
+  // Master 协议特定事件
+  CLIENT_REGISTER: 'client:register',
+  CLIENT_REGISTER_SUCCESS: 'client:register:success',
+  CLIENT_REGISTER_ERROR: 'client:register:error',
+  CLIENT_HEARTBEAT: 'client:heartbeat',
+  CLIENT_NOTIFICATION_ACK: 'client:notification:ack',
+
+  // 消息事件
   MESSAGE: 'message',
-  STATUS_CHANGE: 'status_change',
-  FILE_TRANSFER: 'file_transfer',
-  NOTIFICATION: 'notification',
-  ERROR: 'error'
+
+  // 兼容旧事件（可选，用于渐进式迁移）
+  // STATUS_CHANGE: 'status_change',
+  // FILE_TRANSFER: 'file_transfer',
+  // NOTIFICATION: 'notification'
 } as const
 
 // 消息类型
