@@ -582,11 +582,11 @@ async function start() {
               // 历史数据：检查 is_new 标志
               const existingComment = commentsDAO.findAll({
                 account_id,
-                is_new: true
+                platform_comment_id: comment.id  // ← 更具体的查询
               }).find(c => c.platform_comment_id === comment.id);
 
-              if (existingComment && existingComment.is_new) {
-                // 历史但标记为新的：加入通知列表
+              if (existingComment && existingComment.is_new === 1) {
+                // 历史但标记为新的：加入通知列表 (严格检查 === 1)
                 skipped++;
                 commentsToNotify.push({
                   type: 'history_comment',
@@ -594,10 +594,14 @@ async function start() {
                   first_seen_at: existingComment.detected_at
                 });
                 logger.debug(`[IsNew] History comment with is_new=true: ${comment.id}`);
-              } else {
+              } else if (existingComment && existingComment.is_new === 0) {
                 // 历史且 is_new=false：不推送
                 skipped++;
                 logger.debug(`[IsNew] History comment with is_new=false, skipped: ${comment.id}`);
+              } else {
+                // 消息不存在（不应该发生，但作为保障）
+                skipped++;
+                logger.warn(`[IsNew] Comment appears to exist but not found: ${comment.id}`);
               }
             }
           } catch (itemError) {
@@ -617,6 +621,20 @@ async function start() {
               timestamp: Math.floor(Date.now() / 1000)
             });
             logger.info(`[IsNew] Sent ${commentsToNotify.length} comment notifications to clients`);
+
+            // ✅ 推送后标记这些评论为 is_new=false
+            const commentIds = commentsToNotify
+              .filter(c => c.data && c.data.is_new === 1)
+              .map(c => c.data.id);
+
+            if (commentIds.length > 0) {
+              try {
+                commentsDAO.markNewAsViewed(commentIds);
+                logger.info(`[IsNew] Marked ${commentIds.length} comments as viewed (is_new=false)`);
+              } catch (markError) {
+                logger.warn(`[IsNew] Failed to mark comments as viewed:`, markError.message);
+              }
+            }
           } catch (notifyError) {
             logger.warn(`[IsNew] Failed to notify clients about comments:`, notifyError.message);
           }
@@ -704,11 +722,11 @@ async function start() {
               // 历史数据：检查 is_new 标志
               const existingMessage = directMessagesDAO.findAll({
                 account_id,
-                is_new: true
+                platform_user_id  // ← 更具体的查询
               }).find(m => m.platform_message_id === message.id);
 
-              if (existingMessage && existingMessage.is_new) {
-                // 历史但标记为新的：加入通知列表
+              if (existingMessage && existingMessage.is_new === 1) {
+                // 历史但标记为新的：加入通知列表 (严格检查 === 1)
                 skipped++;
                 messagesToNotify.push({
                   type: 'history_message',
@@ -716,10 +734,14 @@ async function start() {
                   first_seen_at: existingMessage.detected_at
                 });
                 logger.debug(`[IsNew] History message with is_new=true: ${message.id}`);
-              } else {
+              } else if (existingMessage && existingMessage.is_new === 0) {
                 // 历史且 is_new=false：不推送
                 skipped++;
                 logger.debug(`[IsNew] History message with is_new=false, skipped: ${message.id}`);
+              } else {
+                // 消息不存在（不应该发生，但作为保障）
+                skipped++;
+                logger.warn(`[IsNew] Message appears to exist but not found: ${message.id}`);
               }
             }
           } catch (itemError) {
@@ -739,6 +761,20 @@ async function start() {
               timestamp: Math.floor(Date.now() / 1000)
             });
             logger.info(`[IsNew] Sent ${messagesToNotify.length} message notifications to clients`);
+
+            // ✅ 推送后标记这些消息为 is_new=false
+            const messageIds = messagesToNotify
+              .filter(m => m.data && m.data.is_new === 1)
+              .map(m => m.data.id);
+
+            if (messageIds.length > 0) {
+              try {
+                directMessagesDAO.markNewAsViewed(messageIds);
+                logger.info(`[IsNew] Marked ${messageIds.length} messages as viewed (is_new=false)`);
+              } catch (markError) {
+                logger.warn(`[IsNew] Failed to mark messages as viewed:`, markError.message);
+              }
+            }
           } catch (notifyError) {
             logger.warn(`[IsNew] Failed to notify clients about messages:`, notifyError.message);
           }
@@ -1136,10 +1172,32 @@ async function start() {
 
     logger.info('API routes mounted');
 
-    // 12. 初始化Debug模式配置
+    // 12. 设置定期清理旧通知的定时器（防止通知堆积）
+    // 每小时清理一次 7 天以前的已发送通知
+    setInterval(() => {
+      try {
+        const NotificationsDAO = require('./database/notifications-dao');
+        const notificationsDAO = new NotificationsDAO(db);
+        const cutoffTime = Math.floor(Date.now() / 1000) - 7 * 24 * 60 * 60; // 7天
+
+        const stmt = db.prepare(`
+          DELETE FROM notifications
+          WHERE is_sent = 1 AND sent_at < ?
+        `);
+        const result = stmt.run(cutoffTime);
+
+        if (result.changes > 0) {
+          logger.info(`[Cleanup] Deleted ${result.changes} old sent notifications (older than 7 days)`);
+        }
+      } catch (error) {
+        logger.error('[Cleanup] Failed to clean up notifications:', error);
+      }
+    }, 60 * 60 * 1000); // 1小时执行一次
+
+    // 13. 初始化Debug模式配置
     initializeDebugMode();
 
-    // 13. 启动HTTP服务器
+    // 14. 启动HTTP服务器
     server.listen(PORT, () => {
       logger.info(`╔═══════════════════════════════════════════╗`);
       logger.info(`║  Master Server Started                    ║`);
@@ -1150,7 +1208,7 @@ async function start() {
       logger.info(`╚═══════════════════════════════════════════╝`);
     });
 
-    // 14. 优雅退出处理
+    // 15. 优雅退出处理
     let isShuttingDown = false;
     let forceShutdownTimer = null;
 

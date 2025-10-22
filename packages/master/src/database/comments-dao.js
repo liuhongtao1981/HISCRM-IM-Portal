@@ -417,34 +417,61 @@ class CommentsDAO {
   }
 
   /**
-   * 标记所有新评论为已查看
-   * @param {string} accountId - 账户ID（可选）
-   * @param {string} platformUserId - 平台用户ID（可选）
-   * @param {string} postId - 作品ID（可选）
+   * 标记新评论为已查看 (is_new=false)
+   * 用于防止评论被重复推送
+   * @param {string|Array} accountIdOrArray - 账户ID（可选）或评论ID数组
+   * @param {string} platformUserId - 平台用户ID（可选，仅在第一个参数为字符串时使用）
+   * @param {string} postId - 作品ID（可选，仅在第一个参数为字符串时使用）
+   *
+   * 用法1: markNewAsViewed([id1, id2, ...]) - 按ID数组标记
+   * 用法2: markNewAsViewed(accountId, platformUserId, postId) - 按条件标记（向后兼容）
    */
-  markNewAsViewed(accountId = null, platformUserId = null, postId = null) {
+  markNewAsViewed(accountIdOrArray = null, platformUserId = null, postId = null) {
     try {
-      let sql = 'UPDATE comments SET is_new = 0 WHERE is_new = 1';
-      const params = [];
+      // ✅ 支持两种调用方式:
+      // 1. markNewAsViewed([id1, id2, ...]) - 按ID数组标记
+      // 2. markNewAsViewed(accountId, platformUserId, postId) - 按条件标记（向后兼容）
 
-      if (accountId) {
-        sql += ' AND account_id = ?';
-        params.push(accountId);
+      if (Array.isArray(accountIdOrArray)) {
+        // 方式1: 按ID数组标记
+        const commentIds = accountIdOrArray;
+        if (commentIds.length === 0) {
+          return 0;
+        }
+
+        const placeholders = commentIds.map(() => '?').join(',');
+        const result = this.db.prepare(
+          `UPDATE comments SET is_new = 0 WHERE id IN (${placeholders})`
+        ).run(...commentIds);
+
+        if (result.changes > 0) {
+          logger.info(`Marked ${result.changes} comments as viewed (is_new=false)`);
+        }
+        return result.changes;
+      } else {
+        // 方式2: 按条件标记（原有逻辑，向后兼容）
+        let sql = 'UPDATE comments SET is_new = 0 WHERE is_new = 1';
+        const params = [];
+
+        if (accountIdOrArray) {
+          sql += ' AND account_id = ?';
+          params.push(accountIdOrArray);
+        }
+
+        if (platformUserId) {
+          sql += ' AND platform_user_id = ?';
+          params.push(platformUserId);
+        }
+
+        if (postId) {
+          sql += ' AND post_id = ?';
+          params.push(postId);
+        }
+
+        const result = this.db.prepare(sql).run(...params);
+        logger.info(`Marked ${result.changes} new comments as viewed`);
+        return result.changes;
       }
-
-      if (platformUserId) {
-        sql += ' AND platform_user_id = ?';
-        params.push(platformUserId);
-      }
-
-      if (postId) {
-        sql += ' AND post_id = ?';
-        params.push(postId);
-      }
-
-      const result = this.db.prepare(sql).run(...params);
-      logger.info(`Marked ${result.changes} new comments as viewed`);
-      return result.changes;
     } catch (error) {
       logger.error('Failed to mark new comments as viewed:', error);
       throw error;
