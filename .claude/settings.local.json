@@ -37,7 +37,10 @@
       "Bash(git commit:*)",
       "Bash(npx tsc:*)",
       "Bash(node tests/test-protocol-converter.js:*)",
-      "Bash(node tests/test-master-integration.js:*)"
+      "Bash(node tests/test-master-integration.js:*)",
+      "Bash(echo:*)",
+      "Bash(npm start)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
