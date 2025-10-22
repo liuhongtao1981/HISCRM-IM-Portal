@@ -1,0 +1,287 @@
+/**
+ * 监控页面 - 消息监控面板
+ * 只接收消息,不发送消息
+ */
+
+import { useState, useEffect } from 'react'
+import { Layout, Card, Avatar, Badge, List, Typography, Empty, Tag, Tooltip } from 'antd'
+import { BellOutlined, UserOutlined } from '@ant-design/icons'
+import { useSelector, useDispatch } from 'react-redux'
+import type { RootState } from '../store'
+import { receiveMessage, stopFlashing, selectChannel, setChannels, setConnected } from '../store/monitorSlice'
+import websocketService from '../services/websocket'
+import type { ChannelMessage } from '../shared/types-monitor'
+import './MonitorPage.css'
+
+// 声明 Electron API
+declare global {
+  interface Window {
+    electron?: {
+      showWindow: () => void
+    }
+  }
+}
+
+const { Sider, Content, Header } = Layout
+const { Title, Text } = Typography
+
+export default function MonitorPage() {
+  const dispatch = useDispatch()
+  const { channels, messages, selectedChannelId, isConnected } = useSelector(
+    (state: RootState) => state.monitor
+  )
+  const [, setUpdateTrigger] = useState(0) // 用于强制更新时间显示
+
+  const selectedChannel = channels.find(ch => ch.id === selectedChannelId)
+  const currentMessages = selectedChannelId ? messages[selectedChannelId] || [] : []
+
+  useEffect(() => {
+    const connectToServer = async () => {
+      try {
+        // 连接到服务器
+        await websocketService.connect('ws://localhost:8080')
+        console.log('[监控] 已连接到服务器')
+        dispatch(setConnected(true))
+
+        // 注册为监控客户端
+        websocketService.emit('monitor:register', {
+          clientType: 'monitor'
+        })
+
+        // 监听频道列表
+        websocketService.on('monitor:channels', (data: any) => {
+          console.log('[监控] 收到频道列表:', data.channels)
+          dispatch(setChannels(data.channels))
+        })
+
+        // 监听新消息
+        websocketService.on('channel:message', (message: ChannelMessage) => {
+          console.log('[监控] 收到频道消息:', message)
+
+          // 分发消息到 Redux (触发晃动)
+          dispatch(receiveMessage(message))
+
+          // 如果窗口最小化,自动弹出
+          if (window.electron?.showWindow) {
+            window.electron.showWindow()
+          }
+
+          // 2秒后停止晃动
+          setTimeout(() => {
+            dispatch(stopFlashing(message.channelId))
+          }, 2000)
+        })
+
+        // 请求频道列表
+        websocketService.emit('monitor:request_channels')
+
+      } catch (error) {
+        console.error('[监控] 连接失败:', error)
+        dispatch(setConnected(false))
+      }
+    }
+
+    connectToServer()
+
+    return () => {
+      websocketService.disconnect()
+    }
+  }, [dispatch])
+
+  // 定期更新时间显示 (每30秒)
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setUpdateTrigger(prev => prev + 1)
+    }, 30000)
+
+    return () => {
+      clearInterval(timer)
+    }
+  }, [])
+
+  const handleSelectChannel = (channelId: string) => {
+    dispatch(selectChannel(channelId))
+  }
+
+  const formatTime = (timestamp: number) => {
+    const now = Date.now()
+    const diff = now - timestamp
+    const minutes = Math.floor(diff / 60000)
+    const hours = Math.floor(diff / 3600000)
+    const days = Math.floor(diff / 86400000)
+
+    if (minutes < 1) return '刚刚'
+    if (minutes < 60) return `${minutes}分钟前`
+    if (hours < 24) return `${hours}小时前`
+    return `${days}天前`
+  }
+
+  const formatMessageTime = (timestamp: number) => {
+    const date = new Date(timestamp)
+    return date.toLocaleString('zh-CN', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit'
+    })
+  }
+
+  return (
+    <Layout className="monitor-page">
+      {/* 顶部状态栏 */}
+      <Header className="monitor-header">
+        <Title level={3} style={{ margin: 0, color: 'white' }}>
+          <BellOutlined /> CRM IM 消息监控系统
+        </Title>
+        <div className="monitor-status">
+          {isConnected ? (
+            <Tag color="success">● 已连接</Tag>
+          ) : (
+            <Tag color="error">● 未连接</Tag>
+          )}
+          <Tag color="blue">{channels.length} 个频道</Tag>
+        </div>
+      </Header>
+
+      <Layout>
+        {/* 左侧频道列表 */}
+        <Sider width={320} className="channel-list-sider">
+          <div className="channel-list-header">
+            <Text strong>账户频道列表</Text>
+          </div>
+
+          <List
+            className="channel-list"
+            dataSource={channels}
+            renderItem={(channel) => {
+              const isSelected = channel.id === selectedChannelId
+              const className = `channel-item ${isSelected ? 'selected' : ''} ${
+                channel.isFlashing ? 'flashing' : ''
+              }`
+
+              // 截断消息内容为10个字符
+              const truncateMessage = (msg: string) => {
+                if (msg.length <= 10) {
+                  return msg
+                }
+                return msg.substring(0, 10) + '...'
+              }
+
+              return (
+                <List.Item
+                  key={channel.id}
+                  className={className}
+                  onClick={() => handleSelectChannel(channel.id)}
+                >
+                  <Card size="small" className="channel-card">
+                    <div className="channel-card-header">
+                      <Badge count={channel.unreadCount} offset={[-5, 5]}>
+                        <Avatar
+                          src={channel.avatar}
+                          icon={<UserOutlined />}
+                          size={40}
+                        />
+                      </Badge>
+                      <div className="channel-info">
+                        {/* 第1行: 频道名称 */}
+                        <div className="channel-name">
+                          <Text strong>{channel.name}</Text>
+                          {channel.isPinned && <Tag color="gold" style={{ marginLeft: 8 }}>置顶</Tag>}
+                        </div>
+
+                        {/* 第2行: 消息内容(超过10字显示提示) */}
+                        {channel.lastMessage && (
+                          <Tooltip title={channel.lastMessage.length > 10 ? channel.lastMessage : ''}>
+                            <Text type="secondary" className="last-message">
+                              {truncateMessage(channel.lastMessage)}
+                            </Text>
+                          </Tooltip>
+                        )}
+
+                        {/* 第3行: 最后消息时间 */}
+                        {channel.lastMessageTime && (
+                          <Text type="secondary" className="message-time" style={{ fontSize: 12 }}>
+                            {formatTime(channel.lastMessageTime)}
+                          </Text>
+                        )}
+                      </div>
+                    </div>
+                  </Card>
+                </List.Item>
+              )
+            }}
+            locale={{
+              emptyText: (
+                <Empty
+                  description="暂无频道"
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                />
+              )
+            }}
+          />
+        </Sider>
+
+        {/* 右侧消息详情 */}
+        <Content className="message-content">
+          {selectedChannel ? (
+            <>
+              <div className="message-header">
+                <Avatar src={selectedChannel.avatar} icon={<UserOutlined />} />
+                <div>
+                  <Title level={4} style={{ margin: 0 }}>
+                    {selectedChannel.name}
+                  </Title>
+                  <Text type="secondary">{selectedChannel.description || '暂无描述'}</Text>
+                </div>
+              </div>
+
+              <div className="message-list">
+                {currentMessages.length > 0 ? (
+                  <List
+                    dataSource={currentMessages}
+                    renderItem={(msg) => (
+                      <List.Item key={msg.id} className="message-item">
+                        <Card size="small" style={{ width: '100%' }}>
+                          <div className="message-meta">
+                            {msg.fromName && (
+                              <Text strong>{msg.fromName}</Text>
+                            )}
+                            <Text type="secondary" style={{ fontSize: 12, marginLeft: 8 }}>
+                              {formatMessageTime(msg.timestamp)}
+                            </Text>
+                          </div>
+                          <div className="message-content-text">
+                            {msg.type === 'text' ? (
+                              <Text>{msg.content}</Text>
+                            ) : msg.type === 'file' ? (
+                              <div>
+                                <Text type="secondary">[文件] </Text>
+                                <Text>{msg.fileName}</Text>
+                              </div>
+                            ) : (
+                              <div>
+                                <Text type="secondary">[图片]</Text>
+                              </div>
+                            )}
+                          </div>
+                        </Card>
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty description="暂无消息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="empty-state">
+              <Empty
+                description="请选择一个频道查看消息"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            </div>
+          )}
+        </Content>
+      </Layout>
+    </Layout>
+  )
+}

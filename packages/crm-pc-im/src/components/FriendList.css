@@ -1,0 +1,135 @@
+.friend-list {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.friend-list-header {
+  padding: 16px;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.user-name {
+  font-weight: 500;
+}
+
+.friend-list-content {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.friend-item-wrapper {
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.friend-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.friend-header:hover {
+  background: #fafafa;
+}
+
+.friend-avatar {
+  border-radius: 50%;
+}
+
+.friend-avatar.online {
+  border: 2px solid #52c41a;
+}
+
+.friend-avatar.offline {
+  border: 2px solid #999;
+  opacity: 0.6;
+}
+
+.friend-info {
+  flex: 1;
+}
+
+.friend-name {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.friend-status {
+  font-size: 12px;
+}
+
+.status-online {
+  color: #52c41a;
+}
+
+.status-offline {
+  color: #999;
+}
+
+.topic-list {
+  background: #fafafa;
+  padding: 8px 0;
+  border-top: 1px solid #f0f0f0;
+}
+
+.topic-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px 12px 40px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.topic-item:hover {
+  background: #f0f0f0;
+}
+
+.topic-item.flashing {
+  animation: flashAnimation 0.6s infinite;
+}
+
+@keyframes flashAnimation {
+  0%, 100% {
+    background: #f0f0f0;
+  }
+  50% {
+    background: #fff7e6;
+  }
+}
+
+.topic-content {
+  flex: 1;
+}
+
+.topic-name {
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.topic-preview {
+  font-size: 11px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.friend-list-footer {
+  padding: 12px 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.logout-btn {
+  color: #ff4d4f;
+}

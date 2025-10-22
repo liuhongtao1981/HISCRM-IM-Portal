@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM IM - 会话管理</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', sans-serif;
+      background: #f5f5f5;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .header h1 {
+      color: #333;
+      margin-bottom: 8px;
+    }
+
+    .header p {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 350px 1fr;
+      gap: 20px;
+      height: calc(100vh - 180px);
+    }
+
+    .sessions-panel, .conversation-panel {
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+      display: flex;
+      flex-direction: column;
+    }
+
+    .panel-header {
+      padding: 16px 20px;
+      border-bottom: 1px solid #eee;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header h2 {
+      font-size: 18px;
+      color: #333;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: #1890ff;
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: #40a9ff;
+    }
+
+    .btn-success {
+      background: #52c41a;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #73d13d;
+    }
+
+    .sessions-list {
+      flex: 1;
+      overflow-y: auto;
+      padding: 10px;
+    }
+
+    .session-item {
+      padding: 12px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      border-left: 3px solid #1890ff;
+      background: #f9f9f9;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .session-item:hover {
+      background: #f0f0f0;
+      transform: translateX(2px);
+    }
+
+    .session-item.active {
+      background: #e6f7ff;
+      border-left-color: #1890ff;
+    }
+
+    .session-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 6px;
+    }
+
+    .session-user {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .session-time {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .session-preview {
+      font-size: 13px;
+      color: #666;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .session-badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      margin-left: 8px;
+    }
+
+    .badge-active {
+      background: #d4f4dd;
+      color: #237804;
+    }
+
+    .badge-closed {
+      background: #ffd8bf;
+      color: #ad4e00;
+    }
+
+    .conversation-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      background: #fafafa;
+    }
+
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      color: #999;
+    }
+
+    .message-item {
+      margin-bottom: 16px;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .message-item.session-msg {
+      background: #fff;
+      padding: 16px;
+      border-radius: 8px;
+      border-left: 4px solid #faad14;
+    }
+
+    .message-item.reply-msg {
+      background: #e6f7ff;
+      padding: 12px 16px 12px 32px;
+      border-radius: 6px;
+      margin-left: 20px;
+      border-left: 3px solid #1890ff;
+    }
+
+    .message-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .message-author {
+      font-weight: bold;
+      color: #333;
+    }
+
+    .message-time {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .message-content {
+      color: #333;
+      line-height: 1.6;
+    }
+
+    .reply-form {
+      padding: 16px 20px;
+      border-top: 1px solid #eee;
+      background: white;
+    }
+
+    .reply-form textarea {
+      width: 100%;
+      padding: 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      resize: none;
+      font-family: inherit;
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .reply-form textarea:focus {
+      outline: none;
+      border-color: #1890ff;
+    }
+
+    .reply-actions {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .reply-tip {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 24px;
+      border-radius: 8px;
+      max-width: 500px;
+      width: 90%;
+    }
+
+    .modal-header {
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #eee;
+    }
+
+    .modal-header h3 {
+      font-size: 18px;
+      color: #333;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      margin-bottom: 6px;
+      color: #333;
+      font-size: 14px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+
+    .form-group textarea {
+      resize: vertical;
+      min-height: 100px;
+      font-family: inherit;
+    }
+
+    .modal-footer {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 20px;
+    }
+
+    .btn-secondary {
+      background: #8c8c8c;
+      color: white;
+    }
+
+    .btn-secondary:hover {
+      background: #a0a0a0;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #ccc;
+      border-radius: 3px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #999;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>💬 会话管理系统</h1>
+      <p>管理客户会话和回复 - 树状结构</p>
+    </div>
+
+    <div class="main-content">
+      <!-- 左侧: 会话列表 -->
+      <div class="sessions-panel">
+        <div class="panel-header">
+          <h2>会话列表</h2>
+          <button class="btn btn-success" onclick="showCreateSessionModal()">
+            ➕ 新建会话
+          </button>
+        </div>
+        <div class="sessions-list" id="sessionsList">
+          <div class="empty-state">
+            <p>暂无会话</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右侧: 会话详情和回复 -->
+      <div class="conversation-panel">
+        <div class="panel-header">
+          <h2 id="conversationTitle">选择一个会话</h2>
+        </div>
+        <div class="conversation-content" id="conversationContent">
+          <div class="empty-state">
+            <p style="font-size: 48px;">💬</p>
+            <p>请从左侧选择一个会话</p>
+          </div>
+        </div>
+        <div class="reply-form" id="replyForm" style="display: none;">
+          <textarea
+            id="replyContent"
+            rows="3"
+            placeholder="输入回复内容... (Ctrl+Enter 发送)"
+          ></textarea>
+          <div class="reply-actions">
+            <span class="reply-tip">Ctrl+Enter 快速发送</span>
+            <button class="btn btn-primary" onclick="sendReply()">发送回复</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建会话模态框 -->
+  <div class="modal" id="createSessionModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>新建会话</h3>
+      </div>
+      <form onsubmit="createSession(event)">
+        <div class="form-group">
+          <label>用户ID *</label>
+          <input type="text" id="userId" required placeholder="例: 10001">
+        </div>
+        <div class="form-group">
+          <label>用户名称 *</label>
+          <input type="text" id="userName" required placeholder="例: 张三">
+        </div>
+        <div class="form-group">
+          <label>目标频道 *</label>
+          <select id="sessionChannel" required></select>
+        </div>
+        <div class="form-group">
+          <label>目标主题 *</label>
+          <select id="sessionTopic" required>
+            <option value="">请先选择频道</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>首条消息 *</label>
+          <textarea id="firstMessage" required placeholder="客户发起的首条消息..."></textarea>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" onclick="closeCreateSessionModal()">取消</button>
+          <button type="submit" class="btn btn-primary">创建会话</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    let socket = null;
+    let currentSessionId = null;
+    let sessions = [];
+    let replies = {};
+
+    // 初始化Socket.IO
+    function initSocket() {
+      socket = io();
+
+      socket.on('connect', () => {
+        console.log('[会话管理] Socket.IO 已连接');
+        socket.emit('admin:register');
+      });
+
+      socket.on('session:new', (session) => {
+        console.log('[会话管理] 新会话:', session);
+        loadSessions();
+      });
+
+      socket.on('session:reply', (reply) => {
+        console.log('[会话管理] 新回复:', reply);
+        if (currentSessionId === reply.sessionId) {
+          loadConversation(currentSessionId);
+        }
+        loadSessions(); // 更新会话列表(更新lastReplyTime)
+      });
+    }
+
+    // 加载会话列表
+    async function loadSessions() {
+      try {
+        const response = await fetch('/api/sessions');
+        const data = await response.json();
+        sessions = data.sessions || [];
+
+        const listEl = document.getElementById('sessionsList');
+
+        if (sessions.length === 0) {
+          listEl.innerHTML = '<div class="empty-state"><p>暂无会话</p></div>';
+          return;
+        }
+
+        // 按最后回复时间排序
+        sessions.sort((a, b) => (b.lastReplyTime || b.createdTime) - (a.lastReplyTime || a.createdTime));
+
+        listEl.innerHTML = sessions.map(session => `
+          <div class="session-item ${currentSessionId === session.id ? 'active' : ''}"
+               onclick="selectSession('${session.id}')">
+            <div class="session-header">
+              <div>
+                <span class="session-user">${session.userName} (ID: ${session.userId})</span>
+                <span class="session-badge badge-${session.status || 'active'}">
+                  ${session.status === 'closed' ? '已关闭' : '进行中'}
+                </span>
+              </div>
+              <span class="session-time">${formatTime(session.lastReplyTime || session.createdTime)}</span>
+            </div>
+            <div class="session-preview">
+              ${session.firstMessage}
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('[会话管理] 加载会话失败:', error);
+      }
+    }
+
+    // 选择会话
+    async function selectSession(sessionId) {
+      currentSessionId = sessionId;
+      await loadConversation(sessionId);
+      loadSessions(); // 更新列表高亮
+    }
+
+    // 加载会话详情
+    async function loadConversation(sessionId) {
+      try {
+        const session = sessions.find(s => s.id === sessionId);
+        if (!session) return;
+
+        // 更新标题
+        document.getElementById('conversationTitle').textContent =
+          `${session.userName} (ID: ${session.userId})`;
+
+        // 加载回复
+        const response = await fetch(`/api/sessions/${sessionId}/replies`);
+        const data = await response.json();
+        const sessionReplies = data.replies || [];
+
+        // 渲染会话
+        const contentEl = document.getElementById('conversationContent');
+        contentEl.innerHTML = `
+          <div class="message-item session-msg">
+            <div class="message-header">
+              <span class="message-author">👤 ${session.userName} (客户)</span>
+              <span class="message-time">${formatFullTime(session.createdTime)}</span>
+            </div>
+            <div class="message-content">${session.firstMessage}</div>
+          </div>
+          ${sessionReplies.map(reply => `
+            <div class="message-item reply-msg">
+              <div class="message-header">
+                <span class="message-author">👨‍💼 ${reply.fromName} (客服)</span>
+                <span class="message-time">${formatFullTime(reply.timestamp)}</span>
+              </div>
+              <div class="message-content">${reply.content}</div>
+            </div>
+          `).join('')}
+        `;
+
+        // 显示回复表单
+        document.getElementById('replyForm').style.display = 'block';
+
+        // 滚动到底部
+        setTimeout(() => {
+          contentEl.scrollTop = contentEl.scrollHeight;
+        }, 100);
+
+      } catch (error) {
+        console.error('[会话管理] 加载会话详情失败:', error);
+      }
+    }
+
+    // 发送回复
+    async function sendReply() {
+      const content = document.getElementById('replyContent').value.trim();
+
+      if (!content) {
+        alert('请输入回复内容');
+        return;
+      }
+
+      if (!currentSessionId) {
+        alert('请先选择一个会话');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/sessions/reply', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId: currentSessionId,
+            content: content,
+            fromName: '客服' + Math.floor(Math.random() * 10), // 临时使用随机客服名
+            fromId: 'staff_' + Date.now()
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          document.getElementById('replyContent').value = '';
+          await loadConversation(currentSessionId);
+        } else {
+          alert('发送失败: ' + (data.error || '未知错误'));
+        }
+      } catch (error) {
+        alert('发送失败: ' + error.message);
+      }
+    }
+
+    // 显示创建会话对话框
+    async function showCreateSessionModal() {
+      // 加载频道列表
+      try {
+        const response = await fetch('/api/channels');
+        const data = await response.json();
+        const channelSelect = document.getElementById('sessionChannel');
+        channelSelect.innerHTML = '<option value="">请选择频道</option>' +
+          data.channels.filter(ch => ch.enabled).map(ch =>
+            `<option value="${ch.id}">${ch.name} (${ch.id})</option>`
+          ).join('');
+      } catch (error) {
+        console.error('加载频道失败:', error);
+      }
+
+      document.getElementById('createSessionModal').classList.add('show');
+    }
+
+    // 关闭创建会话对话框
+    function closeCreateSessionModal() {
+      document.getElementById('createSessionModal').classList.remove('show');
+    }
+
+    // 加载频道的主题
+    async function loadSessionTopics() {
+      const channelId = document.getElementById('sessionChannel').value;
+      const topicSelect = document.getElementById('sessionTopic');
+
+      if (!channelId) {
+        topicSelect.innerHTML = '<option value="">请先选择频道</option>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/channels/${channelId}/topics`);
+        const data = await response.json();
+        topicSelect.innerHTML = '<option value="">请选择主题</option>' +
+          (data.topics || []).map(t =>
+            `<option value="${t.id}">${t.title}</option>`
+          ).join('');
+      } catch (error) {
+        console.error('加载主题失败:', error);
+        topicSelect.innerHTML = '<option value="">加载失败</option>';
+      }
+    }
+
+    // 创建会话
+    async function createSession(event) {
+      event.preventDefault();
+
+      const sessionData = {
+        userId: document.getElementById('userId').value.trim(),
+        userName: document.getElementById('userName').value.trim(),
+        channelId: document.getElementById('sessionChannel').value,
+        topicId: document.getElementById('sessionTopic').value,
+        firstMessage: document.getElementById('firstMessage').value.trim()
+      };
+
+      try {
+        const response = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(sessionData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          closeCreateSessionModal();
+          await loadSessions();
+          selectSession(data.session.id);
+        } else {
+          alert('创建失败: ' + (data.error || '未知错误'));
+        }
+      } catch (error) {
+        alert('创建失败: ' + error.message);
+      }
+    }
+
+    // 时间格式化
+    function formatTime(timestamp) {
+      const now = Date.now();
+      const diff = now - timestamp;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return '刚刚';
+      if (minutes < 60) return `${minutes}分钟前`;
+      if (hours < 24) return `${hours}小时前`;
+      if (days < 7) return `${days}天前`;
+      return new Date(timestamp).toLocaleDateString('zh-CN');
+    }
+
+    function formatFullTime(timestamp) {
+      return new Date(timestamp).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+
+    // 自动创建会话(从URL参数)
+    async function autoCreateSession() {
+      const params = new URLSearchParams(window.location.search);
+      const auto = params.get('auto');
+
+      if (auto !== 'true') {
+        return; // 不是自动模式
+      }
+
+      const userId = params.get('userId');
+      const userName = params.get('userName');
+      const channelId = params.get('channelId');
+      const channelName = params.get('channelName');
+      const topicId = params.get('topicId');
+      const topicTitle = params.get('topicTitle');
+
+      if (!userId || !userName || !channelId || !topicId) {
+        console.error('[自动会话] 缺少必要参数');
+        return;
+      }
+
+      try {
+        // 检查是否已有相同的会话
+        const existingSession = sessions.find(s =>
+          s.userId === userId && s.topicId === topicId && s.status === 'active'
+        );
+
+        if (existingSession) {
+          console.log('[自动会话] 已存在活跃会话,直接打开');
+          selectSession(existingSession.id);
+          return;
+        }
+
+        // 创建新会话
+        const firstMessage = `你好,我是${userName},想咨询关于"${topicTitle}"的问题`;
+
+        const response = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            userName,
+            channelId,
+            topicId,
+            firstMessage
+          })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          console.log('[自动会话] 创建成功:', data.session);
+          // 重新加载会话列表
+          await loadSessions();
+          // 选择新创建的会话
+          selectSession(data.session.id);
+
+          // 更新浏览器标题
+          document.title = `会话: ${userName} - ${topicTitle}`;
+        } else {
+          alert('创建会话失败: ' + (data.error || '未知错误'));
+        }
+      } catch (error) {
+        console.error('[自动会话] 创建失败:', error);
+        alert('创建会话失败: ' + error.message);
+      }
+    }
+
+    // 初始化
+    window.addEventListener('load', async () => {
+      initSocket();
+      await loadSessions();
+      await autoCreateSession(); // 检查是否需要自动创建会话
+
+      // 频道变更时加载主题
+      document.getElementById('sessionChannel').addEventListener('change', loadSessionTopics);
+
+      // Ctrl+Enter 发送回复
+      document.getElementById('replyContent').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault();
+          sendReply();
+        }
+      });
+
+      // ESC 关闭模态框
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeCreateSessionModal();
+        }
+      });
+
+      // 点击模态框外部关闭
+      document.getElementById('createSessionModal').addEventListener('click', (e) => {
+        if (e.target.id === 'createSessionModal') {
+          closeCreateSessionModal();
+        }
+      });
+    });
+  </script>
+</body>
+</html>

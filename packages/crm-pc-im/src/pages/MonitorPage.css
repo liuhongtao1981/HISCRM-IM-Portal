@@ -1,0 +1,493 @@
+/* 微信风格监控页面样式 */
+
+/* 整体布局 */
+.wechat-monitor-page {
+  height: 100vh;
+  width: 100vw;
+  overflow: hidden;
+  background: #f5f5f5;
+}
+
+/* ==================== 左侧账户列表 ==================== */
+.wechat-account-list {
+  background: #ffffff;
+  border-right: 1px solid #e7e7e7;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  max-width: 300px !important;
+  min-width: 300px !important;
+  flex: 0 0 300px !important;
+}
+
+/* 搜索框 */
+.wechat-search-box {
+  padding: 12px 16px;
+  background: #ffffff;
+  border-bottom: 1px solid #e7e7e7;
+  flex-shrink: 0;
+}
+
+.wechat-search-box .ant-input-affix-wrapper {
+  background: #f5f5f5;
+  border-radius: 4px;
+  padding: 6px 12px;
+}
+
+.wechat-search-box .ant-input {
+  background: transparent;
+  font-size: 14px;
+}
+
+/* 账户列表滚动区域 */
+.wechat-account-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.wechat-account-scroll .ant-list {
+  padding: 0;
+}
+
+.wechat-account-scroll .ant-list-items {
+  padding: 0;
+}
+
+.wechat-account-scroll .ant-spin-nested-loading,
+.wechat-account-scroll .ant-spin-container {
+  height: auto !important;
+}
+
+/* 账户列表项 */
+.wechat-account-item {
+  display: flex;
+  align-items: center;
+  padding: 12px 16px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  border-bottom: 1px solid #f5f5f5;
+  background: #ffffff;
+}
+
+.wechat-account-item:hover {
+  background-color: #f7f7f7;
+}
+
+.wechat-account-item.selected {
+  background-color: #ebebeb;
+}
+
+/* 晃动动画 */
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  10%, 30%, 50%, 70%, 90% { transform: translateX(-4px); }
+  20%, 40%, 60%, 80% { transform: translateX(4px); }
+}
+
+.wechat-account-item.flashing {
+  animation: shake 0.4s ease-in-out 3;
+  background-color: #fff3e0;
+}
+
+/* 账户信息 */
+.wechat-account-info {
+  flex: 1;
+  margin-left: 12px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.wechat-account-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.wechat-account-header .ant-typography {
+  font-size: 15px;
+  color: #191919;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wechat-account-header .ant-typography.unread {
+  font-weight: 600;
+  color: #000000;
+}
+
+.wechat-time {
+  font-size: 12px;
+  color: #b3b3b3;
+  margin-left: 8px;
+  flex-shrink: 0;
+}
+
+.wechat-account-last-msg {
+  display: flex;
+  align-items: center;
+}
+
+.wechat-account-last-msg .ant-typography {
+  font-size: 13px;
+  color: #b3b3b3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wechat-account-last-msg .ant-typography.unread {
+  color: #353535;
+  font-weight: 500;
+}
+
+/* ==================== 右侧聊天区域 ==================== */
+.wechat-chat-content {
+  background: #f5f5f5;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  position: relative;
+}
+
+/* 聊天头部 */
+.wechat-chat-header {
+  background: #ffffff;
+  border-bottom: 1px solid #e7e7e7;
+  padding: 14px 20px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  height: 60px;
+}
+
+.wechat-chat-title {
+  display: flex;
+  align-items: center;
+}
+
+.wechat-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+/* 消息列表 */
+.wechat-message-list {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px;
+  background: #f5f5f5;
+}
+
+/* 消息项 - 基础布局 */
+.wechat-message-item {
+  display: flex;
+  align-items: flex-start;
+  margin-bottom: 20px;
+  gap: 10px;
+  max-width: 100%;
+}
+
+/* 左侧消息（用户消息） */
+.wechat-message-item.message-left {
+  flex-direction: row;
+  justify-content: flex-start;
+}
+
+/* 右侧消息（客服回复） */
+.wechat-message-item.message-right {
+  flex-direction: row-reverse;
+  justify-content: flex-start;
+}
+
+.wechat-message-avatar {
+  flex-shrink: 0;
+}
+
+.wechat-message-body {
+  flex: 1;
+  min-width: 0;
+  max-width: 70%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* 右侧消息的内容右对齐 */
+.message-right .wechat-message-body {
+  align-items: flex-end;
+}
+
+/* 左侧消息的内容左对齐 */
+.message-left .wechat-message-body {
+  align-items: flex-start;
+}
+
+.wechat-message-meta {
+  display: flex;
+  align-items: center;
+  margin-bottom: 6px;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.wechat-message-content {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 100%;
+}
+
+/* 回复引用 */
+.wechat-reply-reference {
+  background: rgba(0, 0, 0, 0.05);
+  padding: 6px 10px;
+  border-radius: 4px;
+  border-left: 3px solid #07c160;
+  margin-bottom: 4px;
+  max-width: 100%;
+}
+
+/* 消息气泡 - 左侧（用户） */
+.wechat-message-bubble.bubble-left {
+  background: #ffffff;
+  padding: 10px 14px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.5;
+  align-self: flex-start;
+  max-width: 100%;
+}
+
+/* 消息气泡 - 右侧（客服） */
+.wechat-message-bubble.bubble-right {
+  background: #95ec69;
+  padding: 10px 14px;
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  word-wrap: break-word;
+  word-break: break-word;
+  line-height: 1.5;
+  align-self: flex-end;
+  max-width: 100%;
+}
+
+.wechat-message-bubble .ant-typography {
+  color: #191919;
+  font-size: 14px;
+}
+
+.wechat-message-actions {
+  margin-top: 4px;
+  opacity: 0;
+  transition: opacity 0.2s;
+  align-self: flex-start;
+}
+
+.wechat-message-item:hover .wechat-message-actions {
+  opacity: 1;
+}
+
+.wechat-message-actions .ant-btn-link {
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+  color: #576b95;
+}
+
+/* 空消息状态 */
+.wechat-empty-messages {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ==================== 消息组和讨论列表 ==================== */
+.wechat-message-group {
+  margin-bottom: 24px;
+}
+
+/* 讨论列表容器 */
+.wechat-discussions-list {
+  margin-top: 8px;
+  margin-left: 52px;
+  padding-left: 16px;
+  border-left: 2px solid #e7e7e7;
+  background: #fafafa;
+  border-radius: 4px;
+  padding: 12px;
+}
+
+/* 讨论项 */
+.wechat-discussion-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid #f0f0f0;
+}
+
+.wechat-discussion-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.wechat-discussion-item:first-child {
+  padding-top: 0;
+}
+
+/* 讨论内容 */
+.wechat-discussion-content {
+  flex: 1;
+  min-width: 0;
+}
+
+.wechat-discussion-meta {
+  display: flex;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.wechat-discussion-text {
+  line-height: 1.5;
+  word-wrap: break-word;
+  word-break: break-word;
+}
+
+/* ==================== 输入框区域 ==================== */
+.wechat-input-area {
+  background: #ffffff;
+  border-top: 1px solid #e7e7e7;
+  padding: 12px 20px;
+  flex-shrink: 0;
+}
+
+.wechat-reply-hint {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  background: #f0f9ff;
+  border-radius: 4px;
+  margin-bottom: 10px;
+  border-left: 3px solid #1890ff;
+}
+
+.wechat-input-wrapper {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+  background: #ffffff;
+  padding: 8px;
+  border: 1px solid #e7e7e7;
+  border-radius: 4px;
+}
+
+.wechat-textarea {
+  flex: 1;
+  resize: none;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.wechat-textarea .ant-input {
+  padding: 0;
+}
+
+.wechat-send-btn {
+  flex-shrink: 0;
+  min-width: 70px;
+  background: #07c160;
+  border-color: #07c160;
+}
+
+.wechat-send-btn:hover:not(:disabled) {
+  background: #06ad56;
+  border-color: #06ad56;
+}
+
+.wechat-send-btn:disabled {
+  background: #d9d9d9;
+  border-color: #d9d9d9;
+}
+
+/* 空状态 */
+.wechat-empty-state {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+}
+
+/* ==================== 滚动条美化 ==================== */
+.wechat-account-scroll::-webkit-scrollbar,
+.wechat-message-list::-webkit-scrollbar {
+  width: 6px;
+}
+
+.wechat-account-scroll::-webkit-scrollbar-track,
+.wechat-message-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.wechat-account-scroll::-webkit-scrollbar-thumb,
+.wechat-message-list::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.1);
+  border-radius: 3px;
+}
+
+.wechat-account-scroll::-webkit-scrollbar-thumb:hover,
+.wechat-message-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.2);
+}
+
+/* ==================== Badge 样式调整 ==================== */
+.wechat-account-item .ant-badge-count {
+  background-color: #fa5151;
+  box-shadow: none;
+  font-size: 12px;
+  min-width: 18px;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 6px;
+}
+
+/* ==================== 响应式调整 ==================== */
+@media (max-width: 1200px) {
+  .wechat-account-list {
+    max-width: 260px !important;
+    min-width: 260px !important;
+    flex: 0 0 260px !important;
+  }
+}
+
+@media (max-width: 768px) {
+  .wechat-account-list {
+    max-width: 240px !important;
+    min-width: 240px !important;
+    flex: 0 0 240px !important;
+  }
+
+  .wechat-message-body {
+    max-width: 85%;
+  }
+}
+
+/* ==================== 下拉菜单样式 ==================== */
+.ant-dropdown-menu-item {
+  padding: 8px 12px;
+}
+
+.ant-dropdown-menu-item:hover {
+  background-color: #f5f5f5;
+}

@@ -1,0 +1,22 @@
+{
+  "replies": [
+    {
+      "id": "reply_1761024448030_u9dcfxl4k",
+      "sessionId": "session_1761024401651_erx7w237",
+      "fromName": "客服3",
+      "fromId": "staff_1761024448027",
+      "content": "111",
+      "timestamp": 1761024448030,
+      "type": "text"
+    },
+    {
+      "id": "reply_1761024460668_8p7jqaqc2",
+      "sessionId": "session_1761024401651_erx7w237",
+      "fromName": "客服4",
+      "fromId": "staff_1761024460665",
+      "content": "12",
+      "timestamp": 1761024460668,
+      "type": "text"
+    }
+  ]
+}
