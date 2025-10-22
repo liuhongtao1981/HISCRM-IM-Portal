@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef } from 'react'
-import { Input, Button, Empty, message } from 'antd'
-import { SendOutlined } from '@ant-design/icons'
+import { Input, Button, Empty, message, Spin, Alert } from 'antd'
+import { SendOutlined, WifiOutlined, WifiOffOutlined, BellOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import type { RootState } from '../store'
 import { getMockMessages } from '../services/mock'
 import type { Message } from '@shared/types'
 import MessageItem from './MessageItem'
 import websocketService from '../services/websocket'
-import { addMessage } from '../store/chatSlice'
+import { addMessage, setError, clearUnreadCount } from '../store/chatSlice'
+import { useWebSocket } from '../hooks/useWebSocket'
 import './ChatWindow.css'
 
 interface ChatWindowProps {
@@ -20,10 +21,22 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
   const [inputValue, setInputValue] = useState('')
   const [loading, setLoading] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+
+  // Redux selectors
   const friends = useSelector((state: RootState) => state.chat.friends)
   const user = useSelector((state: RootState) => state.user.user)
   const allMessages = useSelector((state: RootState) => state.chat.messages)
+  const chatLoading = useSelector((state: RootState) => state.chat.loading)
+  const chatError = useSelector((state: RootState) => state.chat.error)
+  const unreadCount = useSelector((state: RootState) => state.chat.unreadCount)
   const dispatch = useDispatch()
+
+  // WebSocket hook
+  const { isConnected } = useWebSocket({
+    enabled: true,
+    autoRegister: true,
+    autoHeartbeat: true
+  })
 
   const currentFriend = friends.find(f => f.id === friendId)
 
@@ -33,8 +46,8 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
     (m.fromId === friendId && m.toId === currentUserId && m.topic === topic)
   )
 
+  // 初始加载 Mock 消息
   useEffect(() => {
-    // 初始加载 Mock 消息
     const mockMessages = getMockMessages(friendId, topic)
     mockMessages.forEach(msg => {
       if (!allMessages.find(m => m.id === msg.id)) {
@@ -44,9 +57,17 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
     scrollToBottom()
   }, [friendId, topic])
 
+  // 自动滚动到底部
   useEffect(() => {
     scrollToBottom()
   }, [messages])
+
+  // 清除未读计数
+  useEffect(() => {
+    if (unreadCount > 0) {
+      dispatch(clearUnreadCount())
+    }
+  }, [unreadCount, dispatch])
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -60,6 +81,11 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
 
     if (!user) {
       message.error('用户信息不存在')
+      return
+    }
+
+    if (!isConnected) {
+      message.error('WebSocket 未连接，无法发送消息')
       return
     }
 
@@ -120,6 +146,24 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
           <span className="topic-name"> - {topic}</span>
         </div>
         <div className="chat-status">
+          <span className="ws-status" style={{ marginRight: '16px' }}>
+            {isConnected ? (
+              <span style={{ color: '#52c41a' }}>
+                <WifiOutlined /> 已连接
+              </span>
+            ) : (
+              <span style={{ color: '#f5222d' }}>
+                <WifiOffOutlined /> 未连接
+              </span>
+            )}
+          </span>
+
+          {unreadCount > 0 && (
+            <span className="unread-badge" style={{ marginRight: '16px' }}>
+              <BellOutlined /> {unreadCount} 条未读
+            </span>
+          )}
+
           {currentFriend?.status === 'online' ? (
             <span className="status-online">● 在线</span>
           ) : (
@@ -127,6 +171,23 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
           )}
         </div>
       </div>
+
+      {chatLoading && (
+        <div style={{ padding: '16px', textAlign: 'center' }}>
+          <Spin tip="正在连接到 Master..." />
+        </div>
+      )}
+
+      {chatError && (
+        <Alert
+          message="连接错误"
+          description={chatError}
+          type="error"
+          closable
+          onClose={() => dispatch(setError(null))}
+          style={{ margin: '8px' }}
+        />
+      )}
 
       <div className="chat-messages">
         {messages.length > 0 ? (
@@ -151,9 +212,9 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
           value={inputValue}
           onChange={(e) => setInputValue(e.target.value)}
           onKeyPress={handleKeyPress}
-          placeholder="输入消息内容，Shift+Enter 换行..."
+          placeholder={isConnected ? '输入消息内容，Shift+Enter 换行...' : '等待连接...'}
           rows={3}
-          disabled={loading}
+          disabled={loading || !isConnected}
           className="chat-input"
         />
         <Button
@@ -161,6 +222,7 @@ export default function ChatWindow({ friendId, topic, currentUserId }: ChatWindo
           icon={<SendOutlined />}
           onClick={handleSendMessage}
           loading={loading}
+          disabled={!isConnected}
           className="send-button"
         >
           发送
