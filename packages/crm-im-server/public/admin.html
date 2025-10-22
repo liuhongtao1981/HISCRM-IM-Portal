@@ -1,0 +1,2170 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CRM IM 服务器管理面板</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      padding: 20px;
+    }
+
+    .container {
+      max-width: 1600px;
+      margin: 0 auto;
+    }
+
+    .header {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      margin-bottom: 20px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .header h1 {
+      color: #333;
+      font-size: 28px;
+      margin-bottom: 8px;
+    }
+
+    .header .subtitle {
+      color: #666;
+      font-size: 14px;
+    }
+
+    .stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 16px;
+      margin-bottom: 20px;
+    }
+
+    .stat-card {
+      background: white;
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .stat-card .label {
+      color: #666;
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+
+    .stat-card .value {
+      color: #333;
+      font-size: 32px;
+      font-weight: bold;
+    }
+
+    .stat-card.success .value {
+      color: #52c41a;
+    }
+
+    .stat-card.primary .value {
+      color: #1890ff;
+    }
+
+    .stat-card.warning .value {
+      color: #faad14;
+    }
+
+    .main-content {
+      display: grid;
+      grid-template-columns: 2fr 1fr;
+      gap: 20px;
+    }
+
+    .panel {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .panel-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .panel h2 {
+      color: #333;
+      font-size: 20px;
+      margin: 0;
+    }
+
+    .channel-list {
+      max-height: 600px;
+      overflow-y: auto;
+    }
+
+    .channel-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px;
+      margin-bottom: 12px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border-left: 4px solid #1890ff;
+      transition: all 0.3s;
+    }
+
+    .channel-item:hover {
+      background: #f0f0f0;
+      transform: translateX(4px);
+    }
+
+    .channel-item.pinned {
+      border-left-color: #faad14;
+    }
+
+    .channel-item.disabled {
+      opacity: 0.5;
+      border-left-color: #d9d9d9;
+    }
+
+    .channel-info {
+      flex: 1;
+      margin-right: 12px;
+    }
+
+    .channel-name {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .channel-desc {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .channel-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 14px;
+      transition: all 0.3s;
+      font-weight: 500;
+    }
+
+    .btn:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    .btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+      transform: none;
+    }
+
+    .btn-primary {
+      background: #1890ff;
+      color: white;
+    }
+
+    .btn-success {
+      background: #52c41a;
+      color: white;
+    }
+
+    .btn-warning {
+      background: #faad14;
+      color: white;
+    }
+
+    .btn-danger {
+      background: #ff4d4f;
+      color: white;
+    }
+
+    .btn-small {
+      padding: 6px 12px;
+      font-size: 12px;
+    }
+
+    .btn-secondary {
+      background: #8c8c8c;
+      color: white;
+    }
+
+    .topics-list {
+      margin-top: 20px;
+    }
+
+    .topic-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 15px;
+      margin-bottom: 10px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+    }
+
+    .topic-item:hover {
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+
+    .topic-info h4 {
+      margin: 0 0 8px 0;
+      color: #333;
+    }
+
+    .topic-info p {
+      margin: 0 0 8px 0;
+      color: #666;
+    }
+
+    .topic-info small {
+      color: #999;
+    }
+
+    .topic-actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    .form-group {
+      margin-bottom: 16px;
+    }
+
+    .form-group label {
+      display: block;
+      color: #333;
+      font-weight: 500;
+      margin-bottom: 8px;
+      font-size: 14px;
+    }
+
+    .form-group select,
+    .form-group input,
+    .form-group textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #d9d9d9;
+      border-radius: 6px;
+      font-size: 14px;
+      transition: all 0.3s;
+    }
+
+    .form-group textarea {
+      min-height: 100px;
+      resize: vertical;
+      font-family: inherit;
+    }
+
+    .form-group select:focus,
+    .form-group input:focus,
+    .form-group textarea:focus {
+      outline: none;
+      border-color: #1890ff;
+      box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
+    }
+
+    .checkbox-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 16px;
+    }
+
+    .checkbox-group input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+    }
+
+    .checkbox-group label {
+      margin: 0;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .message-log {
+      max-height: 400px;
+      overflow-y: auto;
+      background: #f9f9f9;
+      padding: 16px;
+      border-radius: 8px;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+    }
+
+    .log-entry {
+      padding: 8px;
+      margin-bottom: 8px;
+      background: white;
+      border-radius: 4px;
+      border-left: 3px solid #52c41a;
+    }
+
+    .log-entry .time {
+      color: #999;
+      font-size: 11px;
+    }
+
+    .log-entry .channel {
+      color: #1890ff;
+      font-weight: bold;
+    }
+
+    .log-entry .content {
+      color: #333;
+      margin-top: 4px;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 500;
+    }
+
+    .badge-success {
+      background: #f6ffed;
+      color: #52c41a;
+      border: 1px solid #b7eb8f;
+    }
+
+    .badge-warning {
+      background: #fffbe6;
+      color: #faad14;
+      border: 1px solid #ffe58f;
+    }
+
+    .badge-error {
+      background: #fff2f0;
+      color: #ff4d4f;
+      border: 1px solid #ffccc7;
+    }
+
+    .badge-info {
+      background: #e6f7ff;
+      color: #1890ff;
+      border: 1px solid #91d5ff;
+    }
+
+    .modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0, 0, 0, 0.5);
+      z-index: 1000;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal.show {
+      display: flex;
+    }
+
+    .modal-content {
+      background: white;
+      padding: 24px;
+      border-radius: 12px;
+      max-width: 500px;
+      width: 90%;
+      max-height: 90vh;
+      overflow-y: auto;
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #f0f0f0;
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      color: #333;
+      font-size: 20px;
+    }
+
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 24px;
+      cursor: pointer;
+      color: #999;
+      padding: 0;
+      width: 32px;
+      height: 32px;
+      line-height: 32px;
+      text-align: center;
+      border-radius: 50%;
+      transition: all 0.3s;
+    }
+
+    .modal-close:hover {
+      background: #f0f0f0;
+      color: #333;
+    }
+
+    .modal-footer {
+      display: flex;
+      gap: 12px;
+      margin-top: 20px;
+      justify-content: flex-end;
+    }
+
+    .toast {
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: white;
+      padding: 16px 20px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      display: none;
+      animation: slideIn 0.3s ease;
+      z-index: 2000;
+    }
+
+    .toast.show {
+      display: block;
+    }
+
+    @keyframes slideIn {
+      from {
+        transform: translateX(400px);
+        opacity: 0;
+      }
+      to {
+        transform: translateX(0);
+        opacity: 1;
+      }
+    }
+
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: #888;
+      border-radius: 4px;
+    }
+
+    ::-webkit-scrollbar-thumb:hover {
+      background: #555;
+    }
+
+    @keyframes fadeIn {
+      from {
+        opacity: 0;
+        transform: translateY(-10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @keyframes slideInFromLeft {
+      from {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateX(0);
+      }
+    }
+
+    @media (max-width: 1024px) {
+      .main-content {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    /* 测试用户卡片样式 */
+    .test-user-card {
+      display: flex;
+      align-items: center;
+      padding: 12px 16px;
+      background: #f9f9f9;
+      border-radius: 8px;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .test-user-card:hover {
+      background: #e6f7ff;
+      border-color: #1890ff;
+      transform: translateX(4px);
+    }
+
+    .test-user-card.selected {
+      background: #e6f7ff;
+      border-color: #1890ff;
+    }
+
+    .test-user-avatar {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-right: 12px;
+      background: #1890ff;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 16px;
+    }
+
+    .test-user-info {
+      flex: 1;
+    }
+
+    .test-user-name {
+      font-weight: bold;
+      color: #333;
+      margin-bottom: 4px;
+    }
+
+    .test-user-details {
+      font-size: 12px;
+      color: #999;
+    }
+
+    .test-user-action {
+      margin-left: 12px;
+    }
+
+    /* 自定义滚动条样式 - 适用于评论和讨论区域 */
+    #commentHistoryList::-webkit-scrollbar,
+    #selectedCommentArea::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+
+    #commentHistoryList::-webkit-scrollbar-track,
+    #selectedCommentArea::-webkit-scrollbar-track {
+      background: #f5f5f5;
+      border-radius: 4px;
+    }
+
+    #commentHistoryList::-webkit-scrollbar-thumb,
+    #selectedCommentArea::-webkit-scrollbar-thumb {
+      background: #bfbfbf;
+      border-radius: 4px;
+      transition: background 0.3s;
+    }
+
+    #commentHistoryList::-webkit-scrollbar-thumb:hover,
+    #selectedCommentArea::-webkit-scrollbar-thumb:hover {
+      background: #999;
+    }
+
+    /* Firefox 滚动条样式 */
+    #commentHistoryList,
+    #selectedCommentArea {
+      scrollbar-width: thin;
+      scrollbar-color: #bfbfbf #f5f5f5;
+    }
+
+    /* 确保评论和讨论区域不超过可用空间 */
+    #commentHistoryList {
+      min-height: 0;  /* 允许flex收缩 */
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    #selectedCommentArea {
+      min-height: 0;  /* 允许flex收缩 */
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+  </style>
+  <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <h1>🚀 新媒体账户管理面板</h1>
+      <p class="subtitle">管理新媒体账户(抖音、快手、小红书、头条、视频号等)的作品与评论</p>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats">
+      <div class="stat-card success">
+        <div class="label">在线监控客户端</div>
+        <div class="value" id="monitorCount">0</div>
+      </div>
+      <div class="stat-card primary">
+        <div class="label">新媒体账户数</div>
+        <div class="value" id="channelCount">0</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="label">已发送消息</div>
+        <div class="value" id="messageCount">0</div>
+      </div>
+    </div>
+
+    <!-- Main Content -->
+    <div class="main-content">
+      <!-- Channel Management -->
+      <div class="panel">
+        <div class="panel-header">
+          <h2>📱 新媒体账户管理</h2>
+          <button class="btn btn-success btn-small" onclick="showCreateModal()">
+            ➕ 新建账户
+          </button>
+        </div>
+
+        <!-- 当前选中的账户和作品 -->
+        <div id="selectedInfo" style="display: none; padding: 12px 20px; background: #e6f7ff; border-left: 4px solid #1890ff; margin: 0 20px 16px 20px; border-radius: 4px;">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <div style="font-weight: bold; color: #1890ff; margin-bottom: 4px;">
+                📍 当前选中
+              </div>
+              <div id="selectedChannel" style="color: #333; font-size: 14px; margin-bottom: 2px;">
+                账户: <span id="selectedChannelName"></span>
+              </div>
+              <div id="selectedTopic" style="color: #666; font-size: 13px;">
+                作品: <span id="selectedTopicName"></span>
+              </div>
+            </div>
+            <button class="btn btn-small" onclick="clearSelection()" style="background: #ff4d4f; color: white;">
+              ✕ 清除
+            </button>
+          </div>
+        </div>
+
+        <div class="channel-list" id="channelList">
+          <p style="text-align: center; color: #999;">加载中...</p>
+        </div>
+      </div>
+
+      <!-- Test User Selector -->
+      <div class="panel">
+        <h2 style="margin-bottom: 20px;">👥 快速测试评论</h2>
+        <p style="color: #666; font-size: 13px; margin-bottom: 16px;">
+          选择一个测试用户,在选定的作品下发表评论或发送私信
+        </p>
+        <div id="testUsers" style="display: flex; flex-direction: column; gap: 12px;">
+          <!-- 测试用户列表将由JS动态生成 -->
+        </div>
+      </div>
+
+      <!-- Message Sender -->
+      <div class="panel" style="margin-top: 20px;">
+        <h2 style="margin-bottom: 20px;">✉️ 发送测试消息</h2>
+        <div class="form-group">
+          <label>目标账户 *</label>
+          <select id="targetChannel" onchange="loadChannelTopics()">
+            <option value="">请选择账户...</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>目标作品 *</label>
+          <select id="targetTopic">
+            <option value="">请先选择账户</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>消息内容</label>
+          <textarea id="messageContent" placeholder="输入消息内容... (Ctrl+Enter 发送)"></textarea>
+        </div>
+        <button class="btn btn-primary" onclick="sendMessage()" style="width: 100%;">
+          📤 发送消息
+        </button>
+
+        <h2 style="margin-top: 32px; margin-bottom: 16px;">📝 消息日志</h2>
+        <div class="message-log" id="messageLog">
+          <p style="text-align: center; color: #999;">暂无消息</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Create/Edit Channel Modal -->
+  <div class="modal" id="channelModal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 id="modalTitle">新建新媒体账户</h3>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+      </div>
+
+      <form id="channelForm" onsubmit="saveChannel(event)">
+        <div class="form-group">
+          <label>账户 ID *</label>
+          <input type="text" id="channelId" required placeholder="例: douyin_001" pattern="[a-zA-Z0-9_]+" title="只能包含字母、数字和下划线">
+        </div>
+
+        <div class="form-group">
+          <label>账户名称 *</label>
+          <input type="text" id="channelName" required placeholder="例: 抖音-美食博主">
+        </div>
+
+        <div class="form-group">
+          <label>头像 URL</label>
+          <input type="url" id="channelAvatar" placeholder="留空则自动生成">
+        </div>
+
+        <div class="form-group">
+          <label>描述</label>
+          <textarea id="channelDescription" placeholder="账户描述,如:抖音平台美食分享账号 (可选)" style="min-height: 60px;"></textarea>
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="channelPinned">
+          <label for="channelPinned">置顶账户</label>
+        </div>
+
+        <div class="checkbox-group">
+          <input type="checkbox" id="channelEnabled" checked>
+          <label for="channelEnabled">启用账户</label>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" class="btn" onclick="closeModal()">取消</button>
+          <button type="submit" class="btn btn-primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast"></div>
+
+  <!-- 作品选择模态框(用于选择账户后选作品) -->
+  <div id="topicSelectorModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>选择作品 - <span id="topicSelectorChannelName"></span></h2>
+        <span class="close" onclick="closeTopicSelector()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <div id="topicSelectorList" class="topics-list" style="max-height: 400px; overflow-y: auto;">
+          <p style="text-align: center; color: #999;">加载中...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 评论弹出层 - 三栏布局 -->
+  <div id="commentHistoryModal" class="modal">
+    <div class="modal-content" style="max-width: 95%; max-height: 90vh; width: 1400px; padding: 0; overflow: hidden; display: flex; flex-direction: column;">
+      <!-- 顶部 - 显示当前用户、账户和作品信息 -->
+      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 20px; color: white;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div id="currentUserAvatar" style="width: 48px; height: 48px; border-radius: 50%; background: rgba(255,255,255,0.3);
+                          color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 20px;
+                          border: 2px solid rgba(255,255,255,0.5);"></div>
+              <div>
+                <h2 style="color: white; margin: 0; font-size: 20px;">当前用户: <span id="commentUserNameDisplay"></span></h2>
+                <p style="margin: 4px 0 0 0; font-size: 13px; opacity: 0.9;">正在参与作品评论互动</p>
+              </div>
+            </div>
+            <div style="padding: 12px 16px; background: rgba(255,255,255,0.15); border-radius: 8px; backdrop-filter: blur(10px);">
+              <div style="font-size: 14px; opacity: 0.95; margin-bottom: 4px;">
+                <span style="opacity: 0.8;">📱 新媒体账户:</span>
+                <strong id="commentHistoryChannel" style="margin-left: 8px; font-size: 15px;"></strong>
+              </div>
+              <div style="font-size: 14px; opacity: 0.95;">
+                <span style="opacity: 0.8;">🎬 作品:</span>
+                <strong id="commentHistoryTopic" style="margin-left: 8px; font-size: 15px;"></strong>
+              </div>
+            </div>
+          </div>
+          <button onclick="closeCommentHistory()" style="background: rgba(255,255,255,0.2); border: none; color: white; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; font-size: 24px; transition: all 0.3s; flex-shrink: 0; margin-left: 20px;">&times;</button>
+        </div>
+      </div>
+
+      <!-- 主体 - 左右两栏 -->
+      <div style="display: grid; grid-template-columns: 450px 1fr; gap: 0; flex: 1; overflow: hidden; background: #f5f5f5;">
+
+        <!-- 左侧 - 1级评论列表和新增评论 -->
+        <div style="background: white; border-right: 1px solid #e0e0e0; position: relative; height: 100%; display: flex; flex-direction: column;">
+          <!-- 标题区域 -->
+          <div style="padding: 16px; border-bottom: 2px solid #f0f0f0; background: #fafafa; flex-shrink: 0;">
+            <h3 style="margin: 0; color: #333; font-size: 16px;">
+              💬 作品评论列表
+              <span id="commentCount" style="color: #999; font-size: 14px; font-weight: normal;">(0)</span>
+            </h3>
+            <p style="margin: 6px 0 0 0; font-size: 12px; color: #999;">
+              <span style="display: inline-block; padding: 2px 8px; background: #e6f7ff; color: #1890ff; border-radius: 4px; margin-right: 6px;">1级评论</span>
+              点击查看该评论的讨论
+            </p>
+          </div>
+
+          <!-- 评论列表 - 留出底部输入框空间 -->
+          <div id="commentHistoryList" style="flex: 1; overflow-y: auto; padding: 12px 12px 200px 12px; min-height: 0;">
+            <p style="text-align: center; color: #999; padding: 40px 20px;">加载中...</p>
+          </div>
+
+          <!-- 新增1级评论区域 - 固定在底部 -->
+          <div style="position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%); border-top: 2px solid #e0e0e0; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); z-index: 10;">
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #1890ff;">
+              <div style="font-size: 13px; font-weight: 600; color: #333; margin-bottom: 2px;">
+                💭 发表作品评论
+              </div>
+              <div style="font-size: 11px; color: #999;">
+                当前用户: <span id="commentUserName" style="color: #1890ff; font-weight: 500;"></span>
+              </div>
+            </div>
+            <textarea id="newCommentInput" rows="3" style="width: 100%; padding: 10px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; box-sizing: border-box;" placeholder="对这个作品发表你的看法... (Ctrl+Enter 发送)"></textarea>
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; color: #999;">💡 发表后将作为1级评论</span>
+              <button class="btn btn-primary btn-small" onclick="submitNewComment()">
+                📤 发表评论
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧 - 选中评论的讨论区 -->
+        <div style="position: relative; background: white; height: 100%; display: flex; flex-direction: column;">
+          <!-- 顶部标题 -->
+          <div style="padding: 16px; border-bottom: 2px solid #f0f0f0; background: #fafafa; flex-shrink: 0;">
+            <h3 style="margin: 0; color: #333; font-size: 16px;">
+              🗨️ 评论讨论区
+            </h3>
+            <p id="discussionHint" style="margin: 6px 0 0 0; font-size: 12px; color: #999;">
+              <span style="display: inline-block; padding: 2px 8px; background: #f6ffed; color: #52c41a; border-radius: 4px; margin-right: 6px;">2级讨论</span>
+              点击左侧评论查看该评论的讨论内容
+            </p>
+          </div>
+
+          <!-- 讨论内容区域(包含评论和讨论列表) - 留出底部输入框空间 -->
+          <div id="selectedCommentArea" style="flex: 1; overflow-y: auto; padding: 20px 20px 220px 20px; background: #f9f9f9; min-height: 0;">
+            <div style="text-align: center; padding: 60px 20px; color: #999;">
+              <p style="font-size: 48px; margin: 0;">💭</p>
+              <p style="margin: 12px 0 0 0;">点击左侧评论查看讨论内容</p>
+            </div>
+          </div>
+
+          <!-- 讨论回复输入框 - 固定在底部 -->
+          <div id="discussionReplyArea" style="display: none; position: absolute; bottom: 0; left: 0; right: 0; padding: 16px; background: linear-gradient(180deg, #fafafa 0%, #f5f5f5 100%); border-top: 2px solid #e0e0e0; box-shadow: 0 -4px 12px rgba(0,0,0,0.08); z-index: 10;">
+            <div style="margin-bottom: 10px; padding: 8px 12px; background: white; border-radius: 6px; border-left: 3px solid #52c41a;">
+              <div style="font-size: 13px; font-weight: 600; color: #333; margin-bottom: 6px;">
+                🗨️ 参与讨论
+              </div>
+              <div style="display: flex; align-items: center; gap: 8px; font-size: 11px; color: #999;">
+                <span>选择发言用户:</span>
+                <select id="discussionUserSelect" style="padding: 5px 10px; border: 1px solid #d9d9d9; border-radius: 4px; font-size: 12px; outline: none; cursor: pointer; background: white;">
+                  <option value="">选择发言用户...</option>
+                </select>
+              </div>
+            </div>
+            <textarea id="discussionInput" rows="3" style="width: 100%; padding: 10px 12px; border: 1px solid #d9d9d9; border-radius: 6px; font-size: 13px; font-family: inherit; resize: none; outline: none; box-sizing: border-box;" placeholder="对这条评论发表你的讨论... (Ctrl+Enter 发送)"></textarea>
+            <div style="margin-top: 10px; display: flex; justify-content: space-between; align-items: center;">
+              <span style="font-size: 11px; color: #999;">💡 发表后将作为2级讨论</span>
+              <button class="btn btn-primary btn-small" onclick="submitDiscussion()">
+                💬 发送讨论
+              </button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- 作品管理模态框 -->
+  <div id="topicsModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2>作品管理 - <span id="topicChannelName"></span></h2>
+        <span class="close" onclick="closeTopicsModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <button class="btn btn-primary" onclick="openCreateTopicModal()">+ 新建作品</button>
+        <div id="topicsList" class="topics-list"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 创建/编辑作品模态框 -->
+  <div id="topicFormModal" class="modal">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h2 id="topicFormTitle">新建作品</h2>
+        <span class="close" onclick="closeTopicFormModal()">&times;</span>
+      </div>
+      <div class="modal-body">
+        <form id="topicForm" onsubmit="saveTopic(event)">
+          <input type="hidden" id="topicChannelId">
+          <input type="hidden" id="topicEditId">
+
+          <div class="form-group">
+            <label>作品ID *</label>
+            <input type="text" id="topicId" required placeholder="例: video_001">
+          </div>
+
+          <div class="form-group">
+            <label>作品标题 *</label>
+            <input type="text" id="topicTitle" required placeholder="例: 如何做一道美味的红烧肉">
+          </div>
+
+          <div class="form-group">
+            <label>作品描述</label>
+            <textarea id="topicDescription" rows="3" placeholder="作品的详细描述,如:视频内容简介、发布时间等"></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>
+              <input type="checkbox" id="topicIsPinned">
+              置顶此作品
+            </label>
+          </div>
+
+          <div class="form-actions">
+            <button type="button" class="btn btn-secondary" onclick="closeTopicFormModal()">取消</button>
+            <button type="submit" class="btn btn-primary">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let messageCount = 0;
+    let editingChannelId = null;
+    let currentChannelForTopics = null;
+    let socket = null;
+
+    // 显示提示信息
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      toast.textContent = message;
+      toast.className = `toast show badge-${type}`;
+      setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // 加载频道列表
+    async function loadChannels() {
+      try {
+        const response = await fetch('/api/channels?all=true');
+        const data = await response.json();
+
+        document.getElementById('channelCount').textContent = data.channels.length;
+
+        // 渲染频道列表
+        const channelListHtml = data.channels.map(channel => `
+          <div class="channel-item ${channel.isPinned ? 'pinned' : ''} ${!channel.enabled ? 'disabled' : ''}">
+            <div class="channel-info">
+              <div class="channel-name">
+                ${channel.name}
+                ${channel.isPinned ? '<span class="badge badge-warning">📌 置顶</span>' : ''}
+                ${!channel.enabled ? '<span class="badge badge-error">🚫 已禁用</span>' : '<span class="badge badge-success">✓ 已启用</span>'}
+              </div>
+              <div class="channel-desc">
+                ID: ${channel.id} | ${channel.description || '暂无描述'}
+              </div>
+            </div>
+            <div class="channel-actions">
+              <button class="btn btn-primary btn-small" onclick="selectChannelForTopic('${channel.id}', '${channel.name.replace(/'/g, "\\'")}')">
+                选择
+              </button>
+              <button class="btn btn-success btn-small" onclick="openTopicsModal('${channel.id}', '${channel.name.replace(/'/g, "\\'")}')">
+                管理作品
+              </button>
+              <button class="btn btn-warning btn-small" onclick="editChannel('${channel.id}')">
+                编辑
+              </button>
+              <button class="btn btn-danger btn-small" onclick="deleteChannel('${channel.id}', '${channel.name.replace(/'/g, "\\'")}')">
+                删除
+              </button>
+            </div>
+          </div>
+        `).join('');
+
+        document.getElementById('channelList').innerHTML = channelListHtml || '<p style="text-align: center; color: #999;">暂无频道</p>';
+
+        // 更新频道下拉列表
+        const selectHtml = '<option value="">请选择频道...</option>' +
+          data.channels
+            .filter(ch => ch.enabled)
+            .map(ch => `<option value="${ch.id}">${ch.name} (${ch.id})</option>`)
+            .join('');
+
+        document.getElementById('targetChannel').innerHTML = selectHtml;
+
+      } catch (error) {
+        showToast('加载频道失败: ' + error.message, 'error');
+      }
+    }
+
+    // 显示创建账户对话框
+    function showCreateModal() {
+      editingChannelId = null;
+      document.getElementById('modalTitle').textContent = '新建新媒体账户';
+      document.getElementById('channelForm').reset();
+      document.getElementById('channelId').disabled = false;
+      document.getElementById('channelEnabled').checked = true;
+      document.getElementById('channelModal').classList.add('show');
+    }
+
+    // 编辑账户
+    async function editChannel(id) {
+      try {
+        const response = await fetch(`/api/channels/${id}`);
+        const data = await response.json();
+        const channel = data.channel;
+
+        editingChannelId = id;
+        document.getElementById('modalTitle').textContent = '编辑新媒体账户';
+        document.getElementById('channelId').value = channel.id;
+        document.getElementById('channelId').disabled = true;
+        document.getElementById('channelName').value = channel.name;
+        document.getElementById('channelAvatar').value = channel.avatar || '';
+        document.getElementById('channelDescription').value = channel.description || '';
+        document.getElementById('channelPinned').checked = channel.isPinned;
+        document.getElementById('channelEnabled').checked = channel.enabled;
+        document.getElementById('channelModal').classList.add('show');
+
+      } catch (error) {
+        showToast('加载账户信息失败: ' + error.message, 'error');
+      }
+    }
+
+    // 保存频道
+    async function saveChannel(event) {
+      event.preventDefault();
+
+      const channelData = {
+        id: document.getElementById('channelId').value.trim(),
+        name: document.getElementById('channelName').value.trim(),
+        avatar: document.getElementById('channelAvatar').value.trim(),
+        description: document.getElementById('channelDescription').value.trim(),
+        isPinned: document.getElementById('channelPinned').checked,
+        enabled: document.getElementById('channelEnabled').checked
+      };
+
+      try {
+        let response;
+        if (editingChannelId) {
+          // 更新频道
+          response = await fetch(`/api/channels/${editingChannelId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(channelData)
+          });
+        } else {
+          // 创建频道
+          response = await fetch('/api/channels', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(channelData)
+          });
+        }
+
+        const data = await response.json();
+
+        if (data.success) {
+          showToast(editingChannelId ? '频道更新成功！' : '频道创建成功！', 'success');
+          closeModal();
+          loadChannels();
+        } else {
+          showToast(data.error || '操作失败', 'error');
+        }
+      } catch (error) {
+        showToast('操作失败: ' + error.message, 'error');
+      }
+    }
+
+    // 删除频道
+    async function deleteChannel(id, name) {
+      if (!confirm(`确定要删除频道 "${name}" 吗？\n\n此操作不可恢复！`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/channels/${id}`, {
+          method: 'DELETE'
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          showToast('频道已删除', 'success');
+          loadChannels();
+        } else {
+          showToast(data.error || '删除失败', 'error');
+        }
+      } catch (error) {
+        showToast('删除失败: ' + error.message, 'error');
+      }
+    }
+
+    // 关闭对话框
+    function closeModal() {
+      document.getElementById('channelModal').classList.remove('show');
+    }
+
+    // 打开主题管理模态框
+    async function openTopicsModal(channelId, channelName) {
+      currentChannelForTopics = channelId;
+      document.getElementById('topicChannelName').textContent = channelName;
+      document.getElementById('topicsModal').style.display = 'block';
+      await loadTopics(channelId);
+    }
+
+    // 关闭主题管理模态框
+    function closeTopicsModal() {
+      document.getElementById('topicsModal').style.display = 'none';
+      currentChannelForTopics = null;
+    }
+
+    // 加载主题列表
+    async function loadTopics(channelId) {
+      try {
+        const response = await fetch(`/api/channels/${channelId}/topics`);
+        const data = await response.json();
+        const topics = data.topics || [];
+
+        const topicsList = document.getElementById('topicsList');
+        if (topics.length === 0) {
+          topicsList.innerHTML = '<p style="text-align: center; color: #999;">暂无主题</p>';
+          return;
+        }
+
+        topicsList.innerHTML = topics.map(topic => `
+          <div class="topic-item">
+            <div class="topic-info">
+              <h4>${topic.isPinned ? '📌 ' : ''}${topic.title}</h4>
+              <p>${topic.description || '暂无描述'}</p>
+              <small>评论数: ${topic.messageCount || 0} | 发布时间: ${new Date(topic.createdTime).toLocaleString('zh-CN')}</small>
+            </div>
+            <div class="topic-actions">
+              <button class="btn btn-small btn-secondary" onclick='editTopic(${JSON.stringify(topic)})'>编辑</button>
+              <button class="btn btn-small btn-danger" onclick="deleteTopic('${topic.id}', '${topic.title}')">删除</button>
+            </div>
+          </div>
+        `).join('');
+      } catch (error) {
+        console.error('加载主题失败:', error);
+        showToast('加载主题列表失败', 'error');
+      }
+    }
+
+    // 打开创建作品模态框
+    function openCreateTopicModal() {
+      document.getElementById('topicFormTitle').textContent = '新建作品';
+      document.getElementById('topicForm').reset();
+      document.getElementById('topicChannelId').value = currentChannelForTopics;
+      document.getElementById('topicEditId').value = '';
+      document.getElementById('topicId').disabled = false;
+      document.getElementById('topicFormModal').style.display = 'block';
+    }
+
+    // 编辑作品
+    function editTopic(topic) {
+      document.getElementById('topicFormTitle').textContent = '编辑作品';
+      document.getElementById('topicChannelId').value = topic.channelId;
+      document.getElementById('topicEditId').value = topic.id;
+      document.getElementById('topicId').value = topic.id;
+      document.getElementById('topicId').disabled = true;
+      document.getElementById('topicTitle').value = topic.title;
+      document.getElementById('topicDescription').value = topic.description || '';
+      document.getElementById('topicIsPinned').checked = topic.isPinned || false;
+      document.getElementById('topicFormModal').style.display = 'block';
+    }
+
+    // 关闭主题表单模态框
+    function closeTopicFormModal() {
+      document.getElementById('topicFormModal').style.display = 'none';
+    }
+
+    // 保存主题
+    async function saveTopic(event) {
+      event.preventDefault();
+
+      const topicData = {
+        id: document.getElementById('topicId').value,
+        channelId: document.getElementById('topicChannelId').value,
+        title: document.getElementById('topicTitle').value,
+        description: document.getElementById('topicDescription').value,
+        isPinned: document.getElementById('topicIsPinned').checked
+      };
+
+      const editId = document.getElementById('topicEditId').value;
+      const url = editId ? `/api/topics/${editId}` : '/api/topics';
+      const method = editId ? 'PUT' : 'POST';
+
+      try {
+        const response = await fetch(url, {
+          method: method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(topicData)
+        });
+
+        const result = await response.json();
+        if (result.success) {
+          showToast(editId ? '作品更新成功' : '作品创建成功', 'success');
+          closeTopicFormModal();
+          await loadTopics(currentChannelForTopics);
+        } else {
+          showToast('操作失败: ' + (result.error || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('保存作品失败:', error);
+        showToast('保存作品失败', 'error');
+      }
+    }
+
+    // 删除作品
+    async function deleteTopic(topicId, topicTitle) {
+      if (!confirm(`确定要删除作品"${topicTitle}"吗？`)) {
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/topics/${topicId}`, { method: 'DELETE' });
+        const result = await response.json();
+
+        if (result.success) {
+          showToast('作品删除成功', 'success');
+          await loadTopics(currentChannelForTopics);
+        } else {
+          showToast('删除失败: ' + (result.error || '未知错误'), 'error');
+        }
+      } catch (error) {
+        console.error('删除作品失败:', error);
+        showToast('删除作品失败', 'error');
+      }
+    }
+
+    // 当前选中的频道和主题
+    let currentSelectedChannel = null;
+    let currentSelectedTopic = null;
+
+    // 选择账户(旧功能保留,用于测试消息)
+    function selectChannel(id, name) {
+      document.getElementById('targetChannel').value = id;
+      loadChannelTopics(); // 选择账户后自动加载作品
+      showToast(`已选择账户: ${name}`, 'info');
+    }
+
+    // 选择账户并弹出作品选择
+    async function selectChannelForTopic(channelId, channelName) {
+      currentSelectedChannel = { id: channelId, name: channelName };
+
+      // 打开作品选择模态框
+      document.getElementById('topicSelectorChannelName').textContent = channelName;
+      document.getElementById('topicSelectorModal').style.display = 'block';
+
+      // 加载该账户的作品列表
+      try {
+        const response = await fetch(`/api/channels/${channelId}/topics`);
+        const data = await response.json();
+        const topics = data.topics || [];
+
+        const listEl = document.getElementById('topicSelectorList');
+
+        if (topics.length === 0) {
+          listEl.innerHTML = '<p style="text-align: center; color: #999;">该账户暂无作品</p>';
+          return;
+        }
+
+        listEl.innerHTML = topics.map(topic => `
+          <div class="topic-item" onclick="selectTopicFromList('${topic.id}', '${topic.title.replace(/'/g, "\\'")}')">
+            <div class="topic-info">
+              <h4 style="cursor: pointer;">${topic.isPinned ? '📌 ' : ''}${topic.title}</h4>
+              <p>${topic.description || '暂无描述'}</p>
+              <small>评论数: ${topic.messageCount || 0} | 发布时间: ${new Date(topic.createdTime).toLocaleString('zh-CN')}</small>
+            </div>
+          </div>
+        `).join('');
+
+      } catch (error) {
+        console.error('加载作品失败:', error);
+        showToast('加载作品列表失败', 'error');
+      }
+    }
+
+    // 从列表中选择作品
+    function selectTopicFromList(topicId, topicTitle) {
+      currentSelectedTopic = { id: topicId, title: topicTitle };
+
+      // 更新显示区域
+      document.getElementById('selectedChannelName').textContent = currentSelectedChannel.name;
+      document.getElementById('selectedTopicName').textContent = topicTitle;
+      document.getElementById('selectedInfo').style.display = 'block';
+
+      // 关闭模态框
+      closeTopicSelector();
+
+      showToast(`已选择: ${currentSelectedChannel.name} / ${topicTitle}`, 'success');
+    }
+
+    // 关闭主题选择器
+    function closeTopicSelector() {
+      document.getElementById('topicSelectorModal').style.display = 'none';
+    }
+
+    // 清除选择
+    function clearSelection() {
+      currentSelectedChannel = null;
+      currentSelectedTopic = null;
+      document.getElementById('selectedInfo').style.display = 'none';
+      showToast('已清除选择', 'info');
+    }
+
+    // ============ 评论历史弹窗相关函数 ============
+    let currentCommentUser = null;
+    let allComments = []; // 存储所有评论数据
+    let selectedCommentId = null; // 当前选中的1级评论ID
+    let discussionUsers = []; // 可参与讨论的用户列表
+
+    // 打开评论历史弹窗
+    async function openCommentHistory(user, channelId, channelName, topicId, topicTitle) {
+      currentCommentUser = user;
+      selectedCommentId = null;
+
+      // 设置当前用户信息
+      document.getElementById('commentUserNameDisplay').textContent = user.name;
+      document.getElementById('currentUserAvatar').textContent = user.name.substring(0, 1);
+
+      // 设置账户和作品信息
+      document.getElementById('commentHistoryChannel').textContent = channelName;
+      document.getElementById('commentHistoryTopic').textContent = topicTitle;
+      document.getElementById('commentUserName').textContent = user.name;
+
+      // 清空输入框
+      document.getElementById('newCommentInput').value = '';
+      document.getElementById('discussionInput').value = '';
+      document.getElementById('discussionReplyArea').style.display = 'none';
+
+      // 重置右侧讨论区
+      document.getElementById('selectedCommentArea').innerHTML = `
+        <div style="text-align: center; padding: 60px 20px; color: #999;">
+          <p style="font-size: 48px; margin: 0;">💭</p>
+          <p style="margin: 12px 0 0 0;">点击左侧评论查看讨论内容</p>
+        </div>
+      `;
+
+      // 初始化讨论用户列表
+      initDiscussionUsers();
+
+      // 显示弹窗
+      document.getElementById('commentHistoryModal').style.display = 'flex';
+
+      // 加载历史评论
+      await loadCommentHistory(channelId, topicId);
+    }
+
+    // 初始化可参与讨论的用户列表
+    function initDiscussionUsers() {
+      discussionUsers = [
+        currentCommentUser, // 当前选中的用户
+        ...testUsers.filter(u => u.id !== currentCommentUser.id) // 其他测试用户
+      ];
+
+      const select = document.getElementById('discussionUserSelect');
+      select.innerHTML = '<option value="">选择发言用户...</option>' +
+        discussionUsers.map((u, index) =>
+          `<option value="${index}" ${index === 0 ? 'selected' : ''}>${u.name}${index === 0 ? ' (当前用户)' : ''}</option>`
+        ).join('');
+    }
+
+    // 加载历史评论
+    async function loadCommentHistory(channelId, topicId) {
+      const listContainer = document.getElementById('commentHistoryList');
+      listContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 40px 20px;">加载中...</p>';
+
+      try {
+        // 获取该主题的所有消息
+        console.log('[评论历史] 正在加载:', { channelId, topicId });
+        const url = `/api/messages?channelId=${channelId}&topicId=${topicId}`;
+        console.log('[评论历史] 请求URL:', url);
+
+        const response = await fetch(url);
+        console.log('[评论历史] 响应状态:', response.status);
+
+        if (!response.ok) {
+          throw new Error(`HTTP错误! 状态: ${response.status}`);
+        }
+
+        const data = await response.json();
+        console.log('[评论历史] 收到数据:', data);
+
+        const messages = data.messages || [];
+        console.log('[评论历史] 消息数量:', messages.length);
+
+        // 构建评论树结构
+        allComments = messages.map((msg, index) => ({
+          id: msg.id || `msg_${index}_${msg.timestamp}`,
+          content: msg.content,
+          fromName: msg.fromName || '匿名用户',
+          fromId: msg.fromId || 'unknown',
+          timestamp: msg.timestamp,
+          parentId: msg.parentId || null, // 父评论ID,如果为null则是1级评论
+          replies: [] // 2级评论列表
+        }));
+
+        // 按时间升序排列
+        allComments.sort((a, b) => a.timestamp - b.timestamp);
+
+        // 分离1级评论和2级评论
+        const level1Comments = allComments.filter(c => !c.parentId);
+        const level2Comments = allComments.filter(c => c.parentId);
+
+        // 将2级评论关联到1级评论
+        level2Comments.forEach(reply => {
+          const parent = level1Comments.find(c => c.id === reply.parentId);
+          if (parent) {
+            parent.replies.push(reply);
+          }
+        });
+
+        // 更新评论计数
+        document.getElementById('commentCount').textContent = `(${level1Comments.length})`;
+
+        if (level1Comments.length === 0) {
+          listContainer.innerHTML = '<p style="text-align: center; color: #999; padding: 40px 20px;">暂无评论</p>';
+          return;
+        }
+
+        // 渲染1级评论列表
+        const commentsHtml = level1Comments.map(comment => {
+          const time = formatCommentTime(comment.timestamp);
+          const discussionCount = comment.replies.length;
+          const isSelected = selectedCommentId === comment.id;
+
+          return `
+            <div class="comment-list-item ${isSelected ? 'selected' : ''}"
+                 data-comment-id="${comment.id}"
+                 onclick="selectComment('${comment.id}')"
+                 style="padding: 14px; margin-bottom: 10px; border-radius: 8px; background: ${isSelected ? '#e6f7ff' : '#f9f9f9'};
+                        border: 2px solid ${isSelected ? '#1890ff' : '#e0e0e0'}; cursor: pointer; transition: all 0.2s;
+                        box-shadow: ${isSelected ? '0 2px 8px rgba(24,144,255,0.2)' : '0 1px 3px rgba(0,0,0,0.05)'};">
+              <div style="display: flex; justify-content: space-between; margin-bottom: 8px; align-items: center;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div style="width: 32px; height: 32px; border-radius: 50%; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                              color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">
+                    ${comment.fromName.substring(0, 1)}
+                  </div>
+                  <span style="font-weight: bold; color: #333; font-size: 14px;">${comment.fromName}</span>
+                </div>
+                <span style="font-size: 11px; color: #999;">${time}</span>
+              </div>
+              <div style="color: #555; line-height: 1.6; font-size: 14px; margin-bottom: 10px; padding-left: 40px;">${comment.content}</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; padding-left: 40px;">
+                <span style="font-size: 12px; color: ${discussionCount > 0 ? '#1890ff' : '#999'}; font-weight: 500;">
+                  ${discussionCount > 0 ? `🗨️ ${discussionCount} 条讨论` : '💭 暂无讨论'}
+                </span>
+                ${isSelected ? '<span style="font-size: 11px; color: #1890ff;">● 已选中</span>' : ''}
+              </div>
+            </div>
+          `;
+        }).join('');
+
+        listContainer.innerHTML = commentsHtml;
+        console.log('[评论历史] 渲染完成');
+
+      } catch (error) {
+        console.error('[评论历史] 加载失败:', error);
+        listContainer.innerHTML = `<p style="text-align: center; color: #ff4d4f; padding: 40px 20px;">加载失败: ${error.message}<br/>请打开浏览器控制台查看详细错误</p>`;
+      }
+    }
+
+    // 格式化评论时间
+    function formatCommentTime(timestamp) {
+      const now = Date.now();
+      const diff = now - timestamp;
+      const minutes = Math.floor(diff / 60000);
+      const hours = Math.floor(diff / 3600000);
+      const days = Math.floor(diff / 86400000);
+
+      if (minutes < 1) return '刚刚';
+      if (minutes < 60) return `${minutes}分钟前`;
+      if (hours < 24) return `${hours}小时前`;
+      if (days < 7) return `${days}天前`;
+
+      const date = new Date(timestamp);
+      return `${date.getMonth() + 1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`;
+    }
+
+    // 选择评论 - 在右侧显示评论和讨论列表
+    function selectComment(commentId) {
+      selectedCommentId = commentId;
+      const comment = allComments.find(c => c.id === commentId);
+
+      if (!comment) return;
+
+      // 重新渲染评论列表以更新选中状态
+      loadCommentHistory(currentSelectedChannel.id, currentSelectedTopic.id);
+
+      // 更新讨论区标题
+      const hintText = comment.replies.length > 0
+        ? `正在查看"${comment.fromName}"的评论 · ${comment.replies.length}条讨论`
+        : `正在查看"${comment.fromName}"的评论 · 暂无讨论`;
+      document.getElementById('discussionHint').innerHTML = `
+        <span style="display: inline-block; padding: 2px 8px; background: #f6ffed; color: #52c41a; border-radius: 4px; margin-right: 6px;">2级讨论</span>
+        ${hintText}
+      `;
+
+      // 在右侧显示内容
+      const selectedArea = document.getElementById('selectedCommentArea');
+
+      // 获取1级评论的发表时间
+      const commentTime = new Date(comment.timestamp).toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: false
+      });
+
+      // 渲染2级讨论列表(按时间升序)
+      const discussionsHtml = comment.replies.map((reply, index) => {
+        const fullTime = new Date(reply.timestamp).toLocaleString('zh-CN', {
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: false
+        });
+
+        return `
+          <div style="padding: 14px 20px; background: white; border-bottom: 1px solid #f0f0f0; transition: background 0.2s;"
+               onmouseover="this.style.background='#f9f9f9'" onmouseout="this.style.background='white'">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <div style="width: 28px; height: 28px; border-radius: 50%; background: linear-gradient(135deg, #52c41a 0%, #73d13d 100%);
+                          color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 13px;">
+                ${reply.fromName.substring(0, 1)}
+              </div>
+              <span style="font-weight: 600; color: #333; font-size: 13px;">${reply.fromName}</span>
+              <span style="font-size: 11px; color: #bbb;">·</span>
+              <span style="font-size: 11px; color: #999;">${fullTime}</span>
+            </div>
+            <div style="color: #555; line-height: 1.7; font-size: 14px; padding-left: 36px;">${reply.content}</div>
+          </div>
+        `;
+      }).join('');
+
+      selectedArea.innerHTML = `
+        <!-- 选中的评论 -->
+        <div style="background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 12px rgba(0,0,0,0.08);">
+          <!-- 1级评论 -->
+          <div style="padding: 20px; background: linear-gradient(135deg, #e6f7ff 0%, #f0f8ff 100%); border-left: 4px solid #1890ff;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
+              <div style="width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, #1890ff 0%, #40a9ff 100%);
+                          color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 16px;">
+                ${comment.fromName.substring(0, 1)}
+              </div>
+              <div>
+                <div style="font-weight: 600; color: #333; font-size: 14px;">${comment.fromName}</div>
+                <div style="font-size: 11px; color: #999;">${commentTime}</div>
+              </div>
+            </div>
+            <div style="color: #333; line-height: 1.8; font-size: 15px; padding-left: 46px;">
+              <strong style="color: #1890ff; font-size: 13px;">评论:</strong>
+              <div style="margin-top: 6px;">${comment.content}</div>
+            </div>
+          </div>
+
+          ${comment.replies.length > 0 ? `
+            <!-- 讨论列表 -->
+            <div style="background: #fafafa;">
+              <div style="padding: 12px 20px; background: #f5f5f5; border-top: 2px solid #e0e0e0; border-bottom: 1px solid #e0e0e0;">
+                <div style="font-weight: 600; color: #52c41a; font-size: 14px;">
+                  💬 讨论列表 (${comment.replies.length})
+                </div>
+              </div>
+              ${discussionsHtml}
+            </div>
+          ` : `
+            <div style="padding: 40px 20px; text-align: center; background: #fafafa; border-top: 2px solid #e0e0e0; color: #999;">
+              <p style="font-size: 36px; margin: 0 0 12px 0;">💭</p>
+              <p style="font-size: 13px; margin: 0; color: #999;">暂无讨论</p>
+              <p style="font-size: 12px; margin: 8px 0 0 0; color: #bbb;">在下方输入框发表第一条讨论</p>
+            </div>
+          `}
+        </div>
+      `;
+
+      // 显示讨论回复区域
+      document.getElementById('discussionReplyArea').style.display = 'block';
+
+      // 滚动到顶部
+      selectedArea.scrollTop = 0;
+    }
+
+    // 关闭评论历史弹窗
+    function closeCommentHistory() {
+      document.getElementById('commentHistoryModal').style.display = 'none';
+      currentCommentUser = null;
+      selectedCommentId = null;
+      allComments = [];
+      discussionUsers = [];
+    }
+
+    // 提交新的1级评论
+    async function submitNewComment() {
+      const content = document.getElementById('newCommentInput').value.trim();
+
+      if (!content) {
+        showToast('请输入评论内容', 'warning');
+        return;
+      }
+
+      if (!currentCommentUser || !currentSelectedChannel || !currentSelectedTopic) {
+        showToast('会话信息不完整', 'error');
+        return;
+      }
+
+      try {
+        // 构建消息数据(1级评论,无parentId)
+        const messageData = {
+          channelId: currentSelectedChannel.id,
+          topicId: currentSelectedTopic.id,
+          content: content,
+          fromUserId: currentCommentUser.id,
+          fromUserName: currentCommentUser.name,
+          messageType: 'comment',
+          parentId: null // 1级评论
+        };
+
+        // 发送消息
+        const messageRes = await fetch('/api/send-test-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messageData)
+        });
+
+        const result = await messageRes.json();
+
+        if (result.success) {
+          showToast(`✓ 评论发表成功`, 'success');
+
+          // 清空输入框
+          document.getElementById('newCommentInput').value = '';
+
+          // 重新加载评论历史
+          await loadCommentHistory(currentSelectedChannel.id, currentSelectedTopic.id);
+
+          // 在日志中记录
+          addMessageLog(currentSelectedChannel.id, currentSelectedTopic.id, content, currentCommentUser.name + ' (新评论)', false);
+
+        } else {
+          showToast('发送失败: ' + (result.error || '未知错误'), 'error');
+        }
+
+      } catch (error) {
+        console.error('提交评论失败:', error);
+        showToast('提交评论失败: ' + error.message, 'error');
+      }
+    }
+
+    // 提交讨论(2级评论)
+    async function submitDiscussion() {
+      const content = document.getElementById('discussionInput').value.trim();
+      const userIndex = document.getElementById('discussionUserSelect').value;
+
+      if (!content) {
+        showToast('请输入讨论内容', 'warning');
+        return;
+      }
+
+      if (userIndex === '') {
+        showToast('请选择发言用户', 'warning');
+        return;
+      }
+
+      if (!selectedCommentId) {
+        showToast('请先选择一个评论', 'error');
+        return;
+      }
+
+      if (!currentSelectedChannel || !currentSelectedTopic) {
+        showToast('会话信息不完整', 'error');
+        return;
+      }
+
+      try {
+        const user = discussionUsers[parseInt(userIndex)];
+
+        // 构建消息数据(2级评论,有parentId)
+        const messageData = {
+          channelId: currentSelectedChannel.id,
+          topicId: currentSelectedTopic.id,
+          content: content,
+          fromUserId: user.id,
+          fromUserName: user.name,
+          messageType: 'comment',
+          parentId: selectedCommentId // 2级评论,关联到选中的1级评论
+        };
+
+        // 发送消息
+        const messageRes = await fetch('/api/send-test-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(messageData)
+        });
+
+        const result = await messageRes.json();
+
+        if (result.success) {
+          showToast(`✓ ${user.name} 的讨论发送成功`, 'success');
+
+          // 清空输入框
+          document.getElementById('discussionInput').value = '';
+
+          // 重新加载评论历史
+          await loadCommentHistory(currentSelectedChannel.id, currentSelectedTopic.id);
+
+          // 重新选中当前评论以刷新右侧显示
+          setTimeout(() => {
+            selectComment(selectedCommentId);
+          }, 100);
+
+          // 在日志中记录
+          addMessageLog(currentSelectedChannel.id, currentSelectedTopic.id, content, user.name + ' (讨论)', false);
+
+        } else {
+          showToast('发送失败: ' + (result.error || '未知错误'), 'error');
+        }
+
+      } catch (error) {
+        console.error('提交讨论失败:', error);
+        showToast('提交讨论失败: ' + error.message, 'error');
+      }
+    }
+
+    // 加载账户的作品到下拉框
+    async function loadChannelTopics() {
+      const channelSelect = document.getElementById('targetChannel');
+      const topicSelect = document.getElementById('targetTopic');
+      const channelId = channelSelect.value;
+
+      topicSelect.innerHTML = '<option value="">请选择作品</option>';
+
+      if (!channelId) {
+        topicSelect.innerHTML = '<option value="">请先选择账户</option>';
+        return;
+      }
+
+      try {
+        const response = await fetch(`/api/channels/${channelId}/topics`);
+        const data = await response.json();
+        const topics = data.topics || [];
+
+        if (topics.length === 0) {
+          topicSelect.innerHTML = '<option value="">该账户暂无作品</option>';
+          return;
+        }
+
+        topicSelect.innerHTML = '<option value="">请选择作品</option>' +
+          topics.map(t => `<option value="${t.id}">${t.title}</option>`).join('');
+      } catch (error) {
+        console.error('加载作品失败:', error);
+        topicSelect.innerHTML = '<option value="">加载失败</option>';
+      }
+    }
+
+    // 发送消息
+    async function sendMessage() {
+      const channelId = document.getElementById('targetChannel').value;
+      const topicId = document.getElementById('targetTopic').value;
+      const content = document.getElementById('messageContent').value.trim();
+
+      if (!channelId) {
+        showToast('请选择账户', 'error');
+        return;
+      }
+
+      if (!topicId) {
+        showToast('请选择作品', 'error');
+        return;
+      }
+
+      if (!content) {
+        showToast('请输入消息内容', 'error');
+        return;
+      }
+
+      try {
+        const response = await fetch('/api/send-test-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ channelId, topicId, content })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          messageCount++;
+          document.getElementById('messageCount').textContent = messageCount;
+          document.getElementById('messageContent').value = '';
+          addMessageLog(channelId, topicId, content);
+          showToast('消息发送成功！', 'success');
+        } else {
+          showToast('消息发送失败: ' + (data.error || '未知错误'), 'error');
+        }
+      } catch (error) {
+        showToast('发送失败: ' + error.message, 'error');
+      }
+    }
+
+    // 添加消息日志
+    function addMessageLog(channelId, topicId, content, fromName = null, isReply = false) {
+      const logContainer = document.getElementById('messageLog');
+
+      if (logContainer.querySelector('p')) {
+        logContainer.innerHTML = '';
+      }
+
+      const time = new Date().toLocaleTimeString('zh-CN');
+      const channelName = document.querySelector(`#targetChannel option[value="${channelId}"]`)?.textContent || channelId;
+      const topicName = document.querySelector(`#targetTopic option[value="${topicId}"]`)?.textContent || topicId;
+
+      const logEntry = document.createElement('div');
+      logEntry.className = 'log-entry';
+      const typeLabel = isReply ? '📨 回复消息' : '📤 发送消息';
+      const fromLabel = fromName ? ` (来自: ${fromName})` : '';
+      logEntry.innerHTML = `
+        <div class="time">${time} ${typeLabel}${fromLabel}</div>
+        <div class="channel">频道: ${channelName} / 主题: ${topicName}</div>
+        <div class="content">${content}</div>
+      `;
+
+      logContainer.insertBefore(logEntry, logContainer.firstChild);
+
+      const entries = logContainer.querySelectorAll('.log-entry');
+      if (entries.length > 20) {
+        entries[entries.length - 1].remove();
+      }
+    }
+
+    // 加载服务器统计信息
+    async function loadStats() {
+      try {
+        const response = await fetch('/api/stats');
+        const stats = await response.json();
+
+        document.getElementById('monitorCount').textContent = stats.monitorClients;
+        // channelCount 已在 loadChannels 中更新
+      } catch (error) {
+        console.error('[统计] 加载失败:', error);
+      }
+    }
+
+    // 测试用户数据
+    const testUsers = [
+      { id: '10001', name: '张三', ip: '192.168.1.100', avatar: '张' },
+      { id: '10002', name: '李四', ip: '192.168.1.101', avatar: '李' },
+      { id: '10003', name: '王五', ip: '192.168.1.102', avatar: '王' },
+      { id: '10004', name: '赵六', ip: '192.168.1.103', avatar: '赵' },
+      { id: '10005', name: '钱七', ip: '192.168.1.104', avatar: '钱' }
+    ];
+
+    let selectedTestUser = null;
+
+    // 初始化测试用户列表
+    function initTestUsers() {
+      const container = document.getElementById('testUsers');
+      container.innerHTML = testUsers.map((user, index) => `
+        <div class="test-user-card" data-index="${index}" onclick="selectTestUser(${index})">
+          <div class="test-user-avatar" style="background: ${getAvatarColor(index)};">
+            ${user.avatar}
+          </div>
+          <div class="test-user-info">
+            <div class="test-user-name">${user.name}</div>
+            <div class="test-user-details">ID: ${user.id} | IP: ${user.ip}</div>
+          </div>
+          <div class="test-user-action" style="display: flex; gap: 6px;">
+            <button class="btn btn-primary btn-small" onclick="startTestSession(${index}, event, 'comment')" title="在选定的主题下发表评论">
+              开始评论
+            </button>
+            <button class="btn btn-success btn-small" onclick="startTestSession(${index}, event, 'private')" title="发送私信给客服">
+              开始私信
+            </button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    // 获取头像颜色
+    function getAvatarColor(index) {
+      const colors = ['#1890ff', '#52c41a', '#faad14', '#f5222d', '#722ed1'];
+      return colors[index % colors.length];
+    }
+
+    // 选择测试用户
+    function selectTestUser(index) {
+      selectedTestUser = index;
+      document.querySelectorAll('.test-user-card').forEach((card, i) => {
+        card.classList.toggle('selected', i === index);
+      });
+    }
+
+    // 开始测试会话
+    async function startTestSession(userIndex, event, type = 'comment') {
+      event.stopPropagation(); // 防止触发卡片点击
+
+      const user = testUsers[userIndex];
+
+      // 根据类型显示不同的提示和默认消息
+      let promptTitle, defaultMessage, channelId, topicId;
+
+      if (type === 'comment') {
+        // 评论类型:需要选中账户和作品
+        if (!currentSelectedChannel || !currentSelectedTopic) {
+          showToast('请先在账户列表中点击"选择"按钮,选择账户和作品', 'warning');
+          return;
+        }
+
+        // 打开评论历史弹窗
+        await openCommentHistory(
+          user,
+          currentSelectedChannel.id,
+          currentSelectedChannel.name,
+          currentSelectedTopic.id,
+          currentSelectedTopic.title
+        );
+        return;
+
+      } else if (type === 'private') {
+        // 私信类型:不需要作品,使用特殊的私信频道
+        channelId = 'private_messages';
+        topicId = `private_${user.id}`;
+        promptTitle = `${user.name} 发送私信:\n\n请输入私信内容:`;
+        defaultMessage = `你好,我是${user.name},有事情想私下咨询`;
+      }
+
+      // 弹出输入框获取消息内容
+      const message = prompt(promptTitle, defaultMessage);
+
+      if (!message || message.trim() === '') {
+        showToast('已取消发送', 'info');
+        return;
+      }
+
+      try {
+        // 1. 创建会话
+        const sessionRes = await fetch('/api/sessions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: user.id,
+            userName: user.name,
+            channelId: channelId,
+            topicId: topicId,
+            firstMessage: message.trim(),
+            sessionType: type
+          })
+        });
+
+        const sessionData = await sessionRes.json();
+
+        if (!sessionData.success) {
+          showToast('创建会话失败: ' + (sessionData.error || '未知错误'), 'error');
+          return;
+        }
+
+        // 2. 发送消息到客户端
+        const messageRes = await fetch('/api/send-test-message', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            channelId: channelId,
+            topicId: topicId,
+            content: message.trim(),
+            fromUserId: user.id,
+            fromUserName: user.name,
+            messageType: type
+          })
+        });
+
+        const messageData = await messageRes.json();
+
+        if (messageData.success) {
+          const typeLabel = type === 'comment' ? '评论' : '私信';
+          showToast(`✓ 已为 ${user.name} 创建${typeLabel}会话并发送消息`, 'success');
+
+          // 在日志中记录
+          addMessageLog(channelId, topicId, message.trim(), user.name, false);
+
+          // 可选:打开会话窗口
+          const params = new URLSearchParams({
+            sessionId: sessionData.session.id,
+            userId: user.id,
+            userName: user.name,
+            channelId: channelId,
+            topicId: topicId,
+            sessionType: type
+          });
+
+          if (type === 'comment') {
+            params.append('channelName', currentSelectedChannel.name);
+            params.append('topicTitle', currentSelectedTopic.title);
+          } else {
+            params.append('channelName', '私信');
+            params.append('topicTitle', `与${user.name}的私信`);
+          }
+
+          window.open(`/sessions.html?${params.toString()}`, '_blank');
+        } else {
+          showToast('发送消息失败: ' + (messageData.error || '未知错误'), 'error');
+        }
+
+      } catch (error) {
+        console.error('[测试会话] 失败:', error);
+        showToast('创建测试会话失败: ' + error.message, 'error');
+      }
+    }
+
+    // 初始化Socket.IO连接
+    function initSocketIO() {
+      socket = io();
+
+      socket.on('connect', () => {
+        console.log('[Admin] Socket.IO 已连接');
+        // 注册为监控客户端,以接收所有消息
+        socket.emit('monitor:register', { clientType: 'admin' });
+        // 立即加载统计信息
+        loadStats();
+      });
+
+      socket.on('disconnect', () => {
+        console.log('[Admin] Socket.IO 已断开');
+      });
+
+      // 监听频道消息(包括回复消息)
+      socket.on('channel:message', (message) => {
+        console.log('[Admin] 收到消息:', message);
+        const isReply = message.fromId === 'monitor_client';
+        addMessageLog(
+          message.channelId,
+          message.topicId,
+          message.content,
+          message.fromName,
+          isReply
+        );
+      });
+    }
+
+    // 初始化
+    window.addEventListener('load', () => {
+      loadChannels();
+      initTestUsers(); // 初始化测试用户列表
+      setInterval(loadChannels, 30000); // 每30秒刷新一次
+      initSocketIO(); // 初始化Socket.IO连接
+      setInterval(loadStats, 5000); // 每5秒刷新统计信息
+    });
+
+    // 键盘快捷键
+    document.addEventListener('DOMContentLoaded', () => {
+      // Ctrl+Enter 发送消息
+      document.getElementById('messageContent').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          sendMessage();
+        }
+      });
+
+      // ESC 关闭对话框
+      document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          closeModal();
+          closeTopicsModal();
+          closeTopicFormModal();
+        }
+      });
+
+      // 点击对话框外部关闭
+      document.getElementById('channelModal').addEventListener('click', (e) => {
+        if (e.target.id === 'channelModal') {
+          closeModal();
+        }
+      });
+
+      // 点击主题管理模态框外部关闭
+      document.getElementById('topicsModal').addEventListener('click', (e) => {
+        if (e.target.id === 'topicsModal') {
+          closeTopicsModal();
+        }
+      });
+
+      // 点击主题表单模态框外部关闭
+      document.getElementById('topicFormModal').addEventListener('click', (e) => {
+        if (e.target.id === 'topicFormModal') {
+          closeTopicFormModal();
+        }
+      });
+
+      // 新评论输入框 Ctrl+Enter 快捷键
+      document.getElementById('newCommentInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault();
+          submitNewComment();
+        }
+      });
+
+      // 讨论输入框 Ctrl+Enter 快捷键
+      document.getElementById('discussionInput').addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && e.ctrlKey) {
+          e.preventDefault();
+          submitDiscussion();
+        }
+      });
+
+      // 点击评论弹窗外部关闭
+      document.getElementById('commentHistoryModal').addEventListener('click', (e) => {
+        if (e.target.id === 'commentHistoryModal') {
+          closeCommentHistory();
+        }
+      });
+    });
+  </script>
+</body>
+</html>
