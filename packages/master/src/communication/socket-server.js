@@ -7,6 +7,7 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { validateMessage } = require('@hiscrm-im/shared/utils/validator');
 const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
 const { initAdminNamespace } = require('../socket/admin-namespace');
+const sessionManager = require('./session-manager');
 
 const logger = createLogger('socket-server');
 
@@ -297,11 +298,79 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
     });
   });
 
-  // 客户端命名空间
+  // 客户端命名空间（用于桌面和移动客户端）
   const clientNamespace = io.of('/client');
   clientNamespace.on('connection', (socket) => {
     logger.info(`Client connected: ${socket.id}`);
 
+    // 处理客户端注册
+    socket.on('client:register', (data) => {
+      const { device_id, device_type, device_name } = data;
+
+      if (!device_id || !device_type) {
+        logger.warn(`Client registration failed: missing required fields`, {
+          socketId: socket.id,
+          data,
+        });
+
+        socket.emit('client:register:error', {
+          error: 'Missing required fields: device_id and device_type',
+        });
+        return;
+      }
+
+      // 创建客户端会话
+      const session = sessionManager.createOrUpdateSession({
+        device_id,
+        device_type,
+        device_name: device_name || 'Unknown Device',
+        socket_id: socket.id,
+      });
+
+      // 将device_id存储到socket对象中
+      socket.deviceId = device_id;
+
+      logger.info(`Client registered successfully`, {
+        socketId: socket.id,
+        deviceId: device_id,
+        deviceType: device_type,
+        sessionId: session.id,
+      });
+
+      // 发送注册成功响应
+      socket.emit('client:register:success', {
+        session_id: session.id,
+        device_id,
+        connected_at: session.connected_at,
+      });
+    });
+
+    // 处理客户端心跳
+    socket.on('client:heartbeat', (data) => {
+      const { client_id, timestamp } = data;
+      const deviceId = socket.deviceId;
+
+      if (deviceId) {
+        sessionManager.updateHeartbeat(deviceId);
+        logger.debug(`Client heartbeat received`, {
+          socketId: socket.id,
+          clientId: client_id,
+          deviceId,
+        });
+      }
+    });
+
+    // 处理消息确认
+    socket.on('client:notification:ack', (data) => {
+      const { notification_id } = data;
+      logger.debug(`Client notification ack`, {
+        socketId: socket.id,
+        notificationId: notification_id,
+      });
+      // TODO: 标记通知已被确认
+    });
+
+    // 处理客户端消息
     socket.on(MESSAGE, async (msg) => {
       try {
         const validation = validateMessage(msg);
@@ -323,6 +392,12 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
 
     socket.on('disconnect', () => {
       logger.info(`Client disconnected: ${socket.id}`);
+      const deviceId = socket.deviceId;
+
+      if (deviceId) {
+        sessionManager.markSessionOffline(deviceId);
+      }
+
       if (handlers.onClientDisconnect) {
         handlers.onClientDisconnect(socket);
       }
