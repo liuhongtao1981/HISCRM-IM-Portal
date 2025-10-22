@@ -35,7 +35,9 @@
       "Bash(git commit -m \"refactor: 整理文档结构 - 将旧文档归档\n\n文档整理:\n✅ 移至 docs 文件夹:\n   - REPLY-TEST-VERIFICATION.md → 回复测试验证报告.md\n   - FINAL-SESSION-SUMMARY.md → 最终会话总结.md\n\n✅ 移至 _archived 文件夹 (旧文档):\n   - 清理完成报告.md\n   - 文件清理总结.md\n   - 调试模式系统分析.md\n\ndocs 文件夹现有文档 (14 个):\n核心系统文档:\n├─ 01-ADMIN-WEB-系统文档.md\n├─ 02-MASTER-系统文档.md\n├─ 03-WORKER-系统文档.md\n├─ 快速参考-系统文档.md\n└─ README.md\n\n实现文档:\n├─ 04-WORKER-平台扩展指南.md\n├─ 05-DOUYIN-平台实现技术细节.md\n├─ 06-WORKER-爬虫调试指南.md\n└─ 07-DOUYIN-消息回复功能技术总结.md\n\n本次改进文档:\n├─ 并行爬虫实现.md\n├─ Spider1首页加载优化.md\n├─ 会话总结.md\n├─ 最终会话总结.md\n└─ 回复测试验证报告.md\n\n未来新增文档规范:\n- 使用中文名称\n- 按照编号+分类的格式\n- 示例: 08-FEATURE-功能名称.md\n\n🤖 Generated with Claude Code\n\nCo-Authored-By: Claude <noreply@anthropic.com>\")",
       "Bash(git add:*)",
       "Bash(git commit:*)",
-      "Bash(npx tsc:*)"
+      "Bash(npx tsc:*)",
+      "Bash(node tests/test-protocol-converter.js:*)",
+      "Bash(node tests/test-master-integration.js:*)"
     ],
     "deny": [],
     "ask": []
