@@ -187,6 +187,33 @@ class DirectMessagesDAO {
   }
 
   /**
+   * 标记私信为已查看 (is_new=false)
+   * 用于防止消息被重复推送
+   * @param {Array<string>} messageIds - 私信ID列表
+   * @returns {number} 更新的行数
+   */
+  markNewAsViewed(messageIds) {
+    try {
+      if (!Array.isArray(messageIds) || messageIds.length === 0) {
+        return 0;
+      }
+
+      const placeholders = messageIds.map(() => '?').join(',');
+      const result = this.db.prepare(
+        `UPDATE direct_messages SET is_new = 0 WHERE id IN (${placeholders})`
+      ).run(...messageIds);
+
+      if (result.changes > 0) {
+        logger.info(`Marked ${result.changes} direct messages as viewed (is_new=false)`);
+      }
+      return result.changes;
+    } catch (error) {
+      logger.error(`Failed to mark direct messages as viewed:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 删除私信
    * @param {string} id - 私信ID
    * @returns {boolean}
