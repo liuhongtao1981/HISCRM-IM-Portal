@@ -218,6 +218,87 @@ class NotificationsDAO {
   }
 
   /**
+   * 标记通知为已确认（客户端已收到）
+   */
+  markAsConfirmed(notificationId, confirmData = {}) {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const confirmedAt = confirmData.confirmed_at ? Math.floor(confirmData.confirmed_at / 1000) : now;
+      const confirmedBy = confirmData.confirmed_by || 'unknown';
+
+      const stmt = this.db.prepare(`
+        UPDATE notifications
+        SET
+          is_sent = 1,
+          sent_at = ?,
+          status = 'confirmed',
+          confirmed_at = ?,
+          confirmed_by = ?
+        WHERE id = ?
+      `);
+
+      const result = stmt.run(confirmedAt, confirmedAt, confirmedBy, notificationId);
+
+      if (result.changes > 0) {
+        logger.info(`Notification marked as confirmed`, {
+          notificationId,
+          confirmedBy,
+          confirmedAt,
+        });
+      }
+
+      return {
+        success: result.changes > 0,
+        changes: result.changes,
+      };
+    } catch (error) {
+      logger.error(`Failed to mark notification as confirmed: ${notificationId}`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量标记通知为已确认
+   */
+  markMultipleAsConfirmed(notificationIds, confirmedBy = 'unknown') {
+    try {
+      if (!notificationIds || notificationIds.length === 0) {
+        return { success: true, changes: 0 };
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      const placeholders = notificationIds.map(() => '?').join(',');
+
+      const stmt = this.db.prepare(`
+        UPDATE notifications
+        SET
+          is_sent = 1,
+          sent_at = ?,
+          status = 'confirmed',
+          confirmed_at = ?,
+          confirmed_by = ?
+        WHERE id IN (${placeholders})
+      `);
+
+      const params = [now, now, confirmedBy, ...notificationIds];
+      const result = stmt.run(...params);
+
+      logger.info(`Marked ${result.changes} notifications as confirmed`, {
+        count: notificationIds.length,
+        confirmedBy,
+      });
+
+      return {
+        success: true,
+        changes: result.changes,
+      };
+    } catch (error) {
+      logger.error(`Failed to mark multiple notifications as confirmed`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 删除通知
    */
   delete(id) {
