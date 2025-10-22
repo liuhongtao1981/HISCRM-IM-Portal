@@ -8,6 +8,7 @@ const { validateMessage } = require('@hiscrm-im/shared/utils/validator');
 const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
 const { initAdminNamespace } = require('../socket/admin-namespace');
 const sessionManager = require('./session-manager');
+const notificationsDao = require('../database/notifications-dao');
 
 const logger = createLogger('socket-server');
 
@@ -364,13 +365,54 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
     });
 
     // 处理消息确认
-    socket.on('client:notification:ack', (data) => {
-      const { notification_id } = data;
-      logger.debug(`Client notification ack`, {
-        socketId: socket.id,
-        notificationId: notification_id,
-      });
-      // TODO: 标记通知已被确认
+    socket.on('client:notification:ack', async (data) => {
+      const { notification_id, client_id, timestamp } = data;
+      const deviceId = socket.deviceId;
+
+      if (!notification_id) {
+        logger.warn('Client notification ack: missing notification_id', {
+          socketId: socket.id,
+          clientId: client_id,
+        });
+        return;
+      }
+
+      try {
+        // 标记通知为已确认
+        await notificationsDao.markAsConfirmed(notification_id, {
+          confirmed_by: client_id || deviceId,
+          confirmed_at: timestamp || Date.now(),
+        });
+
+        logger.info('✅ Client notification confirmed', {
+          socketId: socket.id,
+          deviceId: deviceId,
+          notificationId: notification_id,
+          clientId: client_id,
+          timestamp: timestamp,
+        });
+
+        // 向 Admin UI 广播确认事件（如果可用）
+        if (adminNamespaceInstance) {
+          try {
+            adminNamespaceInstance.emit('notification:confirmed', {
+              notification_id,
+              confirmed_by: client_id || deviceId,
+              confirmed_at: timestamp || Date.now(),
+            });
+          } catch (adminError) {
+            logger.debug('Admin notification broadcast skipped', {
+              reason: adminError.message,
+            });
+          }
+        }
+      } catch (error) {
+        logger.error('❌ Failed to confirm notification', {
+          socketId: socket.id,
+          notificationId: notification_id,
+          error: error.message,
+        });
+      }
     });
 
     // 处理客户端消息
