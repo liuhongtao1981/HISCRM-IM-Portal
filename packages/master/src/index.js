@@ -473,7 +473,8 @@ async function start() {
     const socketNamespaces = initSocketServer(
       server,
       tempHandlers,
-      masterServer
+      masterServer,
+      sessionManager
     );
 
     // 将 socketNamespaces 传递给 masterServer

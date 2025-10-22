@@ -16,9 +16,10 @@ const logger = createLogger('socket-server');
  * @param {http.Server} httpServer - HTTP服务器实例
  * @param {object} handlers - 消息处理器对象
  * @param {object} masterServer - Master服务器实例（用于admin namespace）
+ * @param {object} sessionManager - 会话管理器（用于客户端会话）
  * @returns {Server} Socket.IO服务器实例
  */
-function initSocketServer(httpServer, handlers = {}, masterServer = null) {
+function initSocketServer(httpServer, handlers = {}, masterServer = null, sessionManagerInstance = null) {
   const io = new Server(httpServer, {
     cors: {
       origin: process.env.NODE_ENV === 'production' ? process.env.ALLOWED_ORIGINS : '*',
@@ -320,7 +321,8 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
       }
 
       // 创建客户端会话
-      const session = sessionManager.createOrUpdateSession({
+      const sessionMgr = sessionManagerInstance || sessionManager;
+      const session = sessionMgr.createOrUpdateSession({
         device_id,
         device_type,
         device_name: device_name || 'Unknown Device',
@@ -349,9 +351,10 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
     socket.on('client:heartbeat', (data) => {
       const { client_id, timestamp } = data;
       const deviceId = socket.deviceId;
+      const sessionMgr = sessionManagerInstance || sessionManager;
 
       if (deviceId) {
-        sessionManager.updateHeartbeat(deviceId);
+        sessionMgr.updateHeartbeat(deviceId);
         logger.debug(`Client heartbeat received`, {
           socketId: socket.id,
           clientId: client_id,
@@ -393,9 +396,10 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null) {
     socket.on('disconnect', () => {
       logger.info(`Client disconnected: ${socket.id}`);
       const deviceId = socket.deviceId;
+      const sessionMgr = sessionManagerInstance || sessionManager;
 
       if (deviceId) {
-        sessionManager.markSessionOffline(deviceId);
+        sessionMgr.markSessionOffline(deviceId);
       }
 
       if (handlers.onClientDisconnect) {
