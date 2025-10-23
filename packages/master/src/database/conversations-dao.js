@@ -32,8 +32,9 @@ class ConversationsDAO {
           id, account_id, platform_user_id, platform_user_name,
           platform_user_avatar, is_group, unread_count,
           platform_message_id, last_message_time, last_message_content,
+          is_pinned, is_muted, last_message_type, status,
           created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const now = Math.floor(Date.now() / 1000);
@@ -49,6 +50,10 @@ class ConversationsDAO {
         conversation.platform_message_id || null,
         conversation.last_message_time || now,
         conversation.last_message_content || null,
+        conversation.is_pinned ? 1 : 0,
+        conversation.is_muted ? 1 : 0,
+        conversation.last_message_type || 'text',
+        conversation.status || 'active',
         conversation.created_at || now,
         conversation.updated_at || now
       );
@@ -115,6 +120,13 @@ class ConversationsDAO {
    * 查找账户下的所有会话
    * @param {string} accountId - 账户ID
    * @param {Object} options - 查询选项
+   *   - is_pinned: 是否只查询置顶会话
+   *   - is_muted: 是否只查询免打扰会话
+   *   - status: 会话状态过滤
+   *   - orderBy: 排序字段（默认：updated_at）
+   *   - order: 排序方向（默认：DESC）
+   *   - limit: 分页限制
+   *   - offset: 分页偏移
    * @returns {Object[]} 会话数组
    */
   findByAccount(accountId, options = {}) {
@@ -122,10 +134,28 @@ class ConversationsDAO {
       let sql = 'SELECT * FROM conversations WHERE account_id = ?';
       const params = [accountId];
 
-      // 支持排序
+      // 支持置顶过滤
+      if (options.is_pinned !== undefined) {
+        sql += ' AND is_pinned = ?';
+        params.push(options.is_pinned ? 1 : 0);
+      }
+
+      // 支持免打扰过滤
+      if (options.is_muted !== undefined) {
+        sql += ' AND is_muted = ?';
+        params.push(options.is_muted ? 1 : 0);
+      }
+
+      // 支持状态过滤
+      if (options.status) {
+        sql += ' AND status = ?';
+        params.push(options.status);
+      }
+
+      // 支持排序（置顶会话优先）
       const orderBy = options.orderBy || 'updated_at';
       const order = options.order || 'DESC';
-      sql += ` ORDER BY ${orderBy} ${order}`;
+      sql += ` ORDER BY is_pinned DESC, ${orderBy} ${order}`;
 
       // 支持分页
       if (options.limit) {
@@ -186,14 +216,16 @@ class ConversationsDAO {
       const allowedFields = [
         'platform_user_name', 'platform_user_avatar', 'is_group',
         'unread_count', 'platform_message_id', 'last_message_time',
-        'last_message_content', 'updated_at'
+        'last_message_content', 'is_pinned', 'is_muted', 'last_message_type',
+        'status', 'updated_at'
       ];
 
       for (const field of allowedFields) {
         if (field in updates) {
           fields.push(`${field} = ?`);
 
-          if (field === 'is_group') {
+          // Boolean 字段转换
+          if (field === 'is_group' || field === 'is_pinned' || field === 'is_muted') {
             values.push(updates[field] ? 1 : 0);
           } else {
             values.push(updates[field]);
@@ -231,18 +263,19 @@ class ConversationsDAO {
    * @param {string} messageId - 消息ID
    * @param {string} messageContent - 消息内容
    * @param {number} messageTime - 消息时间戳
+   * @param {string} messageType - 消息类型（可选，默认 'text'）
    */
-  updateLastMessage(conversationId, messageId, messageContent, messageTime) {
+  updateLastMessage(conversationId, messageId, messageContent, messageTime, messageType = 'text') {
     try {
       const stmt = this.db.prepare(`
         UPDATE conversations
         SET platform_message_id = ?, last_message_content = ?,
-            last_message_time = ?, updated_at = ?
+            last_message_time = ?, last_message_type = ?, updated_at = ?
         WHERE id = ?
       `);
 
       const now = Math.floor(Date.now() / 1000);
-      stmt.run(messageId, messageContent, messageTime || now, now, conversationId);
+      stmt.run(messageId, messageContent, messageTime || now, messageType, now, conversationId);
 
       logger.debug(`Conversation last message updated: ${conversationId}`);
     } catch (error) {
@@ -282,6 +315,80 @@ class ConversationsDAO {
       logger.debug(`Conversation marked as read: ${conversationId}`);
     } catch (error) {
       logger.error(`Failed to mark conversation as read ${conversationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 置顶会话
+   * @param {string} conversationId - 会话ID
+   */
+  pinConversation(conversationId) {
+    try {
+      this.update(conversationId, { is_pinned: true });
+      logger.debug(`Conversation pinned: ${conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to pin conversation ${conversationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 取消置顶会话
+   * @param {string} conversationId - 会话ID
+   */
+  unpinConversation(conversationId) {
+    try {
+      this.update(conversationId, { is_pinned: false });
+      logger.debug(`Conversation unpinned: ${conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to unpin conversation ${conversationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 免打扰会话
+   * @param {string} conversationId - 会话ID
+   */
+  muteConversation(conversationId) {
+    try {
+      this.update(conversationId, { is_muted: true });
+      logger.debug(`Conversation muted: ${conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to mute conversation ${conversationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 取消免打扰会话
+   * @param {string} conversationId - 会话ID
+   */
+  unmuteConversation(conversationId) {
+    try {
+      this.update(conversationId, { is_muted: false });
+      logger.debug(`Conversation unmuted: ${conversationId}`);
+    } catch (error) {
+      logger.error(`Failed to unmute conversation ${conversationId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 查找置顶会话
+   * @param {string} accountId - 账户ID
+   * @returns {Object[]} 置顶会话数组
+   */
+  findPinned(accountId) {
+    try {
+      const rows = this.db.prepare(
+        'SELECT * FROM conversations WHERE account_id = ? AND is_pinned = 1 ORDER BY updated_at DESC'
+      ).all(accountId);
+
+      return rows.map(row => this._formatRow(row));
+    } catch (error) {
+      logger.error(`Failed to find pinned conversations for account ${accountId}:`, error);
       throw error;
     }
   }
@@ -370,12 +477,15 @@ class ConversationsDAO {
           COUNT(*) as total,
           SUM(CASE WHEN unread_count > 0 THEN 1 ELSE 0 END) as unread,
           SUM(is_group) as groups,
+          SUM(is_pinned) as pinned,
+          SUM(is_muted) as muted,
+          SUM(CASE WHEN status = 'active' THEN 1 ELSE 0 END) as active,
           MAX(updated_at) as lastUpdated
         FROM conversations
         WHERE account_id = ?
       `).get(accountId);
 
-      return result || { total: 0, unread: 0, groups: 0, lastUpdated: null };
+      return result || { total: 0, unread: 0, groups: 0, pinned: 0, muted: 0, active: 0, lastUpdated: null };
     } catch (error) {
       logger.error(`Failed to get conversation stats for account ${accountId}:`, error);
       throw error;
@@ -400,6 +510,10 @@ class ConversationsDAO {
       platform_message_id: row.platform_message_id,
       last_message_time: row.last_message_time,
       last_message_content: row.last_message_content,
+      is_pinned: !!row.is_pinned,
+      is_muted: !!row.is_muted,
+      last_message_type: row.last_message_type || 'text',
+      status: row.status || 'active',
       created_at: row.created_at,
       updated_at: row.updated_at
     };

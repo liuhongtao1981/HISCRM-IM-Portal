@@ -30,8 +30,10 @@ class DirectMessagesDAO {
         `INSERT INTO direct_messages (
           id, account_id, conversation_id, platform_message_id, content,
           platform_sender_id, platform_sender_name, platform_receiver_id, platform_receiver_name,
-          message_type, direction, is_read, detected_at, created_at, platform_user_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+          message_type, direction, is_read, detected_at, created_at, platform_user_id,
+          status, reply_to_message_id, media_url, media_thumbnail, file_size, file_name, duration,
+          is_deleted, is_recalled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       );
 
       stmt.run(
@@ -49,7 +51,16 @@ class DirectMessagesDAO {
         row.is_read,
         row.detected_at,
         row.created_at,
-        row.platform_user_id || null
+        row.platform_user_id || null,
+        row.status || 'sent',
+        row.reply_to_message_id || null,
+        row.media_url || null,
+        row.media_thumbnail || null,
+        row.file_size || null,
+        row.file_name || null,
+        row.duration || null,
+        row.is_deleted ? 1 : 0,
+        row.is_recalled ? 1 : 0
       );
 
       logger.info(`Direct message created: ${row.id}`);
@@ -117,6 +128,32 @@ class DirectMessagesDAO {
         params.push(filters.is_read ? 1 : 0);
       }
 
+      // 新增字段过滤
+      if (filters.status) {
+        sql += ' AND status = ?';
+        params.push(filters.status);
+      }
+
+      if (filters.is_deleted !== undefined) {
+        sql += ' AND is_deleted = ?';
+        params.push(filters.is_deleted ? 1 : 0);
+      }
+
+      if (filters.is_recalled !== undefined) {
+        sql += ' AND is_recalled = ?';
+        params.push(filters.is_recalled ? 1 : 0);
+      }
+
+      if (filters.message_type) {
+        sql += ' AND message_type = ?';
+        params.push(filters.message_type);
+      }
+
+      if (filters.reply_to_message_id) {
+        sql += ' AND reply_to_message_id = ?';
+        params.push(filters.reply_to_message_id);
+      }
+
       if (filters.since_timestamp) {
         sql += ' AND detected_at >= ?';
         params.push(filters.since_timestamp);
@@ -182,6 +219,127 @@ class DirectMessagesDAO {
       return true;
     } catch (error) {
       logger.error(`Failed to mark direct message as read ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新消息状态
+   * @param {string} id - 消息ID
+   * @param {string} status - 新状态 (sending/sent/delivered/read/failed)
+   * @returns {boolean}
+   */
+  updateStatus(id, status) {
+    try {
+      const result = this.db
+        .prepare('UPDATE direct_messages SET status = ? WHERE id = ?')
+        .run(status, id);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`Message status updated: ${id} -> ${status}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to update message status ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 撤回消息
+   * @param {string} id - 消息ID
+   * @returns {boolean}
+   */
+  recallMessage(id) {
+    try {
+      const now = Math.floor(Date.now() / 1000);
+      const result = this.db
+        .prepare('UPDATE direct_messages SET is_recalled = 1, recalled_at = ? WHERE id = ?')
+        .run(now, id);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`Message recalled: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to recall message ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 软删除消息
+   * @param {string} id - 消息ID
+   * @returns {boolean}
+   */
+  softDelete(id) {
+    try {
+      const result = this.db
+        .prepare('UPDATE direct_messages SET is_deleted = 1 WHERE id = ?')
+        .run(id);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`Message soft deleted: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`Failed to soft delete message ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新消息字段
+   * @param {string} id - 消息ID
+   * @param {Object} updates - 要更新的字段
+   * @returns {boolean}
+   */
+  update(id, updates) {
+    try {
+      const allowedFields = [
+        'status', 'is_read', 'is_deleted', 'is_recalled', 'recalled_at',
+        'media_url', 'media_thumbnail', 'file_size', 'file_name', 'duration'
+      ];
+
+      const fields = [];
+      const values = [];
+
+      for (const field of allowedFields) {
+        if (field in updates) {
+          fields.push(`${field} = ?`);
+
+          // Boolean 字段转换
+          if (field === 'is_read' || field === 'is_deleted' || field === 'is_recalled') {
+            values.push(updates[field] ? 1 : 0);
+          } else {
+            values.push(updates[field]);
+          }
+        }
+      }
+
+      if (fields.length === 0) {
+        return false;
+      }
+
+      values.push(id);
+
+      const sql = `UPDATE direct_messages SET ${fields.join(', ')} WHERE id = ?`;
+      const result = this.db.prepare(sql).run(...values);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`Message updated: ${id}`, { fields });
+      return true;
+    } catch (error) {
+      logger.error(`Failed to update message ${id}:`, error);
       throw error;
     }
   }
@@ -320,8 +478,10 @@ class DirectMessagesDAO {
           id, account_id, conversation_id, platform_message_id,
           content, platform_sender_id, platform_sender_name,
           platform_receiver_id, platform_receiver_name, message_type,
-          direction, is_read, detected_at, created_at, is_new, push_count
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          direction, is_read, detected_at, created_at, is_new, push_count,
+          status, reply_to_message_id, media_url, media_thumbnail, file_size, file_name, duration,
+          is_deleted, is_recalled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const transaction = this.db.transaction((messageList) => {
@@ -373,7 +533,16 @@ class DirectMessagesDAO {
               cleanMessage.detected_at,
               cleanMessage.created_at,
               cleanMessage.is_new,
-              cleanMessage.push_count
+              cleanMessage.push_count,
+              message.status || 'sent',
+              message.reply_to_message_id || null,
+              message.media_url || null,
+              message.media_thumbnail || null,
+              message.file_size || null,
+              message.file_name || null,
+              message.duration || null,
+              message.is_deleted ? 1 : 0,
+              message.is_recalled ? 1 : 0
             );
 
             if (result.changes > 0) {
@@ -410,8 +579,10 @@ class DirectMessagesDAO {
               id, account_id, conversation_id, platform_message_id,
               content, platform_sender_id, platform_sender_name,
               platform_receiver_id, platform_receiver_name, message_type,
-              direction, is_read, detected_at, created_at, is_new, push_count
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              direction, is_read, detected_at, created_at, is_new, push_count,
+              status, reply_to_message_id, media_url, media_thumbnail, file_size, file_name, duration,
+              is_deleted, is_recalled
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           `);
 
           const now = Math.floor(Date.now() / 1000);
@@ -431,7 +602,16 @@ class DirectMessagesDAO {
             message.detected_at || now,
             message.created_at || now,
             message.is_new ? 1 : 0,
-            message.push_count || 0
+            message.push_count || 0,
+            message.status || 'sent',
+            message.reply_to_message_id || null,
+            message.media_url || null,
+            message.media_thumbnail || null,
+            message.file_size || null,
+            message.file_name || null,
+            message.duration || null,
+            message.is_deleted ? 1 : 0,
+            message.is_recalled ? 1 : 0
           );
 
           oneByOneInserted++;
@@ -460,8 +640,10 @@ class DirectMessagesDAO {
         INSERT OR IGNORE INTO direct_messages (
           id, account_id, conversation_id, platform_message_id,
           content, platform_sender_id, platform_sender_name, direction,
-          is_read, detected_at, created_at, message_type
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          is_read, detected_at, created_at, message_type,
+          status, reply_to_message_id, media_url, media_thumbnail, file_size, file_name, duration,
+          is_deleted, is_recalled
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const transaction = this.db.transaction((messageList) => {
@@ -502,7 +684,16 @@ class DirectMessagesDAO {
               cleanMessage.is_read,
               cleanMessage.detected_at,
               cleanMessage.created_at,
-              cleanMessage.message_type
+              cleanMessage.message_type,
+              message.status || 'sent',
+              message.reply_to_message_id || null,
+              message.media_url || null,
+              message.media_thumbnail || null,
+              message.file_size || null,
+              message.file_name || null,
+              message.duration || null,
+              message.is_deleted ? 1 : 0,
+              message.is_recalled ? 1 : 0
             );
 
             if (result.changes > 0) {

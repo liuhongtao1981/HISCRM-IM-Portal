@@ -40,7 +40,22 @@
       "Bash(node tests/test-master-integration.js:*)",
       "Bash(echo:*)",
       "Bash(npm start)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(lsof:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(powershell:*)",
+      "Bash(curl:*)",
+      "Bash(npm install:*)",
+      "Bash(sqlite3:*)",
+      "Bash(sed:*)",
+      "Bash(mkdir:*)",
+      "Bash(git mv:*)",
+      "Bash(rm:*)",
+      "Bash(cat:*)",
+      "Bash(test:*)",
+      "Bash(python:*)",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []

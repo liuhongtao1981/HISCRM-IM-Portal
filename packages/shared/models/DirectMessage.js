@@ -12,14 +12,45 @@ class DirectMessage {
   constructor(data = {}) {
     this.id = data.id || `dm-${uuidv4()}`;
     this.account_id = data.account_id;
+    this.conversation_id = data.conversation_id || null;
     this.platform_message_id = data.platform_message_id || null;
     this.content = data.content;
+
+    // Sender/receiver info (old fields for compatibility)
     this.sender_name = data.sender_name || null;
     this.sender_id = data.sender_id || null;
+
+    // Platform sender/receiver info (new fields)
+    this.platform_sender_id = data.platform_sender_id || null;
+    this.platform_sender_name = data.platform_sender_name || null;
+    this.platform_receiver_id = data.platform_receiver_id || null;
+    this.platform_receiver_name = data.platform_receiver_name || null;
+    this.platform_user_id = data.platform_user_id || null;
+
+    // Message metadata
+    this.message_type = data.message_type || 'text';
     this.direction = data.direction; // 'inbound' | 'outbound'
+    this.status = data.status || 'sent';
+
+    // Read and delete flags
     this.is_read = data.is_read !== undefined ? data.is_read : false;
+    this.is_deleted = data.is_deleted !== undefined ? data.is_deleted : false;
+    this.is_recalled = data.is_recalled !== undefined ? data.is_recalled : false;
+
+    // Media fields
+    this.media_url = data.media_url || null;
+    this.media_thumbnail = data.media_thumbnail || null;
+    this.file_size = data.file_size || null;
+    this.file_name = data.file_name || null;
+    this.duration = data.duration || null;
+
+    // Reply reference
+    this.reply_to_message_id = data.reply_to_message_id || null;
+
+    // Timestamps
     this.detected_at = data.detected_at || Math.floor(Date.now() / 1000);
     this.created_at = data.created_at || Math.floor(Date.now() / 1000);
+    this.recalled_at = data.recalled_at || null;
   }
 
   /**
@@ -63,14 +94,45 @@ class DirectMessage {
     return {
       id: this.id,
       account_id: this.account_id,
+      conversation_id: this.conversation_id,
       platform_message_id: this.platform_message_id,
       content: this.content,
+
+      // Old fields (for compatibility)
       sender_name: this.sender_name,
       sender_id: this.sender_id,
+
+      // Platform sender/receiver info
+      platform_sender_id: this.platform_sender_id,
+      platform_sender_name: this.platform_sender_name,
+      platform_receiver_id: this.platform_receiver_id,
+      platform_receiver_name: this.platform_receiver_name,
+      platform_user_id: this.platform_user_id,
+
+      // Message metadata
+      message_type: this.message_type,
       direction: this.direction,
-      is_read: this.is_read ? 1 : 0, // SQLite boolean
+      status: this.status,
+
+      // Boolean flags (SQLite stores as 0/1)
+      is_read: this.is_read ? 1 : 0,
+      is_deleted: this.is_deleted ? 1 : 0,
+      is_recalled: this.is_recalled ? 1 : 0,
+
+      // Media fields
+      media_url: this.media_url,
+      media_thumbnail: this.media_thumbnail,
+      file_size: this.file_size,
+      file_name: this.file_name,
+      duration: this.duration,
+
+      // Reply reference
+      reply_to_message_id: this.reply_to_message_id,
+
+      // Timestamps
       detected_at: this.detected_at,
       created_at: this.created_at,
+      recalled_at: this.recalled_at,
     };
   }
 
@@ -82,7 +144,10 @@ class DirectMessage {
   static fromDbRow(row) {
     return new DirectMessage({
       ...row,
-      is_read: Boolean(row.is_read), // SQLite boolean
+      // Convert SQLite integers (0/1) to JavaScript booleans
+      is_read: Boolean(row.is_read),
+      is_deleted: Boolean(row.is_deleted),
+      is_recalled: Boolean(row.is_recalled),
     });
   }
 
@@ -94,14 +159,45 @@ class DirectMessage {
     return {
       id: this.id,
       account_id: this.account_id,
+      conversation_id: this.conversation_id,
       platform_message_id: this.platform_message_id,
       content: this.content,
+
+      // Old fields (for compatibility)
       sender_name: this.sender_name,
       sender_id: this.sender_id,
+
+      // Platform sender/receiver info
+      platform_sender_id: this.platform_sender_id,
+      platform_sender_name: this.platform_sender_name,
+      platform_receiver_id: this.platform_receiver_id,
+      platform_receiver_name: this.platform_receiver_name,
+      platform_user_id: this.platform_user_id,
+
+      // Message metadata
+      message_type: this.message_type,
       direction: this.direction,
+      status: this.status,
+
+      // Boolean flags
       is_read: this.is_read,
+      is_deleted: this.is_deleted,
+      is_recalled: this.is_recalled,
+
+      // Media fields
+      media_url: this.media_url,
+      media_thumbnail: this.media_thumbnail,
+      file_size: this.file_size,
+      file_name: this.file_name,
+      duration: this.duration,
+
+      // Reply reference
+      reply_to_message_id: this.reply_to_message_id,
+
+      // Timestamps
       detected_at: this.detected_at,
       created_at: this.created_at,
+      recalled_at: this.recalled_at,
     };
   }
 
