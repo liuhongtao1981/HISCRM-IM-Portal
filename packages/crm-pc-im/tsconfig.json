@@ -18,10 +18,7 @@
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"],
-      "@shared/*": ["./src/shared/*"],
-      "@services/*": ["./src/services/*"],
-      "@components/*": ["./src/components/*"],
-      "@pages/*": ["./src/pages/*"]
+      "@shared/*": ["./src/shared/*"]
     }
   },
   "include": ["src", "electron"],

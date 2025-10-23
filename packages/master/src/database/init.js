@@ -47,12 +47,21 @@ function initDatabase(dbPath = './data/master.db', options = {}) {
 
     logger.info(`Database opened: ${dbPath}`);
 
-    // 执行schema.sql创建表
-    const schemaPath = path.join(__dirname, 'schema.sql');
-    const schema = fs.readFileSync(schemaPath, 'utf8');
-    db.exec(schema);
+    // 检查数据库是否已初始化（检查关键表是否存在）
+    const tablesExist = db.prepare(
+      `SELECT COUNT(*) as count FROM sqlite_master WHERE type='table' AND name='accounts'`
+    ).get();
 
-    logger.info('Database schema initialized successfully');
+    if (tablesExist.count === 0) {
+      // 数据库未初始化，执行 schema.sql
+      logger.info('Database not initialized, creating schema...');
+      const schemaPath = path.join(__dirname, 'schema.sql');
+      const schema = fs.readFileSync(schemaPath, 'utf8');
+      db.exec(schema);
+      logger.info('Database schema initialized successfully');
+    } else {
+      logger.info('Database already initialized, skipping schema creation');
+    }
 
     // 验证数据库结构完整性
     try {

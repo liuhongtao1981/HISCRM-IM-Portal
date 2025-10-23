@@ -1163,6 +1163,11 @@ async function start() {
       getWorkerRegistry: () => workerRegistry,
     }));
 
+    // IM 兼容层路由 (用于 crm-pc-im 客户端)
+    const createIMRouter = require('./api/routes/im');
+    app.use('/api/im', createIMRouter(db));
+    logger.info('IM compatibility layer routes mounted at /api/im');
+
     // DEBUG API 路由 (仅在 DEBUG 模式启用)
     if (debugConfig.enabled) {
       const { router: debugRouter, initDebugAPI } = require('./api/routes/debug-api');
