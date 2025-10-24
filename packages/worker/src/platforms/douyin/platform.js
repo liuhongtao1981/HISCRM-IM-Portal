@@ -717,13 +717,21 @@ class DouyinPlatform extends PlatformBase {
     try {
       logger.info(`Sending ${discussions.length} discussions to Master for account ${account.id}`);
 
-      // 使用 Socket.IO 发送讨论数据
-      this.workerBridge.socket.emit('worker:bulk_insert_discussions', {
+      // ⚠️ 为每个 discussion 添加必需的 account_id 和 platform 字段
+      const discussionsWithAccount = discussions.map(d => ({
+        ...d,
         account_id: account.id,
-        discussions: discussions,
+        platform: 'douyin',
+        platform_user_id: account.platform_user_id,  // 添加 platform_user_id 用于唯一约束
+      }));
+
+      // 使用 Socket.IO 发送讨论数据
+      this.bridge.socket.emit('worker:bulk_insert_discussions', {
+        account_id: account.id,
+        discussions: discussionsWithAccount,
       });
 
-      logger.info(`✅ Sent ${discussions.length} discussions to Master`);
+      logger.info(`✅ Sent ${discussionsWithAccount.length} discussions to Master`);
     } catch (error) {
       logger.error('Failed to send discussions to Master:', error);
       throw error;
@@ -757,7 +765,7 @@ class DouyinPlatform extends PlatformBase {
       }));
 
       // 使用 Socket.IO 批量发送作品数据
-      this.workerBridge.socket.emit('worker:bulk_insert_works', {
+      this.bridge.socket.emit('worker:bulk_insert_works', {
         account_id: account.id,
         works: works,
       });
