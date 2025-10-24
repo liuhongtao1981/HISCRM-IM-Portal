@@ -10,6 +10,9 @@ const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
+const { crawlWorks } = require('./crawl-works');
+const { crawlComments: crawlCommentsV2 } = require('./crawl-comments');
+const { TabTag } = require('../../browser/tab-manager');
 
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
@@ -51,70 +54,132 @@ class DouyinPlatform extends PlatformBase {
     try {
       logger.info(`Starting Douyin login for account ${accountId}, session ${sessionId}`);
 
-      // 1. 确保账户的浏览器上下文有效（自动检测并重启）
-      const context = await this.ensureAccountContext(accountId, proxy);
+      // 1. 确保账户的浏览器上下文有效
+      await this.ensureAccountContext(accountId, proxy);
 
-      // 2. 使用统一的页面管理接口获取页面（自动保存到页面池中供后续使用）
-      const page = await this.getAccountPage(accountId);
-      
-      // 3. 访问抖音创作者中心登录页
-      logger.info('Navigating to Douyin Creator Center...');
-      await page.goto('https://creator.douyin.com/', { 
-        waitUntil: 'networkidle',
-        timeout: 30000 
+      // 2. ⭐ 使用 TabManager 获取登录窗口
+      // 登录窗口特性：
+      // - 临时窗口，登录成功后会关闭
+      // - 可复用（如果已有登录窗口）
+      // - 不强制创建新窗口（复用已有登录窗口）
+      logger.info('Getting login tab from TabManager...');
+      const { tabId, page: loginPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
+        tag: TabTag.LOGIN,
+        persistent: false,     // 登录成功后关闭
+        shareable: true,       // 登录窗口可复用
+        forceNew: false        // 如果已有登录窗口，复用它
       });
-      
-      // 等待页面加载完成
-      await page.waitForTimeout(2000);
-      
-      // 截取登录页面以便调试
-      logger.info('Taking screenshot of login page for debugging...');
-      await this.takeScreenshot(accountId, `login_page_${Date.now()}.png`);
-      
-      // 4. 检测登录方式
-      logger.info('Detecting login method...');
-      const loginMethod = await this.detectLoginMethod(page);
-      
-      logger.info(`Login method detected: ${loginMethod.type}`, JSON.stringify(loginMethod));
-      
-      // 5. 根据登录方式处理
-      if (loginMethod.type === 'logged_in') {
-        // 已经登录，直接返回成功
-        logger.info(`Account ${accountId} already logged in`);
-        
-        const userInfo = await this.extractUserInfo(page);
-        await this.sendLoginStatus(sessionId, 'success', {
-          account_id: accountId,
-          user_info: userInfo,
-          message: '账户已登录',
-        });
-        
-        return { status: 'success', userInfo };
+
+      try {
+        // 导航到创作中心（登录窗口默认可能不在正确的页面）
+        if (!loginPage.url().includes('creator.douyin.com')) {
+          logger.info('Navigating to creator center for login check...');
+          await loginPage.goto('https://creator.douyin.com/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+        }
+
+        logger.info(`Page ready at: ${loginPage.url()}`);
+
+        // 等待页面稳定
+        await loginPage.waitForTimeout(2000);
+
+        // 3. 截图用于调试
+        await this.takeScreenshot(accountId, `login_start_${Date.now()}.png`);
+
+        // 4. 检测登录状态（在当前页面）
+        logger.info('Checking login status on current page...');
+        const loginStatus = await this.checkLoginStatus(loginPage);
+
+        if (loginStatus.isLoggedIn) {
+          // ✅ 已登录：提取用户信息并关闭页面
+          logger.info(`✓ Account ${accountId} is already logged in`);
+
+          const userInfo = await this.extractUserInfo(loginPage);
+          logger.info('Extracted user info:', JSON.stringify(userInfo));
+
+          // ⭐ 关键改进: 先创建爬虫窗口,确保不会因为"最后窗口保护"而无法关闭登录窗口
+          logger.info('Pre-creating spider windows before closing login window...');
+
+          try {
+            // 创建私信爬虫窗口
+            const { page: dmPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
+              tag: TabTag.SPIDER_DM,
+              persistent: true,
+              shareable: false,
+              forceNew: false
+            });
+            logger.info('✅ DM spider window pre-created');
+
+            // 创建评论爬虫窗口
+            const { page: commentPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
+              tag: TabTag.SPIDER_COMMENT,
+              persistent: true,
+              shareable: false,
+              forceNew: false
+            });
+            logger.info('✅ Comment spider window pre-created');
+          } catch (error) {
+            logger.warn('Failed to pre-create spider windows:', error.message);
+            // 继续执行,不影响登录流程
+          }
+
+          // 关闭登录页面 - 使用 TabManager (现在不是最后一个窗口了)
+          const closed = await this.browserManager.tabManager.closeTab(accountId, tabId);
+          logger.info(closed ? '✅ Login window closed' : '⚠️  Login window not closed (may be converted to placeholder)');
+
+          // 发送登录成功状态给 Master
+          await this.sendLoginStatus(sessionId, 'success', {
+            account_id: accountId,
+            user_info: userInfo,
+            session_id: sessionId,
+            message: '账户已登录',
+          });
+
+          return { status: 'success', userInfo };
+        } else {
+          // ❌ 未登录：在**当前页面**继续登录流程（不关闭、不新建）
+          logger.info(`✗ Account ${accountId} is NOT logged in, starting login process...`);
+
+          // 检测登录方式（当前页面可能已经在登录页面，或需要跳转）
+          const currentUrl = loginPage.url();
+          if (!currentUrl.includes('/login')) {
+            // 如果不在登录页面，可能需要点击登录按钮或导航
+            logger.info('Not on login page, page will auto-redirect or show login UI');
+          }
+
+          await loginPage.waitForTimeout(2000);
+
+          // 检测登录方式
+          const loginMethod = await this.detectLoginMethod(loginPage);
+          logger.info(`Login method detected: ${loginMethod.type}`);
+
+          if (loginMethod.type === 'qrcode') {
+            // 显示二维码登录（在当前 loginPage 上）
+            return await this.handleQRCodeLogin(loginPage, accountId, sessionId, {
+              qrSelector: loginMethod.selector,
+              expirySelector: loginMethod.expirySelector
+            });
+          } else if (loginMethod.type === 'sms') {
+            // 显示 SMS 登录（在当前 loginPage 上）
+            return await this.handleSMSLogin(loginPage, accountId, sessionId, {
+              phoneInputSelector: loginMethod.phoneInputSelector,
+              codeInputSelector: loginMethod.codeInputSelector
+            });
+          } else {
+            throw new Error(`Unsupported login method: ${loginMethod.type}`);
+          }
+        }
+      } catch (error) {
+        // 确保登录页面被关闭 - 使用 TabManager
+        try {
+          await this.browserManager.tabManager.closeTab(accountId, tabId);
+        } catch (e) {
+          logger.warn('Failed to close login tab:', e.message);
+        }
+        throw error;
       }
-      
-      if (loginMethod.type === 'qrcode') {
-        // 二维码登录
-        logger.info('Using QR code login method');
-        logger.info(`QR selector: ${loginMethod.selector}`);
-        return await this.handleQRCodeLogin(page, accountId, sessionId, {
-          qrSelector: loginMethod.selector,
-          expirySelector: loginMethod.expirySelector,
-        });
-      }
-      
-      if (loginMethod.type === 'sms') {
-        // 手机短信验证码登录
-        logger.info('Using SMS verification login method');
-        return await this.handleSMSLogin(page, accountId, sessionId, {
-          phoneSelector: loginMethod.phoneSelector,
-          codeSelector: loginMethod.codeSelector,
-          getSMSButtonSelector: loginMethod.getSMSButtonSelector,
-          loginButtonSelector: loginMethod.loginButtonSelector,
-        });
-      }
-      
-      // 未知登录方式
-      throw new Error(`Unsupported login method: ${loginMethod.type}`);
       
     } catch (error) {
       logger.error(`Douyin login failed for account ${accountId}:`, error);
@@ -133,6 +198,151 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
+   * 检查登录状态（检查用户信息容器）
+   * 通过 Chrome DevTools 确认的精确选择器（2025-10-24）
+   * @param {Page} page - Playwright 页面对象
+   * @returns {boolean} true=已登录, false=未登录
+   */
+  /**
+   * 检查抖音登录状态
+   *
+   * ⚠️ 重要：此函数**不负责导航**，只负责检测当前页面的登录状态
+   *
+   * 调用者应该在调用此函数前，确保页面已经导航到正确的 URL：
+   * - 创作中心页面（https://creator.douyin.com/）
+   * - 或登录页面（https://www.douyin.com/passport/web/login）
+   *
+   * @param {Page} page - Playwright 页面对象（已导航到目标页面）
+   * @param {string} checkMethod - 检测方法（'auto' | 'element' | 'cookie' | 'url'）
+   * @returns {Object} 登录状态 {isLoggedIn: boolean, status: string, userInfo?: Object}
+   */
+  async checkLoginStatus(page, checkMethod = 'auto') {
+    try {
+      const currentUrl = page.url();
+      logger.info(`[checkLoginStatus] 📍 Checking login status on current page: ${currentUrl}`);
+      logger.info(`[checkLoginStatus] 🔍 Detection method: ${checkMethod}`);
+
+      // ⚠️ 不进行任何导航操作，直接检测当前页面
+      // 调用者负责确保页面已在正确的 URL
+
+      // ⭐ 优先检查：如果页面上有登录元素（二维码、登录按钮等），说明未登录
+      const loginPageIndicators = [
+        'text=扫码登录',
+        'text=验证码登录',
+        'text=密码登录',
+        'text=我是创作者',
+        'text=我是MCN机构',
+        'text=需在手机上进行确认',
+        '[class*="qrcode"]',  // 二维码相关元素
+        '[class*="login-qrcode"]',
+      ];
+
+      for (const indicator of loginPageIndicators) {
+        try {
+          const element = await page.$(indicator);
+          if (element && await element.isVisible()) {
+            logger.info(`✗ [checkLoginStatus] Found login page indicator: ${indicator} - NOT logged in`);
+            return { isLoggedIn: false, status: 'not_logged_in' };
+          }
+        } catch (e) {
+          // 忽略错误，继续检查下一个
+        }
+      }
+
+      // 方法1: 检查用户信息容器（最可靠）
+      // 这个容器只有在登录后才会出现，包含用户昵称、抖音号、头像等
+      const userContainerSelectors = [
+        'div.container-vEyGlK',  // 用户信息容器的 class（Chrome DevTools 确认）
+        'div[class*="container-"]',  // 容器 class 的模糊匹配（防止 class 名变化）
+      ];
+
+      for (const selector of userContainerSelectors) {
+        try {
+          const container = await page.$(selector);
+          if (container) {
+            const isVisible = await container.isVisible();
+            if (isVisible) {
+              // 进一步验证：检查容器中是否包含"抖音号："文本
+              const text = await container.textContent();
+              if (text && text.includes('抖音号：')) {
+                logger.info(`✅ [checkLoginStatus] Found user info container with selector: ${selector} - logged in`);
+
+                // 提取用户信息
+                const userInfo = await this.extractUserInfo(page);
+                return { isLoggedIn: true, status: 'logged_in', userInfo };
+              }
+            }
+          }
+        } catch (e) {
+          logger.debug(`[checkLoginStatus] Failed to check container selector ${selector}: ${e.message}`);
+        }
+      }
+
+      // 方法2: 直接检查"抖音号："元素
+      const douyinIdSelectors = [
+        'div.unique_id-EuH8eA',  // 抖音号元素的 class（Chrome DevTools 确认）
+        'div[class*="unique_id-"]',  // 抖音号 class 的模糊匹配
+      ];
+
+      for (const selector of douyinIdSelectors) {
+        try {
+          const element = await page.$(selector);
+          if (element) {
+            const isVisible = await element.isVisible();
+            if (isVisible) {
+              const text = await element.textContent();
+              if (text && text.includes('抖音号：')) {
+                logger.info(`✅ [checkLoginStatus] Found 抖音号 element with selector: ${selector} - logged in`);
+
+                // 提取用户信息
+                const userInfo = await this.extractUserInfo(page);
+                return { isLoggedIn: true, status: 'logged_in', userInfo };
+              }
+            }
+          }
+        } catch (e) {
+          logger.debug(`[checkLoginStatus] Failed to check douyinId selector ${selector}: ${e.message}`);
+        }
+      }
+
+      // 方法3: 检查用户头像（特定位置）
+      const avatarSelectors = [
+        'div.avatar-XoPjK6 img',  // 头像容器中的 img（Chrome DevTools 确认）
+        'img.img-PeynF_',  // 头像 img 的 class（Chrome DevTools 确认）
+        'div[class*="avatar-"] img[src*="douyinpic.com"]',  // 抖音 CDN 头像
+      ];
+
+      for (const selector of avatarSelectors) {
+        try {
+          const avatar = await page.$(selector);
+          if (avatar) {
+            const isVisible = await avatar.isVisible();
+            if (isVisible) {
+              const src = await avatar.getAttribute('src');
+              if (src && src.includes('douyinpic.com')) {
+                logger.info(`✅ [checkLoginStatus] Found user avatar with selector: ${selector} - logged in`);
+
+                // 提取用户信息
+                const userInfo = await this.extractUserInfo(page);
+                return { isLoggedIn: true, status: 'logged_in', userInfo };
+              }
+            }
+          }
+        } catch (e) {
+          logger.debug(`[checkLoginStatus] Failed to check avatar selector ${selector}: ${e.message}`);
+        }
+      }
+
+      logger.info('✗ [checkLoginStatus] No user info indicators found - NOT logged in');
+      return { isLoggedIn: false, status: 'not_logged_in' };
+
+    } catch (error) {
+      logger.error('[checkLoginStatus] Error checking login status:', error);
+      return { isLoggedIn: false, status: 'error', error: error.message };
+    }
+  }
+
+  /**
    * 检测抖音创作者中心的登录方式
    * 优先级：已登录 > 二维码 > 手机短信
    * @param {Page} page - Playwright 页面对象
@@ -141,15 +351,9 @@ class DouyinPlatform extends PlatformBase {
   async detectLoginMethod(page) {
     try {
       logger.info('Checking if already logged in...');
-      
-      // 1. 检查当前 URL（如果已经在首页，说明已登录）
-      const currentUrl = page.url();
-      if (currentUrl.includes('/creator-micro/home')) {
-        logger.info('User already logged in (on home page)');
-        return { type: 'logged_in' };
-      }
-      
-      // 2. 检查是否已登录（只检测页面顶部导航栏的用户头像，避免误判）
+
+      // 1. 首要检查：用户头像（最可靠的登录状态判断）
+      // 只检测页面顶部导航栏的用户头像，避免误判
       const avatarSelectors = [
         '#header-avatar > div',  // 抖音创作者中心实测选择器（2025年10月）- 顶部导航栏
         '#header-avatar',        // 顶部导航栏头像容器
@@ -157,7 +361,7 @@ class DouyinPlatform extends PlatformBase {
         '.header [class*="avatar"]', // 在 header 类内的头像
         // 不再使用通用的 [class*="avatar"]，因为会匹配到页面内容中的装饰性头像
       ];
-      
+
       for (const selector of avatarSelectors) {
         const userAvatar = await page.$(selector);
         if (userAvatar) {
@@ -168,6 +372,11 @@ class DouyinPlatform extends PlatformBase {
           }
         }
       }
+
+      // 2. URL 检查作为辅助判断（仅在有头像的情况下才认为已登录）
+      // 注意：creator-micro/home 页面可能显示登录界面，不能单独作为判断依据
+      const currentUrl = page.url();
+      logger.info(`Current URL: ${currentUrl}, no avatar found - showing login page`)
       
       // 3. 等待登录模块加载
       await page.waitForTimeout(1000);
@@ -334,107 +543,6 @@ class DouyinPlatform extends PlatformBase {
     }
   }
 
-  /**
-   * 检查抖音登录状态（覆盖基类方法）
-   * @param {Page} page - Playwright 页面对象
-   * @param {string} method - 检测方法
-   * @returns {Object} 登录状态
-   */
-  async checkLoginStatus(page, method = 'auto') {
-    try {
-      const currentUrl = page.url();
-      logger.debug(`[checkLoginStatus] Current URL: ${currentUrl}`);
-      
-      // 如果不在创作者中心页面，尝试导航到首页来验证登录状态
-      if (!currentUrl.includes('/creator-micro/home') && !currentUrl.includes('/creator/')) {
-        logger.debug('[checkLoginStatus] Not on creator page, navigating to home page to check login...');
-        
-        try {
-          // 尝试导航到首页（如果已登录会成功，如果未登录会被重定向到登录页）
-          await page.goto('https://creator.douyin.com/creator-micro/home', {
-            waitUntil: 'networkidle',
-            timeout: 10000
-          });
-          
-          // 等待页面加载
-          await page.waitForTimeout(1000);
-          
-          const newUrl = page.url();
-          logger.debug(`[checkLoginStatus] After navigation, URL: ${newUrl}`);
-          
-          // 如果被重定向回登录页，说明未登录
-          if (newUrl.includes('/login') || !newUrl.includes('/creator')) {
-            logger.debug('[checkLoginStatus] Redirected to login page - not logged in yet');
-            return { isLoggedIn: false, status: 'pending' };
-          }
-          
-        } catch (error) {
-          logger.warn('[checkLoginStatus] Navigation failed (may still be on login page):', error.message);
-          return { isLoggedIn: false, status: 'pending' };
-        }
-      }
-      
-      // 方法1: 检查是否在创作者中心首页
-      if (currentUrl.includes('/creator-micro/home') || page.url().includes('/creator-micro/home')) {
-        logger.debug('[checkLoginStatus] On creator home page, checking page content...');
-        
-        // 最可靠的判断：检查"抖音号："文本（只有登录后才会显示）
-        const pageText = await page.textContent('body');
-        if (pageText && pageText.includes('抖音号：')) {
-          logger.info('✅ [checkLoginStatus] Login successful - found "抖音号：" text on page');
-          
-          // 提取用户信息
-          const userInfo = await this.extractUserInfo(page);
-          if (userInfo && userInfo.douyin_id) {
-            logger.info(`[checkLoginStatus] User: ${userInfo.nickname} (抖音号: ${userInfo.douyin_id})`);
-          }
-          
-          return { isLoggedIn: true, status: 'logged_in', userInfo };
-        }
-        
-        logger.warn('[checkLoginStatus] On home page but "抖音号：" text not found - may still be loading');
-        return { isLoggedIn: false, status: 'pending' };
-      }
-      
-      // 方法2: 检查其他创作者页面（非登录页）
-      const finalUrl = page.url();
-      if (finalUrl.includes('/creator/') && !finalUrl.includes('/login')) {
-        logger.info('✅ [checkLoginStatus] Login successful - on creator page (not login)');
-        const userInfo = await this.extractUserInfo(page);
-        return { isLoggedIn: true, status: 'logged_in', userInfo };
-      }
-      
-      logger.debug('[checkLoginStatus] URL check: still on login page or redirecting');
-
-      
-      // 方法4: 检查是否在扫码中
-      logger.debug('[checkLoginStatus] Checking scanning status...');
-      const scanningHint = await page.$('[class*="scan"], [class*="scanning"]');
-      if (scanningHint) {
-        logger.debug('[checkLoginStatus] Status: scanning');
-        return { isLoggedIn: false, status: 'scanning' };
-      }
-      
-      // 方法5: 检查二维码是否过期
-      logger.debug('[checkLoginStatus] Checking QR code expiration...');
-      const expiredHint = await page.$('[class*="expire"], [class*="invalid"]');
-      if (expiredHint) {
-        const text = await expiredHint.textContent();
-        logger.debug(`[checkLoginStatus] Found expiry element with text: ${text}`);
-        if (text.includes('过期') || text.includes('失效')) {
-          logger.warn('[checkLoginStatus] Status: QR code expired');
-          return { isLoggedIn: false, status: 'expired' };
-        }
-      }
-      
-      logger.debug('[checkLoginStatus] Status: pending (waiting for user action)');
-      return { isLoggedIn: false, status: 'pending' };
-      
-    } catch (error) {
-      logger.error('Failed to check login status:', error);
-      return { isLoggedIn: false, status: 'error', error: error.message };
-    }
-  }
 
   /**
    * 提取抖音用户信息（覆盖基类方法）
@@ -541,417 +649,153 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 爬取评论 - 使用"点击+拦截"策略
+   * 爬取评论和讨论 - 使用"点击+拦截"策略
    * 导航到评论管理页面,点击视频选择器,拦截评论API获取数据
+   *
+   * ⭐ 新架构: 评论和讨论一起抓取（就像私信和会话一样）
+   * - 评论爬虫逻辑已迁移到 crawl-comments.js
+   * - platform.js 作为协调层，负责调用爬虫和数据上报
+   *
    * @param {Object} account - 账户对象
    * @param {Object} options - 选项
    * @param {number} options.maxVideos - 最多爬取的作品数量（默认全部）
-   * @returns {Promise<Object>} { comments: Array, videos: Array, newComments: Array, stats: Object }
+   * @param {boolean} options.includeDiscussions - 是否同时爬取讨论（默认true）
+   * @returns {Promise<Object>} { comments: Array, discussions: Array, works: Array, stats: Object }
    */
   async crawlComments(account, options = {}) {
-    const { maxVideos = null } = options;
-
     try {
-      logger.info(`Crawling comments for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
+      logger.info(`[crawlComments] Starting comments+discussions crawl for account ${account.id}`);
 
       // 确保账号有 platform_user_id
       if (!account.platform_user_id) {
+        logger.error(`[crawlComments] Account ${account.id} missing platform_user_id`);
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取或创建页面 - 使用 spider2 (Tab 2) 用于评论爬取
-      // ⭐ 关键改进: 现在使用独立的 spider2 标签页，与私信爬虫 (spider1) 并行运行
-      const page = await this.getOrCreatePage(account.id, 'spider2');
-
-      // 2. 设置全局API拦截器 - 持续监听所有评论API
-      const allApiResponses = [];
-      const commentApiPattern = /comment.*list/i;
-
-      page.on('response', async (response) => {
-        const url = response.url();
-        const contentType = response.headers()['content-type'] || '';
-
-        if (commentApiPattern.test(url) && contentType.includes('application/json')) {
-          try {
-            const json = await response.json();
-
-            if (json.comment_info_list && Array.isArray(json.comment_info_list)) {
-              const itemId = this.extractItemId(url);
-              const cursor = this.extractCursor(url);
-
-              allApiResponses.push({
-                timestamp: Date.now(),
-                url: url,
-                item_id: itemId,
-                cursor: cursor,
-                data: json,
-              });
-
-              logger.debug(`Intercepted comment API: cursor=${cursor}, comments=${json.comment_info_list.length}, has_more=${json.has_more}`);
-            }
-          } catch (error) {
-            // JSON解析失败,忽略
-          }
-        }
+      // 1. 获取页面 - 使用 TabManager 获取评论爬虫专用标签页
+      // ⭐ 关键改进: 使用 TabManager 管理评论爬虫标签页（持久、独立、长期运行）
+      logger.debug(`[crawlComments] Step 1: Getting spider_comment tab for account ${account.id}`);
+      const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+        tag: TabTag.SPIDER_COMMENT,
+        persistent: true,      // 长期运行，不关闭
+        shareable: false,      // 独立窗口，不共享
+        forceNew: false        // 复用已有窗口
       });
+      logger.info(`[crawlComments] Spider comment tab retrieved successfully`);
 
-      logger.info('API interceptor enabled');
+      // 2. 执行评论和讨论爬虫（新架构）
+      logger.debug(`[crawlComments] Step 2: Running comments+discussions crawler (crawlCommentsV2)`);
+      const crawlResult = await crawlCommentsV2(page, account, options);
 
-      // 3. 导航到评论管理页面
-      await this.navigateToCommentManage(page);
-      await page.waitForTimeout(3000);
+      const { comments, discussions, works, stats: crawlStats } = crawlResult;
+      logger.info(`[crawlComments] Crawler completed: ${comments.length} comments, ${discussions.length} discussions, ${works.length} works`);
 
-      // 4. 点击"选择作品"按钮打开模态框
-      logger.info('Opening video selector modal');
-      try {
-        await page.click('span:has-text("选择作品")', { timeout: 5000 });
-        await page.waitForTimeout(2000);
-      } catch (error) {
-        logger.warn('Failed to open video selector, videos may already be visible');
-      }
+      // 3. 发送评论数据到 Master
+      logger.debug(`[crawlComments] Step 3: Sending ${comments.length} comments to Master`);
+      await this.sendCommentsToMaster(account, comments, works);
+      logger.info(`[crawlComments] Comments sent to Master successfully`);
 
-      // 5. 获取所有视频元素
-      const videoElements = await page.evaluate(() => {
-        const containers = document.querySelectorAll('.container-Lkxos9');
-        const videos = [];
-
-        containers.forEach((container, idx) => {
-          const titleEl = container.querySelector('.title-LUOP3b');
-          const commentCountEl = container.querySelector('.right-os7ZB9 > div:last-child');
-
-          if (titleEl) {
-            videos.push({
-              index: idx,
-              title: titleEl.innerText?.trim() || '',
-              commentCountText: commentCountEl?.innerText?.trim() || '0',
-            });
-          }
-        });
-
-        return videos;
-      });
-
-      logger.info(`Found ${videoElements.length} video elements`);
-
-      // 筛选有评论的视频
-      const videosToClick = videoElements.filter(v => parseInt(v.commentCountText) > 0);
-      logger.info(`Videos with comments: ${videosToClick.length}`);
-
-      if (videosToClick.length === 0) {
-        logger.warn('No videos with comments found');
-        return {
-          comments: [],
-          videos: [],
-          newComments: [],
-          stats: { recent_comments_count: 0, total_videos: 0, new_comments_count: 0 },
-        };
-      }
-
-      // 限制处理的视频数量
-      const maxToProcess = maxVideos ? Math.min(maxVideos, videosToClick.length) : videosToClick.length;
-
-      // 6. 批量点击所有视频
-      logger.info(`Clicking ${maxToProcess} videos to trigger comment loading`);
-      for (let i = 0; i < maxToProcess; i++) {
-        const video = videosToClick[i];
-        logger.info(`[${i + 1}/${maxToProcess}] Clicking: ${video.title.substring(0, 50)}...`);
-
-        try {
-          // 使用JavaScript直接点击(避免被遮挡)
-          await page.evaluate((idx) => {
-            const containers = document.querySelectorAll('.container-Lkxos9');
-            if (idx < containers.length) {
-              containers[idx].click();
-            }
-          }, video.index);
-
-          // 等待API响应
-          await page.waitForTimeout(2000);
-
-          // 重新打开模态框以便点击下一个
-          if (i < maxToProcess - 1) {
-            await page.click('span:has-text("选择作品")', { timeout: 5000 });
-            await page.waitForTimeout(1000);
-          }
-        } catch (error) {
-          logger.error(`Failed to click video ${i}: ${error.message}`);
-        }
-      }
-
-      logger.info('Finished clicking all videos, waiting for final API responses');
-      await page.waitForTimeout(2000);
-
-      // 7. 第二轮: 处理需要分页的视频 (has_more: true)
-      logger.info('Checking for videos that need pagination...');
-
-      // 按item_id分组当前已拦截的响应
-      let currentResponsesByItemId = this.groupResponsesByItemId(allApiResponses);
-
-      // 检查哪些视频需要加载更多
-      const videosNeedMore = [];
-      for (const [itemId, responses] of Object.entries(currentResponsesByItemId)) {
-        const latestResponse = responses[responses.length - 1];
-        if (latestResponse.data.has_more) {
-          const totalCount = latestResponse.data.total_count || 0;
-          const loadedCount = responses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
-          videosNeedMore.push({
-            itemId,
-            totalCount,
-            loadedCount,
-            nextCursor: latestResponse.data.cursor,
-          });
-        }
-      }
-
-      if (videosNeedMore.length > 0) {
-        logger.info(`Found ${videosNeedMore.length} videos that need pagination`);
-        videosNeedMore.forEach(v => {
-          logger.debug(`  - item_id: ${v.itemId.substring(0, 30)}... (loaded ${v.loadedCount}/${v.totalCount})`);
-        });
-
-        // 对于需要分页的视频，尝试加载更多评论
-        for (const videoInfo of videosNeedMore) {
-          logger.info(`Processing pagination for item_id: ${videoInfo.itemId.substring(0, 30)}...`);
-
-          // 查找对应的视频元素
-          const videoElement = videosToClick.find(v => {
-            // 通过评论数量匹配（不完美，但可用）
-            return parseInt(v.commentCountText) === videoInfo.totalCount;
-          });
-
-          if (!videoElement) {
-            logger.warn(`  Could not find matching video element, skipping pagination`);
-            continue;
-          }
-
-          try {
-            // 重新打开模态框
-            await page.click('span:has-text("选择作品")', { timeout: 5000 });
-            await page.waitForTimeout(1000);
-
-            // 点击该视频
-            await page.evaluate((idx) => {
-              const containers = document.querySelectorAll('.container-Lkxos9');
-              if (idx < containers.length) {
-                containers[idx].click();
-              }
-            }, videoElement.index);
-
-            logger.info(`  Clicked video, attempting to load more comments`);
-            await page.waitForTimeout(2000);
-
-            // 尝试滚动加载更多评论
-            const beforeCount = allApiResponses.length;
-            let scrollAttempts = 0;
-            const maxScrolls = 10;
-
-            while (scrollAttempts < maxScrolls) {
-              // 查找并点击"加载更多"按钮或滚动到底部
-              const hasLoadMore = await page.evaluate(() => {
-                // 查找包含"加载更多"、"查看更多"等文本的按钮
-                const buttons = Array.from(document.querySelectorAll('button, div[class*="load"], div[class*="more"]'));
-                for (const btn of buttons) {
-                  const text = btn.innerText || '';
-                  if (text.includes('更多') || text.includes('加载')) {
-                    btn.click();
-                    return true;
-                  }
-                }
-
-                // 或者滚动评论列表到底部
-                const commentContainer = document.querySelector('[class*="comment"]');
-                if (commentContainer) {
-                  commentContainer.scrollTo(0, commentContainer.scrollHeight);
-                  return true;
-                }
-
-                return false;
-              });
-
-              if (hasLoadMore) {
-                await page.waitForTimeout(2000);
-                scrollAttempts++;
-
-                // 检查是否有新的API响应
-                if (allApiResponses.length > beforeCount) {
-                  logger.debug(`  Loaded more comments (attempt ${scrollAttempts}/${maxScrolls})`);
-                }
-              } else {
-                logger.debug(`  No "load more" button found or unable to scroll`);
-                break;
-              }
-
-              // 检查当前视频是否已加载完成
-              const updatedResponses = this.groupResponsesByItemId(allApiResponses)[videoInfo.itemId] || [];
-              const currentLoaded = updatedResponses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
-
-              // 检查最新响应是否 has_more = false
-              const latestResp = updatedResponses[updatedResponses.length - 1];
-              if (!latestResp.data.has_more || currentLoaded >= videoInfo.totalCount) {
-                logger.info(`  Finished loading all comments (${currentLoaded}/${videoInfo.totalCount})`);
-                break;
-              }
-            }
-
-          } catch (error) {
-            logger.error(`  Failed to load more comments: ${error.message}`);
-          }
-        }
-
-        logger.info('Pagination round completed, waiting for final API responses');
-        await page.waitForTimeout(2000);
+      // 4. 发送讨论数据到 Master
+      if (discussions && discussions.length > 0) {
+        logger.debug(`[crawlComments] Step 4: Sending ${discussions.length} discussions to Master`);
+        await this.sendDiscussionsToMaster(account, discussions);
+        logger.info(`[crawlComments] Discussions sent to Master successfully`);
       } else {
-        logger.info('No videos need pagination (all have has_more: false or ≤10 comments)');
+        logger.info(`[crawlComments] No discussions to send to Master`);
       }
 
-      // 8. 解析所有拦截到的评论
-      logger.info(`Processing ${allApiResponses.length} intercepted API responses`);
-
-      // 按item_id分组响应
-      const responsesByItemId = this.groupResponsesByItemId(allApiResponses);
-
-      const allComments = [];
-      const allNewComments = [];
-      const videosWithComments = [];
-
-      for (const [itemId, responses] of Object.entries(responsesByItemId)) {
-        const totalCount = responses[0].data.total_count || 0;
-        const comments = [];
-
-        // 合并所有分页的评论
-        responses.forEach((resp, respIdx) => {
-          resp.data.comment_info_list.forEach((c, cIdx) => {
-            // DEBUG: 记录第一条评论的完整对象结构，找到真实的时间字段
-            if (respIdx === 0 && cIdx === 0) {
-              logger.info('\n╔════════════════════════════════════════════════════════════╗');
-              logger.info('║  🔍 API Response Comment Object Diagnosis (First Comment)  ║');
-              logger.info('╚════════════════════════════════════════════════════════════╝\n');
-
-              logger.info(`📋 All keys (${Object.keys(c).length}):`, Object.keys(c).sort().join(', '));
-
-              // 列出所有可能的时间相关字段
-              logger.info('\n⏰ Time-related fields:');
-              for (const [key, value] of Object.entries(c)) {
-                if (key.toLowerCase().includes('time') ||
-                    key.toLowerCase().includes('date') ||
-                    key.toLowerCase().includes('create') ||
-                    key.toLowerCase().includes('publish')) {
-                  const valueStr = String(value);
-                  const valueType = typeof value;
-                  logger.info(`   ${key}:`);
-                  logger.info(`      Type: ${valueType}`);
-                  logger.info(`      Value: ${valueStr}`);
-                  logger.info(`      Value length: ${valueStr.length}`);
-                  if (valueType === 'number') {
-                    const asDate = new Date(value * 1000);
-                    const asDateMs = new Date(value);
-                    logger.info(`      As seconds (×1000): ${asDate.toLocaleString('zh-CN')}`);
-                    logger.info(`      As milliseconds: ${asDateMs.toLocaleString('zh-CN')}`);
-                  }
-                  logger.info('');
-                }
-              }
-
-              // 输出完整的第一条评论对象（前3000字符）
-              logger.info('\n📝 Full comment object (first 3000 chars):');
-              logger.info(JSON.stringify(c, null, 2).substring(0, 3000));
-              logger.info('\n');
-            }
-
-            // 获取原始 create_time 值（可能是秒级或毫秒级）
-            const rawCreateTime = c.create_time;
-            let createTimeSeconds = parseInt(rawCreateTime);
-
-            // 诊断: 打印原始值
-            if (respIdx === 0 && cIdx === 0) {
-              logger.info(`🔍 Create time debug:`);
-              logger.info(`   Raw value: ${rawCreateTime} (type: ${typeof rawCreateTime})`);
-              logger.info(`   As seconds: ${createTimeSeconds}`);
-              logger.info(`   Formatted (as seconds): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
-
-              // 检查是否为毫秒级（13位数字）
-              if (createTimeSeconds > 9999999999) {
-                logger.info(`   ⚠️  Detected milliseconds format, converting to seconds`);
-                createTimeSeconds = Math.floor(createTimeSeconds / 1000);
-                logger.info(`   After conversion: ${createTimeSeconds}`);
-                logger.info(`   Formatted (corrected): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
-              }
-            }
-
-            comments.push({
-              platform_comment_id: c.comment_id,
-              content: c.text,
-              author_name: c.user_info?.screen_name || '匿名',
-              author_id: c.user_info?.user_id || '',
-              author_avatar: c.user_info?.avatar_url || '',
-              create_time: createTimeSeconds,
-              create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
-              like_count: parseInt(c.digg_count) || 0,
-              reply_count: parseInt(c.reply_count) || 0,
-              detected_at: Math.floor(Date.now() / 1000),
-            });
-          });
-        });
-
-        // 去重 (通过platform_comment_id)
-        const uniqueComments = Array.from(
-          new Map(comments.map(c => [c.platform_comment_id, c])).values()
-        );
-
-        // 匹配视频信息
-        const videoInfo = videosToClick.find(v => v.commentCountText == totalCount.toString()) || {
-          title: '未知作品',
-          index: -1,
-        };
-
-        // 为评论添加视频信息
-        uniqueComments.forEach(comment => {
-          comment.post_title = videoInfo.title;
-          comment.post_id = itemId; // 使用item_id作为post_id
-        });
-
-        allComments.push(...uniqueComments);
-
-        videosWithComments.push({
-          aweme_id: itemId,  // 修正: 使用 aweme_id 而不是 item_id
-          item_id: itemId,   // 保留 item_id 作为兼容字段
-          title: videoInfo.title,
-          total_count: totalCount,
-          actual_count: uniqueComments.length,
-          comment_count: uniqueComments.length,
-        });
-
-        logger.info(`Video "${videoInfo.title.substring(0, 30)}...": ${uniqueComments.length}/${totalCount} comments`);
-      }
-
-      logger.info(`Total: ${allComments.length} comments from ${videosWithComments.length} videos`);
-
-      // 构建统计数据
+      // 5. 构建统计数据
       const stats = {
-        recent_comments_count: allComments.length,
-        new_comments_count: allComments.length, // 暂时全部标记为新评论
-        total_videos: videoElements.length,
-        processed_videos: videosWithComments.length,
+        recent_comments_count: comments.length,
+        recent_discussions_count: discussions.length,
+        new_comments_count: comments.length, // TODO: 实现增量更新
         crawl_time: Math.floor(Date.now() / 1000),
+        ...crawlStats,
       };
 
-      // 发送数据到 Master
-      await this.sendCommentsToMaster(account, allComments, videosWithComments);
-
+      logger.info(`[crawlComments] ✅ Comments+discussions crawl completed: ${comments.length} comments, ${discussions.length} discussions`);
       return {
-        comments: allComments,
-        videos: videosWithComments,
-        newComments: allComments, // TODO: 实现增量更新
+        comments,
+        discussions,
+        works,
         stats,
       };
     } catch (error) {
-      logger.error(`Failed to crawl comments for account ${account.id}:`, error);
+      logger.error(`[crawlComments] ❌ FATAL ERROR for account ${account.id}:`, error);
+      logger.error(`[crawlComments] Error stack:`, error.stack);
       throw error;
     }
   }
 
   /**
-   * 从URL提取item_id参数
+   * ✨ 新增: 发送讨论数据到 Master
+   * @param {Object} account - 账户对象
+   * @param {Array} discussions - 讨论数组
+   */
+  async sendDiscussionsToMaster(account, discussions) {
+    if (!discussions || discussions.length === 0) {
+      logger.debug('No discussions to send to Master');
+      return;
+    }
+
+    try {
+      logger.info(`Sending ${discussions.length} discussions to Master for account ${account.id}`);
+
+      // 使用 Socket.IO 发送讨论数据
+      this.workerBridge.socket.emit('worker:bulk_insert_discussions', {
+        account_id: account.id,
+        discussions: discussions,
+      });
+
+      logger.info(`✅ Sent ${discussions.length} discussions to Master`);
+    } catch (error) {
+      logger.error('Failed to send discussions to Master:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * ✨ 新增: 发送作品数据到 Master (使用新的 works 表)
+   * @param {Object} account - 账户对象
+   * @param {Array} videos - 视频/作品数组
+   */
+  async sendWorksToMaster(account, videos) {
+    if (!videos || videos.length === 0) {
+      logger.debug('No works to send to Master');
+      return;
+    }
+
+    try {
+      logger.info(`Sending ${videos.length} works to Master for account ${account.id}`);
+
+      // 将视频数据转换为 works 表格式
+      const works = videos.map(video => ({
+        account_id: account.id,
+        platform: 'douyin',
+        platform_work_id: video.aweme_id || video.item_id,
+        platform_user_id: account.platform_user_id,
+        work_type: 'video',
+        title: video.title,
+        total_comment_count: video.total_count || video.comment_count || 0,
+        detected_at: Math.floor(Date.now() / 1000),
+      }));
+
+      // 使用 Socket.IO 批量发送作品数据
+      this.workerBridge.socket.emit('worker:bulk_insert_works', {
+        account_id: account.id,
+        works: works,
+      });
+
+      logger.info(`✅ Sent ${works.length} works to Master`);
+    } catch (error) {
+      logger.error('Failed to send works to Master:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 从URL提取item_id参数（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
+   * @deprecated Use crawl-comments.js exports instead
    * @param {string} url - API URL
    * @returns {string|null} item_id
    */
@@ -961,7 +805,8 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 从URL提取cursor参数
+   * 从URL提取cursor参数（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
+   * @deprecated Use crawl-comments.js exports instead
    * @param {string} url - API URL
    * @returns {number} cursor值
    */
@@ -971,7 +816,8 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * 按item_id分组API响应
+   * 按item_id分组API响应（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
+   * @deprecated Use crawl-comments.js exports instead
    * @param {Array} responses - API响应数组
    * @returns {Object} 按item_id分组的响应
    */
@@ -999,6 +845,11 @@ class DouyinPlatform extends PlatformBase {
    * @param {Object} account - 账户对象
    * @returns {Promise<Object>} { directMessages: Array, stats: Object }
    */
+  /**
+   * 爬取私信 - 导航到 互动管理 - 私信管理 页面，通过拦截API获取数据
+   * @param {Object} account - 账户对象
+   * @returns {Promise<Object>} { directMessages: Array, stats: Object }
+   */
   async crawlDirectMessages(account) {
     try {
       logger.info(`[crawlDirectMessages] Starting Phase 8 implementation for account ${account.id}`);
@@ -1009,11 +860,16 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取或创建页面 - 使用 spider1 (Tab 1) 用于私信爬取
-      // ⭐ 关键改进: 现在使用独立的 spider1 标签页，与评论爬虫 (spider2) 并行运行
-      logger.debug(`[crawlDirectMessages] Step 1: Getting or creating spider1 page for account ${account.id}`);
-      const page = await this.getOrCreatePage(account.id, 'spider1');
-      logger.info(`[crawlDirectMessages] Spider1 page retrieved successfully`);
+      // 1. 获取页面 - 使用 TabManager 获取私信爬虫专用标签页
+      // ⭐ 关键改进: 使用 TabManager 管理私信爬虫标签页（持久、独立、长期运行）
+      logger.debug(`[crawlDirectMessages] Step 1: Getting spider_dm tab for account ${account.id}`);
+      const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+        tag: TabTag.SPIDER_DM,
+        persistent: true,      // 长期运行，不关闭
+        shareable: false,      // 独立窗口，不共享
+        forceNew: false        // 复用已有窗口
+      });
+      logger.info(`[crawlDirectMessages] Spider DM tab retrieved successfully`);
 
       // 2. 执行 Phase 8 爬虫 (包括 API 拦截、虚拟列表提取、数据合并等)
       logger.debug(`[crawlDirectMessages] Step 2: Running Phase 8 crawler (crawlDirectMessagesV2)`);
@@ -1780,18 +1636,9 @@ class DouyinPlatform extends PlatformBase {
       if (newComments.length === 0) {
         logger.info(`No new comments to send (all ${comments.length} comments are duplicates)`);
 
-        // 即使没有新评论，也发送视频信息更新
-        for (const video of videos) {
-          this.bridge.socket.emit('worker:upsert_video', {
-            account_id: account.id,
-            platform_user_id: account.platform_user_id,
-            aweme_id: video.aweme_id,
-            platform_videos_id: video.aweme_id,  // 使用 aweme_id 作为平台视频ID
-            title: video.title,
-            cover: video.cover,
-            publish_time: video.publish_time,
-            total_comment_count: video.comment_count || 0,
-          });
+        // 即使没有新评论，也发送作品信息更新 (使用新的 works 表)
+        if (videos && videos.length > 0) {
+          await this.sendWorksToMaster(account, videos);
         }
 
         return;
@@ -1799,19 +1646,9 @@ class DouyinPlatform extends PlatformBase {
 
       logger.info(`Sending ${newComments.length} NEW comments (filtered from ${comments.length} total) and ${videos.length} videos to Master`);
 
-      // 发送视频信息（upsert）
-      for (const video of videos) {
-        // 仅在 Master 发送视频基本信息，is_new 和 push_count 由 Master 负责
-        this.bridge.socket.emit('worker:upsert_video', {
-          account_id: account.id,
-          platform_user_id: account.platform_user_id,
-          aweme_id: video.aweme_id,
-          platform_videos_id: video.aweme_id,  // 使用 aweme_id 作为平台视频ID
-          title: video.title,
-          cover: video.cover,
-          publish_time: video.publish_time,
-          total_comment_count: video.comment_count || 0,
-        });
+      // 发送作品信息 (使用新的 works 表)
+      if (videos && videos.length > 0) {
+        await this.sendWorksToMaster(account, videos);
       }
 
       // 计算 is_new 标志的辅助函数
@@ -2379,15 +2216,23 @@ class DouyinPlatform extends PlatformBase {
       });
 
       // 1. 获取临时标签页处理回复
-      // ⭐ 关键改进: 使用 BrowserManager 的临时页面系统
-      // 临时页面会在回复完成后立即关闭，不干扰常规爬虫任务
-      page = await this.browserManager.getTemporaryPage(accountId);
+      // ⭐ 使用 TabManager 获取评论回复专用临时窗口
+      // 特性：临时窗口，回复完成后立即关闭，不干扰爬虫任务
+      const { tabId, page: replyPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
+        tag: TabTag.REPLY_COMMENT,
+        persistent: false,     // 回复完成后关闭
+        shareable: false,      // 独立窗口
+        forceNew: true         // 每次回复创建新窗口
+      });
+
+      page = replyPage;
+      const replyTabId = tabId;
 
       logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
         accountId,
         purpose: 'comment_reply',
         commentId: target_id,
-        tempPageId: page._targetId || 'unknown'
+        tabId: replyTabId
       });
 
       // 设置超时
@@ -3052,23 +2897,24 @@ class DouyinPlatform extends PlatformBase {
 
     } finally {
       // 清理临时标签页 - 回复完成后立即关闭
-      // ⭐ 关键改进: 使用 BrowserManager 的临时页面关闭系统
-      if (page) {
+      // ⭐ 使用 TabManager 关闭评论回复窗口
+      if (page && replyTabId) {
         try {
           if (!page.isClosed()) {
-            logger.info('✅ Comment reply task completed - closing temporary page', {
+            logger.info('✅ Comment reply task completed - closing reply tab', {
               hasReplySuccess: !!apiResponses?.replySuccess,
               hasReplyError: !!apiResponses?.replyError,
-              accountId
+              accountId,
+              tabId: replyTabId
             });
-            // 关闭临时标签页并从管理器中移除
-            await this.browserManager.closeTemporaryPage(accountId, page);
-            logger.info('✅ Temporary page closed and removed from manager');
+            // 使用 TabManager 关闭标签页
+            await this.browserManager.tabManager.closeTab(accountId, replyTabId);
+            logger.info('✅ Reply tab closed via TabManager');
           } else {
-            logger.warn('ℹ️ Temporary page was already closed');
+            logger.warn('ℹ️ Reply page was already closed');
           }
         } catch (closeError) {
-          logger.warn('Error closing temporary page:', closeError.message);
+          logger.warn('Error closing reply tab:', closeError.message);
         }
       }
     }
@@ -3113,15 +2959,23 @@ class DouyinPlatform extends PlatformBase {
       });
 
       // 1. 获取临时标签页处理回复
-      // ⭐ 关键改进: 使用 BrowserManager 的临时页面系统
-      // 临时页面会在回复完成后立即关闭，不干扰常规爬虫任务
-      page = await this.browserManager.getTemporaryPage(accountId);
+      // ⭐ 使用 TabManager 获取私信回复专用临时窗口
+      // 特性：临时窗口，回复完成后立即关闭，不干扰爬虫任务
+      const { tabId, page: replyPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
+        tag: TabTag.REPLY_DM,
+        persistent: false,     // 回复完成后关闭
+        shareable: false,      // 独立窗口
+        forceNew: true         // 每次回复创建新窗口
+      });
+
+      page = replyPage;
+      const replyTabId = tabId;
 
       logger.info(`[Douyin] 为私信回复任务获取临时标签页`, {
         accountId,
         purpose: 'direct_message_reply',
         conversationId: finalConversationId,
-        tempPageId: page._targetId || 'unknown'
+        tabId: replyTabId
       });
 
       // 设置超时
@@ -3418,23 +3272,23 @@ class DouyinPlatform extends PlatformBase {
 
     } finally {
       // 清理临时标签页 - 回复完成后立即关闭
-      // ⭐ 关键改进: 使用 BrowserManager 的临时页面关闭系统
-      if (page) {
+      // ⭐ 使用 TabManager 关闭私信回复窗口
+      if (page && replyTabId) {
         try {
           // 确保只关闭这个特定的临时页面
           if (!page.isClosed()) {
-            logger.info(`[Douyin] Closing temporary page for DM reply`, {
+            logger.info(`[Douyin] Closing temporary DM reply tab`, {
               accountId,
               conversationId: finalConversationId,
-              status: 'Releasing temporary page resources'
+              tabId: replyTabId
             });
-            // 关闭临时标签页并从管理器中移除
-            await this.browserManager.closeTemporaryPage(accountId, page);
-            logger.info('✅ Temporary page closed and removed from manager');
+            // 使用 TabManager 关闭标签页
+            await this.browserManager.tabManager.closeTab(accountId, replyTabId);
+            logger.info('✅ DM reply tab closed via TabManager');
           }
         } catch (closeError) {
           // 页面可能已经关闭，忽略这个错误
-          logger.debug('Error closing temporary page:', closeError.message);
+          logger.debug('Error closing DM reply tab:', closeError.message);
         }
       }
     }

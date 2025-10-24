@@ -1,0 +1,360 @@
+/**
+ * Tab 窗口管理器
+ *
+ * 核心功能：
+ * 1. 根据任务类型获取/创建页面
+ * 2. 管理持久/非持久窗口
+ * 3. 防止浏览器进程退出（保留最后一个窗口）
+ * 4. 复用/独立窗口管理
+ *
+ * 设计原则：
+ * - 蜘蛛任务：独立窗口，长期运行
+ * - 登录任务：登录成功后关闭
+ * - 登录检测：优先复用登录窗口，否则新建检测窗口
+ * - 回复任务：新建窗口，完成后关闭
+ * - 保留最后一个窗口：防止浏览器进程退出
+ */
+
+const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const logger = createLogger('TabManager');
+
+// Tab 标记枚举
+const TabTag = {
+  SPIDER_DM: 'spider_dm',           // 私信蜘蛛（私信 + 会话）
+  SPIDER_COMMENT: 'spider_comment', // 评论蜘蛛（评论 + 视频 + 讨论）
+  LOGIN: 'login',                   // 登录任务
+  LOGIN_CHECK: 'login_check',       // 登录检测
+  REPLY_DM: 'reply_dm',             // 私信回复
+  REPLY_COMMENT: 'reply_comment',   // 评论回复
+  PLACEHOLDER: 'placeholder',       // 占位窗口
+};
+
+class TabManager {
+  constructor(browserManager) {
+    this.browserManager = browserManager;
+
+    // { accountId -> Map<tabId, tabInfo> }
+    this.tabs = new Map();
+
+    // 自增 Tab ID
+    this.tabIdCounter = 0;
+  }
+
+  /**
+   * ⭐ 根据任务获取页面（核心接口）
+   *
+   * @param {string} accountId - 账户ID
+   * @param {Object} options - 选项
+   * @param {string} options.tag - 窗口标记 (TabTag.*)
+   * @param {boolean} options.persistent - 是否持久窗口（false = 用完后关闭）
+   * @param {boolean} options.shareable - 是否可以公用
+   * @param {boolean} options.forceNew - 是否强制启用新窗口
+   * @returns {Promise<Object>} { tabId, page, shouldClose }
+   */
+  async getPageForTask(accountId, options = {}) {
+    const {
+      tag,
+      persistent = false,
+      shareable = false,
+      forceNew = false,
+    } = options;
+
+    if (!tag) {
+      throw new Error('Tag is required for getPageForTask');
+    }
+
+    logger.info(`📄 getPageForTask: account=${accountId}, tag=${tag}, persistent=${persistent}, shareable=${shareable}, forceNew=${forceNew}`);
+
+    // 1. 如果可以公用，尝试查找已有的可公用窗口
+    if (shareable && !forceNew) {
+      const existingTab = this.findTabByTag(accountId, tag);
+      if (existingTab) {
+        logger.info(`♻️  Reusing shareable tab ${existingTab.tabId} for ${tag}`);
+        return {
+          tabId: existingTab.tabId,
+          page: existingTab.page,
+          shouldClose: false, // 公用的不关闭
+        };
+      }
+    }
+
+    // 2. 如果不强制新建，尝试查找已有的同 tag 窗口
+    if (!forceNew) {
+      const existingTab = this.findTabByTag(accountId, tag);
+      if (existingTab) {
+        logger.info(`♻️  Reusing existing tab ${existingTab.tabId} for ${tag}`);
+        return {
+          tabId: existingTab.tabId,
+          page: existingTab.page,
+          shouldClose: !persistent, // 非持久的需要关闭
+        };
+      }
+    }
+
+    // 3. 创建新窗口
+    const { tabId, page } = await this.createTab(accountId, tag, persistent);
+
+    logger.info(`✨ Created new tab ${tabId} for ${tag}, persistent=${persistent}`);
+
+    return {
+      tabId,
+      page,
+      shouldClose: !persistent, // 非持久的需要关闭
+    };
+  }
+
+  /**
+   * 创建新 Tab
+   *
+   * @param {string} accountId - 账户ID
+   * @param {string} tag - Tab 标记
+   * @param {boolean} persistent - 是否持久
+   * @returns {Promise<Object>} { tabId, page }
+   */
+  async createTab(accountId, tag, persistent) {
+    // ⭐ 获取或创建浏览器上下文
+    let context = this.browserManager.contexts.get(accountId);
+
+    if (!context) {
+      logger.warn(`Context not found for account ${accountId}, creating...`);
+      context = await this.browserManager.createContextForAccount(accountId);
+
+      if (!context) {
+        throw new Error(`Failed to create context for account ${accountId}`);
+      }
+      logger.info(`✅ Context created for account ${accountId}`);
+    }
+
+    // 创建页面
+    const page = await context.newPage();
+    const tabId = `tab-${++this.tabIdCounter}`;
+
+    // 注册 Tab
+    if (!this.tabs.has(accountId)) {
+      this.tabs.set(accountId, new Map());
+    }
+
+    this.tabs.get(accountId).set(tabId, {
+      tabId,
+      page,
+      tag,
+      persistent,
+      createdAt: Date.now(),
+    });
+
+    logger.info(`✅ Registered tab ${tabId}: tag=${tag}, persistent=${persistent}`);
+
+    return { tabId, page };
+  }
+
+  /**
+   * 查找指定 tag 的 Tab
+   *
+   * @param {string} accountId - 账户ID
+   * @param {string} tag - Tab 标记
+   * @returns {Object|null} Tab 信息
+   */
+  findTabByTag(accountId, tag) {
+    const accountTabs = this.tabs.get(accountId);
+    if (!accountTabs) return null;
+
+    for (const [tabId, tabInfo] of accountTabs.entries()) {
+      if (tabInfo.tag === tag) {
+        return tabInfo;
+      }
+    }
+
+    return null;
+  }
+
+  /**
+   * 获取指定 Tab 信息
+   *
+   * @param {string} accountId - 账户ID
+   * @param {string} tabId - Tab ID
+   * @returns {Object|null} Tab 信息
+   */
+  getTab(accountId, tabId) {
+    const accountTabs = this.tabs.get(accountId);
+    if (!accountTabs) return null;
+
+    return accountTabs.get(tabId) || null;
+  }
+
+  /**
+   * ⭐ 安全关闭 Tab（保留最后一个窗口）
+   *
+   * @param {string} accountId - 账户ID
+   * @param {string} tabId - Tab ID
+   * @returns {Promise<boolean>} 是否成功关闭
+   */
+  async closeTab(accountId, tabId) {
+    const accountTabs = this.tabs.get(accountId);
+    if (!accountTabs) {
+      logger.warn(`No tabs found for account ${accountId}`);
+      return false;
+    }
+
+    const tab = accountTabs.get(tabId);
+    if (!tab) {
+      logger.warn(`Tab ${tabId} not found for account ${accountId}`);
+      return false;
+    }
+
+    // ⚠️ 检查是否是最后一个窗口
+    if (accountTabs.size <= 1) {
+      logger.warn(`⚠️  Cannot close last tab ${tabId} for account ${accountId} - would exit browser`);
+
+      // ⭐ 将此窗口转换为占位窗口
+      tab.tag = TabTag.PLACEHOLDER;
+      tab.persistent = true; // 占位窗口是持久的
+
+      logger.info(`🔄 Tab ${tabId} converted to PLACEHOLDER to keep browser alive`);
+      return false;
+    }
+
+    // 安全关闭
+    try {
+      if (!tab.page.isClosed()) {
+        await tab.page.close();
+        logger.info(`🗑️  Closed tab ${tabId} (tag=${tab.tag}) for account ${accountId}`);
+      }
+
+      accountTabs.delete(tabId);
+      return true;
+
+    } catch (error) {
+      logger.error(`Failed to close tab ${tabId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * 获取账户的所有 Tab
+   *
+   * @param {string} accountId - 账户ID
+   * @returns {Map} Tab Map
+   */
+  getAccountTabs(accountId) {
+    return this.tabs.get(accountId) || new Map();
+  }
+
+  /**
+   * 获取 Tab 数量
+   *
+   * @param {string} accountId - 账户ID
+   * @returns {number} Tab 数量
+   */
+  getTabCount(accountId) {
+    return this.getAccountTabs(accountId).size;
+  }
+
+  /**
+   * 获取 Tab 统计信息
+   *
+   * @param {string} accountId - 账户ID
+   * @returns {Object} 统计信息
+   */
+  getTabStats(accountId) {
+    const accountTabs = this.getAccountTabs(accountId);
+    const stats = {
+      total: accountTabs.size,
+      persistent: 0,
+      temporary: 0,
+      byTag: {},
+    };
+
+    for (const [tabId, tabInfo] of accountTabs.entries()) {
+      if (tabInfo.persistent) {
+        stats.persistent++;
+      } else {
+        stats.temporary++;
+      }
+
+      stats.byTag[tabInfo.tag] = (stats.byTag[tabInfo.tag] || 0) + 1;
+    }
+
+    return stats;
+  }
+
+  /**
+   * 打印 Tab 列表（调试用）
+   *
+   * @param {string} accountId - 账户ID
+   */
+  printTabs(accountId) {
+    const accountTabs = this.getAccountTabs(accountId);
+    logger.info(`📊 Account ${accountId} has ${accountTabs.size} tabs:`);
+
+    for (const [tabId, tabInfo] of accountTabs.entries()) {
+      const age = Math.floor((Date.now() - tabInfo.createdAt) / 1000);
+      const status = tabInfo.persistent ? '🔒 PERSISTENT' : '⏱️  TEMPORARY';
+      logger.info(`   ${status} ${tabId}: tag=${tabInfo.tag}, age=${age}s`);
+    }
+  }
+
+  /**
+   * 清理占位窗口
+   *
+   * 当有持久窗口（蜘蛛任务）启动后，可以关闭占位窗口
+   *
+   * @param {string} accountId - 账户ID
+   */
+  async cleanupPlaceholder(accountId) {
+    const accountTabs = this.getAccountTabs(accountId);
+
+    // 统计持久窗口数量（不包括占位窗口）
+    let persistentCount = 0;
+    let placeholderTab = null;
+
+    for (const [tabId, tabInfo] of accountTabs.entries()) {
+      if (tabInfo.tag === TabTag.PLACEHOLDER) {
+        placeholderTab = { tabId, ...tabInfo };
+      } else if (tabInfo.persistent) {
+        persistentCount++;
+      }
+    }
+
+    // 如果有至少 1 个持久窗口（蜘蛛任务），可以关闭占位窗口
+    if (persistentCount >= 1 && placeholderTab) {
+      logger.info(`🧹 Cleaning up placeholder tab ${placeholderTab.tabId} (have ${persistentCount} persistent tabs)`);
+
+      try {
+        if (!placeholderTab.page.isClosed()) {
+          await placeholderTab.page.close();
+        }
+        accountTabs.delete(placeholderTab.tabId);
+        logger.info(`✅ Placeholder tab cleaned up successfully`);
+      } catch (error) {
+        logger.error(`Failed to cleanup placeholder tab:`, error);
+      }
+    }
+  }
+
+  /**
+   * 清理账户的所有 Tab
+   *
+   * @param {string} accountId - 账户ID
+   */
+  async clearAccountTabs(accountId) {
+    const accountTabs = this.getAccountTabs(accountId);
+
+    logger.info(`🗑️  Clearing ${accountTabs.size} tabs for account ${accountId}...`);
+
+    for (const [tabId, tabInfo] of accountTabs.entries()) {
+      try {
+        if (!tabInfo.page.isClosed()) {
+          await tabInfo.page.close();
+          logger.debug(`Closed tab ${tabId}`);
+        }
+      } catch (error) {
+        logger.error(`Failed to close tab ${tabId}:`, error);
+      }
+    }
+
+    this.tabs.delete(accountId);
+    logger.info(`✅ Cleared all tabs for account ${accountId}`);
+  }
+}
+
+module.exports = { TabManager, TabTag };
