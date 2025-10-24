@@ -1,0 +1,546 @@
+/**
+ * 抖音作品爬虫
+ *
+ * 功能:
+ * 1. 访问创作者中心作品列表页
+ * 2. 虚拟列表滚动加载所有作品
+ * 3. 提取作品详细信息 (标题、封面、统计数据等)
+ * 4. API 拦截获取完整数据
+ * 5. 支持多种作品类型 (video/image/article)
+ */
+
+const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { v4: uuidv4 } = require('uuid');
+
+const logger = createLogger('crawl-works', './logs');
+
+/**
+ * 爬取抖音作品列表
+ * @param {Object} page - Playwright Page 实例
+ * @param {Object} account - 账户信息
+ * @param {Object} options - 爬取选项
+ * @returns {Promise<Object>} { works, stats }
+ */
+async function crawlWorks(page, account, options = {}) {
+  const {
+    maxWorks = 100,           // 最大作品数量
+    includeTypes = ['video', 'image', 'article'],  // 包含的作品类型
+  } = options;
+
+  logger.info(`Starting works crawl for account ${account.id}`);
+
+  try {
+    // 第 1 步: 设置 API 拦截器
+    logger.debug('Step 1: Setting up API interceptors');
+    const apiResponses = {
+      worksList: [],   // 作品列表 API
+      workDetail: [],  // 作品详情 API
+    };
+
+    await setupAPIInterceptors(page, apiResponses);
+    logger.info('API interceptors configured');
+
+    // 第 2 步: 导航到作品管理页面
+    logger.debug('Step 2: Navigating to works page');
+    await page.goto('https://creator.douyin.com/creator-micro/content/manage', {
+      waitUntil: 'networkidle',
+      timeout: 30000
+    });
+
+    await page.waitForTimeout(2000);
+    logger.info('Navigated to works page');
+
+    // 第 3 步: 点击"全部"标签，确保显示所有类型的作品
+    await clickAllWorksTab(page);
+
+    // 第 4 步: 滚动加载所有作品
+    logger.debug('Step 4: Loading all works via virtual list scrolling');
+    const works = await loadAllWorks(page, account, maxWorks);
+    logger.info(`Loaded ${works.length} works from virtual list`);
+
+    // 第 5 步: 从 API 响应中增强数据
+    logger.debug('Step 5: Enhancing works data from API responses');
+    const enhancedWorks = enhanceWorksWithAPIData(works, apiResponses);
+    logger.info(`Enhanced ${enhancedWorks.length} works with API data`);
+
+    // 第 6 步: 标准化数据格式
+    logger.debug('Step 6: Standardizing works data');
+    const standardizedWorks = enhancedWorks.map(work => standardizeWorkData(work, account));
+
+    // 第 7 步: 统计信息
+    const stats = {
+      totalWorks: standardizedWorks.length,
+      byType: countWorksByType(standardizedWorks),
+      crawlTime: Math.floor(Date.now() / 1000),
+      apiResponseCounts: {
+        worksList: apiResponses.worksList.length,
+        workDetail: apiResponses.workDetail.length,
+      }
+    };
+
+    logger.info('✅ Works crawl completed', stats);
+
+    return {
+      works: standardizedWorks,
+      stats
+    };
+
+  } catch (error) {
+    logger.error('❌ FATAL ERROR in works crawl:', error);
+    throw error;
+  }
+}
+
+/**
+ * 设置 API 拦截器
+ */
+async function setupAPIInterceptors(page, apiResponses) {
+  const requestCache = new Set();
+
+  // 拦截作品列表 API
+  await page.route('**/aweme/v1/web/aweme/post/**', async (route) => {
+    try {
+      const response = await route.fetch();
+      const body = await response.json();
+
+      const signature = `${route.request().url()}`;
+      if (!requestCache.has(signature)) {
+        requestCache.add(signature);
+        apiResponses.worksList.push(body);
+        logger.debug(`Intercepted works list API: ${body.aweme_list?.length || 0} works`);
+      }
+
+      await route.fulfill({ response });
+    } catch (error) {
+      logger.error('API interception error:', error.message);
+      await route.continue();
+    }
+  });
+
+  // 拦截作品详情 API
+  await page.route('**/aweme/v1/web/aweme/detail/**', async (route) => {
+    try {
+      const response = await route.fetch();
+      const body = await response.json();
+
+      apiResponses.workDetail.push(body);
+      logger.debug('Intercepted work detail API');
+
+      await route.fulfill({ response });
+    } catch (error) {
+      logger.error('API interception error:', error.message);
+      await route.continue();
+    }
+  });
+
+  logger.info('✅ API interceptors setup complete');
+}
+
+/**
+ * 点击"全部"标签
+ */
+async function clickAllWorksTab(page) {
+  try {
+    logger.debug('Clicking "全部" tab');
+
+    // 尝试点击"全部"标签
+    const allTab = await page.locator('text=全部').first();
+    const isVisible = await allTab.isVisible().catch(() => false);
+
+    if (isVisible) {
+      await allTab.click();
+      await page.waitForTimeout(1000);
+      logger.info('✅ Clicked "全部" tab');
+      return true;
+    }
+
+    logger.debug('No "全部" tab found, might already be selected');
+    return false;
+  } catch (error) {
+    logger.debug('Failed to click "全部" tab:', error.message);
+    return false;
+  }
+}
+
+/**
+ * 通过虚拟列表滚动加载所有作品
+ */
+async function loadAllWorks(page, account, maxWorks) {
+  logger.debug('Starting virtual list scrolling to load all works');
+
+  const works = [];
+  const MAX_ATTEMPTS = 50;
+  const SCROLL_WAIT_TIME = 500;
+  const CONVERGENCE_CHECK = 3;
+
+  let previousCount = 0;
+  let convergenceCounter = 0;
+  let attempts = 0;
+
+  while (attempts < MAX_ATTEMPTS && works.length < maxWorks) {
+    try {
+      // 第 1 步: 向下滚动虚拟列表
+      logger.debug(`Attempt ${attempts + 1}: Scrolling to load more works`);
+
+      const scrollResult = await page.evaluate(() => {
+        // 查找作品列表容器
+        const container = document.querySelector('[class*="content-list"]') ||
+                         document.querySelector('[class*="table"]') ||
+                         document.querySelector('[role="table"]') ||
+                         document.querySelector('.semi-table-body');
+
+        if (container) {
+          const previousScroll = container.scrollTop;
+          container.scrollTop = container.scrollHeight;
+          return { success: true, scrolled: container.scrollTop > previousScroll };
+        }
+
+        return { success: false };
+      });
+
+      if (!scrollResult.success) {
+        logger.warn('Could not find works list container');
+      }
+
+      // 第 2 步: 等待新作品加载
+      await page.waitForTimeout(SCROLL_WAIT_TIME);
+
+      // 第 3 步: 提取当前所有作品
+      const currentWorks = await extractWorksFromPage(page, account);
+      const currentCount = currentWorks.length;
+
+      logger.debug(`Attempt ${attempts + 1}: Found ${currentCount} works (previous: ${previousCount})`);
+
+      // 第 4 步: 检查是否收敛
+      if (currentCount === previousCount) {
+        convergenceCounter++;
+        logger.debug(`No new works detected (${convergenceCounter}/${CONVERGENCE_CHECK})`);
+
+        if (convergenceCounter >= CONVERGENCE_CHECK) {
+          logger.info(`✅ Reached convergence. Total works: ${currentCount}`);
+          return currentWorks.slice(0, maxWorks);
+        }
+      } else {
+        // 重置收敛计数器
+        convergenceCounter = 0;
+        previousCount = currentCount;
+      }
+
+      attempts++;
+      await page.waitForTimeout(200);
+
+    } catch (error) {
+      logger.error(`Error during scrolling at attempt ${attempts}:`, error.message);
+      attempts++;
+      await page.waitForTimeout(500);
+    }
+  }
+
+  // 获取最终作品列表
+  const finalWorks = await extractWorksFromPage(page, account);
+  logger.info(`✅ Scroll completed: ${finalWorks.length} works loaded`);
+
+  return finalWorks.slice(0, maxWorks);
+}
+
+/**
+ * 从页面提取作品列表
+ */
+async function extractWorksFromPage(page, account) {
+  logger.debug('Extracting works from page');
+
+  return await page.evaluate((accountInfo) => {
+    const works = [];
+
+    // 方法 1: 尝试从 React Fiber 提取
+    const allElements = document.querySelectorAll('[class*="content-item"], [role="row"], tr');
+
+    allElements.forEach((element, index) => {
+      try {
+        // 从 React Fiber 提取数据
+        const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
+        if (!fiberKey) return;
+
+        let current = element[fiberKey];
+        let depth = 0;
+        let found = false;
+
+        // 递归查找作品数据
+        while (current && depth < 15 && !found) {
+          if (current.memoizedProps) {
+            const props = current.memoizedProps;
+
+            // 检查是否包含作品数据
+            if (props.aweme_id || props.awemeId || props.item_id || props.video) {
+              const workData = props.item || props.video || props.data || props;
+
+              // 提取作品 ID
+              const workId = workData.aweme_id || workData.awemeId || workData.item_id || `work_${index}`;
+
+              if (workId && workId !== `work_${index}`) {
+                const work = {
+                  index,
+                  platform_work_id: String(workId),
+                  title: workData.title || workData.desc || '',
+                  description: workData.description || workData.desc || '',
+                  cover: workData.cover || workData.video?.cover?.url_list?.[0] || '',
+                  url: workData.share_url || `https://www.douyin.com/video/${workId}`,
+                  publish_time: workData.create_time || workData.createTime,
+
+                  // 统计数据
+                  total_comment_count: workData.statistics?.comment_count || 0,
+                  like_count: workData.statistics?.digg_count || 0,
+                  share_count: workData.statistics?.share_count || 0,
+                  view_count: workData.statistics?.play_count || 0,
+
+                  // 作品类型
+                  work_type: detectWorkType(workData),
+
+                  // 来源标记
+                  source: 'fiber',
+                };
+
+                works.push(work);
+                found = true;
+              }
+            }
+          }
+
+          current = current.child;
+          depth++;
+        }
+
+        // 方法 2: 如果 Fiber 提取失败，尝试从 DOM 提取
+        if (!found) {
+          const domWork = extractFromDOM(element, index);
+          if (domWork) {
+            works.push(domWork);
+          }
+        }
+
+      } catch (e) {
+        console.debug('Error extracting work from element:', e.message);
+      }
+    });
+
+    // 去重
+    const deduped = [];
+    const seen = new Set();
+
+    works.forEach(work => {
+      if (!seen.has(work.platform_work_id)) {
+        seen.add(work.platform_work_id);
+        deduped.push(work);
+      }
+    });
+
+    console.debug(`Extracted ${deduped.length} works from page`);
+    return deduped;
+
+    /**
+     * 检测作品类型
+     */
+    function detectWorkType(workData) {
+      if (workData.images && workData.images.length > 0) {
+        return 'image';  // 图文作品
+      } else if (workData.video || workData.aweme_type === 0) {
+        return 'video';  // 视频作品
+      } else if (workData.article_id) {
+        return 'article';  // 文章作品
+      }
+      return 'video';  // 默认为视频
+    }
+
+    /**
+     * 从 DOM 元素提取作品信息 (备用方案)
+     */
+    function extractFromDOM(element, index) {
+      const text = element.textContent || '';
+      if (text.length < 5) return null;
+
+      // 尝试提取作品 ID (从 URL 或属性)
+      const links = element.querySelectorAll('a[href*="/video/"]');
+      let workId = null;
+
+      for (const link of links) {
+        const match = link.href.match(/\/video\/(\d+)/);
+        if (match) {
+          workId = match[1];
+          break;
+        }
+      }
+
+      if (!workId) return null;
+
+      // 提取标题
+      const titleElement = element.querySelector('[class*="title"]') || element.querySelector('span');
+      const title = titleElement?.textContent?.trim() || '';
+
+      // 提取封面
+      const imgElement = element.querySelector('img');
+      const cover = imgElement?.src || '';
+
+      return {
+        index,
+        platform_work_id: workId,
+        title,
+        description: '',
+        cover,
+        url: `https://www.douyin.com/video/${workId}`,
+        publish_time: null,
+        total_comment_count: 0,
+        like_count: 0,
+        share_count: 0,
+        view_count: 0,
+        work_type: 'video',
+        source: 'dom',
+      };
+    }
+
+  }, { id: account.id });
+}
+
+/**
+ * 使用 API 数据增强作品信息
+ */
+function enhanceWorksWithAPIData(works, apiResponses) {
+  logger.debug('Enhancing works with API data');
+
+  // 创建 API 数据映射 (按 aweme_id)
+  const apiWorkMap = new Map();
+
+  // 处理作品列表 API 响应
+  apiResponses.worksList.forEach(response => {
+    if (response.aweme_list && Array.isArray(response.aweme_list)) {
+      response.aweme_list.forEach(aweme => {
+        const id = aweme.aweme_id || aweme.item_id;
+        if (id) {
+          apiWorkMap.set(String(id), aweme);
+        }
+      });
+    }
+  });
+
+  // 处理作品详情 API 响应
+  apiResponses.workDetail.forEach(response => {
+    if (response.aweme_detail) {
+      const aweme = response.aweme_detail;
+      const id = aweme.aweme_id || aweme.item_id;
+      if (id) {
+        apiWorkMap.set(String(id), aweme);
+      }
+    }
+  });
+
+  logger.debug(`API work map contains ${apiWorkMap.size} works`);
+
+  // 增强每个作品的数据
+  const enhanced = works.map(work => {
+    const apiData = apiWorkMap.get(work.platform_work_id);
+
+    if (apiData) {
+      // 合并 API 数据 (API 优先)
+      return {
+        ...work,
+        title: apiData.desc || work.title,
+        description: apiData.desc || work.description,
+        cover: apiData.video?.cover?.url_list?.[0] || work.cover,
+        url: apiData.share_url || work.url,
+        publish_time: apiData.create_time || work.publish_time,
+
+        total_comment_count: apiData.statistics?.comment_count || work.total_comment_count,
+        like_count: apiData.statistics?.digg_count || work.like_count,
+        share_count: apiData.statistics?.share_count || work.share_count,
+        view_count: apiData.statistics?.play_count || work.view_count,
+
+        work_type: detectWorkTypeFromAPI(apiData),
+        source: 'api_enhanced',
+      };
+    }
+
+    return work;
+  });
+
+  logger.info(`Enhanced ${enhanced.length} works with API data`);
+  return enhanced;
+
+  /**
+   * 从 API 数据检测作品类型
+   */
+  function detectWorkTypeFromAPI(apiData) {
+    if (apiData.images && apiData.images.length > 0) {
+      return 'image';
+    } else if (apiData.video) {
+      return 'video';
+    } else if (apiData.article_id) {
+      return 'article';
+    }
+    return 'video';
+  }
+}
+
+/**
+ * 标准化作品数据格式 (符合 works 表结构)
+ */
+function standardizeWorkData(work, account) {
+  return {
+    id: uuidv4(),
+    account_id: account.id,
+    platform: 'douyin',
+    platform_work_id: work.platform_work_id,
+    platform_user_id: account.platform_user_id,
+
+    work_type: work.work_type || 'video',
+    title: work.title || '',
+    description: work.description || '',
+    cover: work.cover || '',
+    url: work.url || '',
+    publish_time: work.publish_time || null,
+
+    total_comment_count: work.total_comment_count || 0,
+    new_comment_count: 0,
+    like_count: work.like_count || 0,
+    share_count: work.share_count || 0,
+    view_count: work.view_count || 0,
+
+    last_crawl_time: Math.floor(Date.now() / 1000),
+    crawl_status: 'success',
+    crawl_error: null,
+
+    is_new: true,
+    push_count: 0,
+
+    created_at: Math.floor(Date.now() / 1000),
+    updated_at: Math.floor(Date.now() / 1000),
+  };
+}
+
+/**
+ * 统计作品类型分布
+ */
+function countWorksByType(works) {
+  const counts = {
+    video: 0,
+    image: 0,
+    article: 0,
+    other: 0,
+  };
+
+  works.forEach(work => {
+    const type = work.work_type;
+    if (counts.hasOwnProperty(type)) {
+      counts[type]++;
+    } else {
+      counts.other++;
+    }
+  });
+
+  return counts;
+}
+
+module.exports = {
+  crawlWorks,
+  extractWorksFromPage,
+  enhanceWorksWithAPIData,
+  standardizeWorkData,
+};

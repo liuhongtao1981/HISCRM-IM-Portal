@@ -7,6 +7,7 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { TabManager } = require('./tab-manager');
 
 const logger = createLogger('browser-manager-v2');
 
@@ -40,9 +41,13 @@ class BrowserManagerV2 {
     // temporary: 临时页面（Tab 3+）- 完成后关闭
     this.spiderPages = new Map();    // { accountId -> { spider1: page, spider2: page } }
     this.temporaryPages = new Map(); // { accountId -> [page1, page2, ...] }
+    this.accountPages = new Map();   // { accountId -> page } - 账户主页面
 
     // 🆕 页面使用统计 (accountId -> { usage, lastUsedTime, createdAt })
     this.pageUsageStats = new Map();
+
+    // ⭐ Tab 窗口管理器
+    this.tabManager = new TabManager(this);
 
     // 确保数据目录存在
     this.ensureDataDir();
@@ -743,10 +748,25 @@ class BrowserManagerV2 {
       const page = await context.newPage();
       logger.info(`✅ Created new page for account ${accountId} (purpose: ${purpose})`);
 
-      // 5️⃣ 保存页面到池
+      // 5️⃣ ⭐ 用户要求：getAccountPage() 负责导航到创作中心
+      // 这样所有调用者都不需要重复写导航逻辑
+      try {
+        logger.info(`[getAccountPage] 🌐 Navigating to creator center for ${accountId}...`);
+        await page.goto('https://creator.douyin.com/', {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        await page.waitForTimeout(2000);
+        logger.info(`[getAccountPage] ✅ Navigation completed for ${accountId}: ${page.url()}`);
+      } catch (navError) {
+        logger.warn(`[getAccountPage] ⚠️ Navigation failed for ${accountId}:`, navError.message);
+        // 导航失败不影响返回页面，调用者可以决定如何处理
+      }
+
+      // 6️⃣ 保存页面到池
       this.savePageForAccount(accountId, page);
 
-      // 6️⃣ 记录页面使用
+      // 7️⃣ 记录页面使用
       this.recordPageUsage(accountId);
 
       return page;

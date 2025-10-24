@@ -178,6 +178,22 @@ class PlatformBase {
 
             logger.info(`[Login Monitor] Login successful for account ${accountId}`);
 
+            // 🆕 确保导航到创作中心首页（如果当前不在）
+            const currentUrl = page.url();
+            if (!currentUrl.includes('/creator-micro/home') && !currentUrl.includes('/creator/')) {
+              logger.info(`[Login Monitor] Navigating to creator center home page...`);
+              try {
+                await page.goto('https://creator.douyin.com/creator-micro/home', {
+                  waitUntil: 'networkidle',
+                  timeout: 10000
+                });
+                logger.info(`[Login Monitor] Navigation complete: ${page.url()}`);
+              } catch (navError) {
+                logger.warn(`[Login Monitor] Navigation to home page failed:`, navError.message);
+                // 继续执行，不阻塞登录流程
+              }
+            }
+
             // 保存登录状态（Cookie、Storage）
             await this.saveLoginState(page, accountId);
 

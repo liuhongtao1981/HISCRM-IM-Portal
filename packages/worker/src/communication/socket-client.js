@@ -91,6 +91,24 @@ class SocketClient {
         });
       });
 
+      // ⭐ 监听账户配置更新通知
+      const { MASTER_ACCOUNT_CONFIG_UPDATE } = require('@hiscrm-im/shared/protocol/messages');
+      this.socket.on(MASTER_ACCOUNT_CONFIG_UPDATE, (msg) => {
+        logger.info('📥 Received account config update notification from Master', {
+          accountId: msg.payload?.account_id,
+          reason: msg.payload?.reason,
+          updatedFields: msg.payload?.updated_fields,
+        });
+
+        // 触发配置更新处理器（如果已注册）
+        const handler = this.messageHandlers.get(MASTER_ACCOUNT_CONFIG_UPDATE);
+        if (handler) {
+          handler(msg);
+        } else {
+          logger.warn('No handler registered for MASTER_ACCOUNT_CONFIG_UPDATE');
+        }
+      });
+
       // 额外调试：监听所有事件
       const originalOn = this.socket.on.bind(this.socket);
       this.socket.on = function(event, handler) {

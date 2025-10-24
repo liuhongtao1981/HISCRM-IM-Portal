@@ -7,6 +7,9 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const {
   WORKER_MESSAGE_DETECTED,
   WORKER_MESSAGE_ACK,
+  WORKER_BULK_INSERT_WORKS,
+  WORKER_BULK_INSERT_DISCUSSIONS,
+  WORKER_BULK_INSERT_CONVERSATIONS,
   createMessage,
 } = require('@hiscrm-im/shared/protocol/messages');
 const { Comment } = require('@hiscrm-im/shared/models/Comment');
@@ -14,6 +17,9 @@ const { DirectMessage } = require('@hiscrm-im/shared/models/DirectMessage');
 const Notification = require('@hiscrm-im/shared/models/Notification');
 const CommentsDAO = require('../database/comments-dao');
 const DirectMessagesDAO = require('../database/messages-dao');
+const WorksDAO = require('../database/works-dao');
+const DiscussionsDAO = require('../database/discussions-dao');
+const ConversationsDAO = require('../database/conversations-dao');
 
 const logger = createLogger('message-receiver');
 
@@ -26,6 +32,9 @@ class MessageReceiver {
     this.db = db;
     this.commentsDAO = new CommentsDAO(db);
     this.messagesDAO = new DirectMessagesDAO(db);
+    this.worksDAO = new WorksDAO(db);
+    this.discussionsDAO = new DiscussionsDAO(db);
+    this.conversationsDAO = new ConversationsDAO(db);
     this.notificationQueue = notificationQueue;
   }
 
@@ -150,11 +159,147 @@ class MessageReceiver {
   }
 
   /**
+   * ✨ 新增: 处理批量作品插入
+   * @param {Socket} socket - Worker socket
+   * @param {object} message - 消息对象
+   * @returns {Promise<void>}
+   */
+  async handleBulkInsertWorks(socket, message) {
+    const { payload } = message;
+    const { account_id, works } = payload;
+
+    try {
+      logger.info(`Bulk inserting ${works.length} works for account ${account_id} from worker ${socket.workerId}`);
+
+      const result = this.worksDAO.bulkInsert(works);
+
+      logger.info(`Works bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
+
+      // 发送确认（可选）
+      socket.emit('message', createMessage('worker:bulk_insert_works:ack', {
+        success: true,
+        inserted: result.inserted,
+        skipped: result.skipped,
+        failed: result.failed,
+      }));
+    } catch (error) {
+      logger.error('Failed to handle bulk insert works:', error);
+      socket.emit('message', createMessage('worker:bulk_insert_works:ack', {
+        success: false,
+        error: error.message,
+      }));
+    }
+  }
+
+  /**
+   * ✨ 新增: 处理批量讨论插入
+   * @param {Socket} socket - Worker socket
+   * @param {object} message - 消息对象
+   * @returns {Promise<void>}
+   */
+  async handleBulkInsertDiscussions(socket, message) {
+    const { payload } = message;
+    const { account_id, discussions } = payload;
+
+    try {
+      logger.info(`Bulk inserting ${discussions.length} discussions for account ${account_id} from worker ${socket.workerId}`);
+
+      const result = this.discussionsDAO.bulkInsert(discussions);
+
+      logger.info(`Discussions bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
+
+      // 为新讨论创建通知
+      if (this.notificationQueue && result.inserted > 0) {
+        try {
+          // 获取刚插入的讨论
+          const recentDiscussions = this.discussionsDAO.getRecentDiscussions(account_id, result.inserted);
+          for (const discussion of recentDiscussions) {
+            const notification = Notification.fromDiscussion(discussion);
+            this.notificationQueue.enqueue(notification);
+          }
+          logger.info(`Enqueued ${recentDiscussions.length} discussion notifications`);
+        } catch (error) {
+          logger.error('Failed to enqueue discussion notifications:', error);
+        }
+      }
+
+      socket.emit('message', createMessage('worker:bulk_insert_discussions:ack', {
+        success: true,
+        inserted: result.inserted,
+        skipped: result.skipped,
+        failed: result.failed,
+      }));
+    } catch (error) {
+      logger.error('Failed to handle bulk insert discussions:', error);
+      socket.emit('message', createMessage('worker:bulk_insert_discussions:ack', {
+        success: false,
+        error: error.message,
+      }));
+    }
+  }
+
+  /**
+   * ✨ 新增: 处理批量会话插入
+   * @param {Socket} socket - Worker socket
+   * @param {object} message - 消息对象
+   * @returns {Promise<void>}
+   */
+  async handleBulkInsertConversations(socket, message) {
+    const { payload } = message;
+    const { account_id, conversations } = payload;
+
+    try {
+      logger.info(`Bulk inserting ${conversations.length} conversations for account ${account_id} from worker ${socket.workerId}`);
+
+      const result = this.conversationsDAO.bulkInsert(conversations);
+
+      logger.info(`Conversations bulk insert result: ${result.inserted} inserted, ${result.updated} updated, ${result.failed} failed`);
+
+      socket.emit('message', createMessage('worker:bulk_insert_conversations:ack', {
+        success: true,
+        inserted: result.inserted,
+        updated: result.updated,
+        failed: result.failed,
+      }));
+    } catch (error) {
+      logger.error('Failed to handle bulk insert conversations:', error);
+      socket.emit('message', createMessage('worker:bulk_insert_conversations:ack', {
+        success: false,
+        error: error.message,
+      }));
+    }
+  }
+
+  /**
    * 获取处理函数(用于注册到 Socket.IO)
    * @returns {function}
    */
   getHandler() {
     return (socket, message) => this.handleMessageDetected(socket, message);
+  }
+
+  /**
+   * ✨ 新增: 获取批量作品插入处理函数
+   * @returns {function}
+   */
+  getBulkWorksHandler() {
+    return (socket, message) => this.handleBulkInsertWorks(socket, message);
+  }
+
+  /**
+   * ✨ 新增: 获取批量讨论插入处理函数
+   * @returns {function}
+   */
+  getBulkDiscussionsHandler() {
+    return (socket, message) => this.handleBulkInsertDiscussions(socket, message);
+  }
+
+  /**
+   * ✨ 新增: 获取批量会话插入处理函数
+   * @returns {function}
+   */
+  getBulkConversationsHandler() {
+    return (socket, message) => this.handleBulkInsertConversations(socket, message);
   }
 }
 
