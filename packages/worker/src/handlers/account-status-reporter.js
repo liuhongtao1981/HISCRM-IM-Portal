@@ -68,7 +68,8 @@ class AccountStatusReporter {
       timestamp: Date.now(),
     });
 
-    logger.debug(`Updated status for account ${accountId}`, status);
+    // ⭐ 调试日志：打印更新的状态（包括 login_status）
+    logger.info(`✏️ updateAccountStatus called for ${accountId}:`, JSON.stringify(status, null, 2));
   }
 
   /**
@@ -87,12 +88,17 @@ class AccountStatusReporter {
     for (let i = 0; i < statusArray.length; i += this.batchSize) {
       const batch = statusArray.slice(i, i + this.batchSize);
 
+      const payload = batch.map(item => ({
+        account_id: item.account_id,
+        status: item.status,
+      }));
+
+      // ⭐ 调试日志：打印即将发送到 Master 的数据
+      logger.info(`📤 准备发送到 Master 的账户状态:`, JSON.stringify(payload, null, 2));
+
       const message = createMessage(WORKER_ACCOUNT_STATUS, {
         worker_id: this.workerId,
-        account_statuses: batch.map(item => ({
-          account_id: item.account_id,
-          status: item.status,
-        })),
+        account_statuses: payload,
       });
 
       try {

@@ -235,6 +235,15 @@ function handleAccountStatus(socket, message) {
       accountCount: account_statuses?.length,
     });
 
+    // ⭐ 调试日志：打印 Worker 发送的原始数据
+    if (account_statuses && account_statuses.length > 0) {
+      logger.info(`📊 Worker ${worker_id} 发送的账户状态详情:`);
+      account_statuses.forEach((item, index) => {
+        logger.info(`  [${index}] Account ID: ${item.account_id}`);
+        logger.info(`      Status:`, item.status);
+      });
+    }
+
     if (!Array.isArray(account_statuses)) {
       throw new Error('account_statuses must be an array');
     }
@@ -504,11 +513,15 @@ async function start() {
     const DouyinVideoDAO = require('./database/douyin-video-dao');
     const DirectMessagesDAO = require('./database/messages-dao');
     const ConversationsDAO = require('./database/conversations-dao');
+    const WorksDAO = require('./database/works-dao');
+    const DiscussionsDAO = require('./database/discussions-dao');
 
     const commentsDAO = new CommentsDAO(db);
     const douyinVideoDAO = new DouyinVideoDAO(db);
     const directMessagesDAO = new DirectMessagesDAO(db);
     const conversationsDAO = new ConversationsDAO(db);
+    const worksDAO = new WorksDAO(db);
+    const discussionsDAO = new DiscussionsDAO(db);
 
     // ============================================
     // 新数据推送处理器 (IsNewPushTask)
@@ -1044,8 +1057,61 @@ async function start() {
       }
     };
 
-    // 5. 初始化登录管理器
-    loginHandler = new LoginHandler(db, adminNamespace);
+    // ✨ 新增: 处理批量作品插入
+    tempHandlers.onBulkInsertWorks = async (data, socket) => {
+      try {
+        const { account_id, works } = data;
+
+        logger.info(`Bulk inserting ${works?.length || 0} works for account ${account_id}`);
+
+        if (!Array.isArray(works) || works.length === 0) {
+          logger.warn('No works to insert');
+          return;
+        }
+
+        const result = worksDAO.bulkInsert(works);
+
+        logger.info(`✅ Works bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
+      } catch (error) {
+        logger.error('Failed to bulk insert works:', error);
+      }
+    };
+
+    // ✨ 新增: 处理批量讨论插入
+    tempHandlers.onBulkInsertDiscussions = async (data, socket) => {
+      try {
+        const { account_id, discussions } = data;
+
+        logger.info(`Bulk inserting ${discussions?.length || 0} discussions for account ${account_id}`);
+
+        if (!Array.isArray(discussions) || discussions.length === 0) {
+          logger.warn('No discussions to insert');
+          return;
+        }
+
+        const result = discussionsDAO.bulkInsert(discussions);
+
+        logger.info(`✅ Discussions bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
+
+        // 为新讨论创建通知
+        if (result.inserted > 0 && notificationHandler) {
+          try {
+            const recentDiscussions = discussionsDAO.getRecentDiscussions(account_id, result.inserted);
+            for (const discussion of recentDiscussions) {
+              await notificationHandler.handleDiscussionNotification(discussion);
+            }
+            logger.info(`Created ${recentDiscussions.length} discussion notifications`);
+          } catch (error) {
+            logger.error('Failed to create discussion notifications:', error);
+          }
+        }
+      } catch (error) {
+        logger.error('Failed to bulk insert discussions:', error);
+      }
+    };
+
+    // 5. 初始化登录管理器（传入adminNamespace和workerNamespace）
+    loginHandler = new LoginHandler(db, adminNamespace, workerNamespace);
     loginHandler.startCleanupTimer();
     logger.info('Login handler initialized');
 

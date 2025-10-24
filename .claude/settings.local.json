@@ -55,9 +55,18 @@
       "Bash(cat:*)",
       "Bash(test:*)",
       "Bash(python:*)",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(findstr:*)",
+      "Bash(set:*)",
+      "Bash(tasklist:*)",
+      "Bash(timeout 15 node:*)",
+      "Bash(timeout:*)",
+      "Bash(dir /b \"E:\\HISCRM-IM-main\\packages\\worker\\src\\platforms\\douyin\")",
+      "Bash(git log:*)",
+      "Bash(dir:*)"
     ],
     "deny": [],
-    "ask": []
+    "ask": [],
+    "defaultMode": "bypassPermissions"
   }
 }

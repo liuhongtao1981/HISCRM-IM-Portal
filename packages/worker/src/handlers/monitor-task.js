@@ -17,11 +17,12 @@ const logger = createLogger('monitor-task');
  * 管理单个账户的监控任务
  */
 class MonitorTask {
-  constructor(account, socketClient, platformManager, accountStatusReporter = null) {
+  constructor(account, socketClient, platformManager, accountStatusReporter = null, browserManager = null) {
     this.account = account;
     this.socketClient = socketClient;
     this.platformManager = platformManager;
     this.accountStatusReporter = accountStatusReporter;
+    this.browserManager = browserManager;  // 保存 browserManager 引用以便检查登录状态
 
     // 初始化组件
     // 注意: crawler 将通过 platformManager 获取，不再直接实例化
@@ -153,19 +154,94 @@ class MonitorTask {
         }
       }
 
-      // 1. 检查登录状态 - 如果未登录,跳过本次执行
-      if (this.account.login_status !== 'logged_in') {
-        logger.warn(`Account ${this.account.id} is not logged in (status: ${this.account.login_status}), skipping crawl`);
+      // 1. 实时检查登录状态 - 在每次爬取前验证
+      logger.info(`Checking real-time login status for account ${this.account.id}...`);
 
-        // 记录到状态报告器
-        if (this.accountStatusReporter) {
-          this.accountStatusReporter.recordError(this.account.id, `Not logged in (${this.account.login_status})`);
+      let loginCheckTabId = null;
+      let loginCheckPage = null;
+
+      try {
+        // ⭐ 使用 TabManager 获取登录检测窗口
+        // 登录检测规则:
+        // - 如果有登录任务窗口,复用它
+        // - 如果没有登录任务窗口,创建新的检测窗口
+        // - 检测后如果不是登录任务窗口,关闭它
+        const { TabTag } = require('../browser/tab-manager');
+        const { tabId, page, shouldClose } = await this.browserManager.tabManager.getPageForTask(this.account.id, {
+          tag: TabTag.LOGIN_CHECK,
+          persistent: false,     // 检测完关闭
+          shareable: true,       // 可以复用登录窗口
+          forceNew: false        // 优先复用已有窗口
+        });
+
+        loginCheckTabId = tabId;
+        loginCheckPage = page;
+
+        // 导航到创作中心（如果还没在那里）
+        if (!page.url().includes('creator.douyin.com')) {
+          logger.info('Navigating to creator center for login check...');
+          await page.goto('https://creator.douyin.com/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+          await page.waitForTimeout(2000);
         }
 
-        return;  // 跳过本次执行,等待下次调度
-      }
+        // 调用平台的登录状态检测方法
+        const loginStatus = await this.platformInstance.checkLoginStatus(page);
 
-      logger.info(`Account ${this.account.id} is logged in, starting crawl...`);
+        if (!loginStatus.isLoggedIn) {
+          logger.warn(`✗ Account ${this.account.id} is NOT logged in (real-time check), skipping crawl`);
+
+          // 记录到状态报告器并更新为离线
+          if (this.accountStatusReporter) {
+            this.accountStatusReporter.recordError(this.account.id, 'Not logged in - login required');
+            this.accountStatusReporter.updateAccountStatus(this.account.id, {
+              worker_status: 'offline',
+              login_status: 'not_logged_in'
+            });
+          }
+
+          // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
+          if (loginCheckTabId && shouldClose) {
+            await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
+          }
+
+          return;  // 跳过本次执行,等待下次调度
+        }
+
+        logger.info(`✓ Account ${this.account.id} is logged in, starting crawl...`);
+
+        // 确保登录状态被正确设置
+        if (this.accountStatusReporter) {
+          this.accountStatusReporter.updateAccountStatus(this.account.id, {
+            login_status: 'logged_in'
+          });
+        }
+
+        // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
+        if (loginCheckTabId && shouldClose) {
+          await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
+        }
+      } catch (error) {
+        logger.error(`Failed to check login status for account ${this.account.id}:`, error);
+
+        // 检查失败也跳过本次爬取
+        if (this.accountStatusReporter) {
+          this.accountStatusReporter.recordError(this.account.id, `Login check failed: ${error.message}`);
+        }
+
+        // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
+        if (loginCheckTabId) {
+          try {
+            await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
+          } catch (e) {
+            logger.warn('Failed to close login check tab:', e.message);
+          }
+        }
+
+        return;
+      }
 
       // ⭐ 关键改进: 并行执行评论和私信爬取 (使用 Promise.all)
       // 现在评论爬虫 (spider2) 和私信爬虫 (spider1) 可以独立运行，互不干扰

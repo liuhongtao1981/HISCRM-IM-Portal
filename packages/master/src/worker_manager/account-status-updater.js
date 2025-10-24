@@ -22,6 +22,7 @@ class AccountStatusUpdater {
     try {
       const {
         worker_status,           // Worker 状态: online/offline/error
+        login_status,            // 登录状态: logged_in/not_logged_in
         total_comments,          // 总评论数
         total_works,             // 总作品数
         total_followers,         // 总粉丝数
@@ -43,6 +44,11 @@ class AccountStatusUpdater {
       if (worker_status !== undefined) {
         updateFields.push('worker_status = ?');
         values.push(worker_status);
+      }
+
+      if (login_status !== undefined) {
+        updateFields.push('login_status = ?');
+        values.push(login_status);
       }
 
       if (total_comments !== undefined) {

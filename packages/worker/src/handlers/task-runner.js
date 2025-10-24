@@ -119,12 +119,13 @@ class TaskRunner {
       logger.warn(`Cache preload failed for account ${id}, will continue without cache:`, err);
     });
 
-    // 创建并启动监控任务（传入 platformManager 和 accountStatusReporter）
+    // 创建并启动监控任务（传入 platformManager, accountStatusReporter 和 browserManager）
     const monitorTask = new MonitorTask(
       account,
       this.socketClient,
       this.platformManager,
-      this.accountStatusReporter
+      this.accountStatusReporter,
+      this.browserManager  // 传递 browserManager 以便检查登录状态
     );
     await monitorTask.start();
 
@@ -211,6 +212,26 @@ class TaskRunner {
     }
 
     return stats;
+  }
+
+  /**
+   * ⭐ 更新账户配置（用于配置热更新）
+   * @param {string} accountId - 账户ID
+   * @param {Object} updatedAccount - 更新后的账户对象
+   */
+  updateAccountConfig(accountId, updatedAccount) {
+    try {
+      const monitorTask = this.tasks.get(accountId);
+      if (monitorTask) {
+        // 更新MonitorTask中的账户配置
+        monitorTask.account = updatedAccount;
+        logger.info(`✅ Updated account config in MonitorTask for ${accountId}`);
+      } else {
+        logger.warn(`No MonitorTask found for account ${accountId}, cannot update config`);
+      }
+    } catch (error) {
+      logger.error(`Failed to update account config for ${accountId}:`, error);
+    }
   }
 }
 

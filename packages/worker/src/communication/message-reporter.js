@@ -6,6 +6,11 @@
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const {
   WORKER_MESSAGE_DETECTED,
+  WORKER_WORK_DETECTED,
+  WORKER_DISCUSSION_DETECTED,
+  WORKER_BULK_INSERT_WORKS,
+  WORKER_BULK_INSERT_DISCUSSIONS,
+  WORKER_BULK_INSERT_CONVERSATIONS,
   createMessage,
 } = require('@hiscrm-im/shared/protocol/messages');
 
@@ -100,9 +105,74 @@ class MessageReporter {
   }
 
   /**
+   * ✨ 新增: 上报作品
+   * @param {string} accountId - 账户ID
+   * @param {Array} works - 作品数组
+   */
+  reportWorks(accountId, works) {
+    if (!Array.isArray(works) || works.length === 0) {
+      return;
+    }
+
+    logger.info(`Reporting ${works.length} works for account ${accountId}`);
+
+    // 使用批量上报接口 (性能更好)
+    const message = createMessage(WORKER_BULK_INSERT_WORKS, {
+      account_id: accountId,
+      works: works,
+    });
+
+    this.socketClient.sendMessage(message);
+    logger.debug(`Bulk reported ${works.length} works to master`);
+  }
+
+  /**
+   * ✨ 新增: 上报讨论
+   * @param {string} accountId - 账户ID
+   * @param {Array} discussions - 讨论数组
+   */
+  reportDiscussions(accountId, discussions) {
+    if (!Array.isArray(discussions) || discussions.length === 0) {
+      return;
+    }
+
+    logger.info(`Reporting ${discussions.length} discussions for account ${accountId}`);
+
+    // 使用批量上报接口
+    const message = createMessage(WORKER_BULK_INSERT_DISCUSSIONS, {
+      account_id: accountId,
+      discussions: discussions,
+    });
+
+    this.socketClient.sendMessage(message);
+    logger.debug(`Bulk reported ${discussions.length} discussions to master`);
+  }
+
+  /**
+   * ✨ 改进: 上报会话 (使用批量接口)
+   * @param {string} accountId - 账户ID
+   * @param {Array} conversations - 会话数组
+   */
+  reportConversationsBulk(accountId, conversations) {
+    if (!Array.isArray(conversations) || conversations.length === 0) {
+      return;
+    }
+
+    logger.info(`Reporting ${conversations.length} conversations (bulk) for account ${accountId}`);
+
+    const message = createMessage(WORKER_BULK_INSERT_CONVERSATIONS, {
+      account_id: accountId,
+      conversations: conversations,
+    });
+
+    this.socketClient.sendMessage(message);
+    logger.debug(`Bulk reported ${conversations.length} conversations to master`);
+  }
+
+  /**
    * 批量上报消息
    * @param {string} accountId - 账户ID
-   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [], conversations: [] }
+   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [], conversations: [], works: [], discussions: [] }
    */
   reportAll(accountId, detectedMessages) {
     if (detectedMessages.comments && detectedMessages.comments.length > 0) {
@@ -115,12 +185,25 @@ class MessageReporter {
 
     // Phase 8 新增: 上报会话数据
     if (detectedMessages.conversations && detectedMessages.conversations.length > 0) {
-      this.reportConversations(accountId, detectedMessages.conversations);
+      // 优先使用批量上报
+      this.reportConversationsBulk(accountId, detectedMessages.conversations);
+    }
+
+    // ✨ 新增: 上报作品数据
+    if (detectedMessages.works && detectedMessages.works.length > 0) {
+      this.reportWorks(accountId, detectedMessages.works);
+    }
+
+    // ✨ 新增: 上报讨论数据
+    if (detectedMessages.discussions && detectedMessages.discussions.length > 0) {
+      this.reportDiscussions(accountId, detectedMessages.discussions);
     }
 
     const totalReported =
       (detectedMessages.comments?.length || 0) +
-      (detectedMessages.directMessages?.length || 0);
+      (detectedMessages.directMessages?.length || 0) +
+      (detectedMessages.works?.length || 0) +
+      (detectedMessages.discussions?.length || 0);
 
     logger.info(`Total reported ${totalReported} messages + ${detectedMessages.conversations?.length || 0} conversations for account ${accountId}`);
   }

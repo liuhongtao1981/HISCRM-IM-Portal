@@ -189,6 +189,30 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
       }
     });
 
+    // ✨ 新增: 监听批量作品插入
+    socket.on('worker:bulk_insert_works', async (data) => {
+      logger.info(`Worker ${socket.id} bulk inserting ${data.works?.length || 0} works`);
+      if (handlers.onBulkInsertWorks) {
+        try {
+          await handlers.onBulkInsertWorks(data, socket);
+        } catch (error) {
+          logger.error('Failed to bulk insert works:', error);
+        }
+      }
+    });
+
+    // ✨ 新增: 监听批量讨论插入
+    socket.on('worker:bulk_insert_discussions', async (data) => {
+      logger.info(`Worker ${socket.id} bulk inserting ${data.discussions?.length || 0} discussions`);
+      if (handlers.onBulkInsertDiscussions) {
+        try {
+          await handlers.onBulkInsertDiscussions(data, socket);
+        } catch (error) {
+          logger.error('Failed to bulk insert discussions:', error);
+        }
+      }
+    });
+
     // 监听新数据推送事件 (IsNewPushTask)
     socket.on('worker:push_new_comments', async (data) => {
       logger.info(`Worker ${socket.id} pushing ${data.comments?.length || 0} new comments (request #${data.request_id})`);

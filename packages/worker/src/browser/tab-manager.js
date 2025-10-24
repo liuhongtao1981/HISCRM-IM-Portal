@@ -85,15 +85,37 @@ class TabManager {
     if (!forceNew) {
       const existingTab = this.findTabByTag(accountId, tag);
       if (existingTab) {
-        logger.info(`♻️  Reusing existing tab ${existingTab.tabId} for ${tag}`);
-        return {
-          tabId: existingTab.tabId,
-          page: existingTab.page,
-          shouldClose: !persistent, // 非持久的需要关闭
-          release: async () => {
-            await this.releaseTab(accountId, existingTab.tabId);
+        // ⚠️ 验证 page 是否仍然有效（防止浏览器断开连接）
+        try {
+          if (existingTab.page.isClosed()) {
+            logger.warn(`⚠️  Tab ${existingTab.tabId} page is closed, removing from registry`);
+            // 从注册表中移除已关闭的 tab
+            const accountTabs = this.tabs.get(accountId);
+            if (accountTabs) {
+              accountTabs.delete(existingTab.tabId);
+            }
+            // 继续创建新 tab
+          } else {
+            logger.info(`♻️  Reusing existing tab ${existingTab.tabId} for ${tag}`);
+            return {
+              tabId: existingTab.tabId,
+              page: existingTab.page,
+              shouldClose: !persistent, // 非持久的需要关闭
+              release: async () => {
+                await this.releaseTab(accountId, existingTab.tabId);
+              }
+            };
           }
-        };
+        } catch (error) {
+          // page.isClosed() 可能抛出错误（比如浏览器已完全断开）
+          logger.warn(`⚠️  Tab ${existingTab.tabId} page is inaccessible: ${error.message}, removing from registry`);
+          // 从注册表中移除无效的 tab
+          const accountTabs = this.tabs.get(accountId);
+          if (accountTabs) {
+            accountTabs.delete(existingTab.tabId);
+          }
+          // 继续创建新 tab
+        }
       }
     }
 
@@ -124,8 +146,28 @@ class TabManager {
     // ⭐ 获取或创建浏览器上下文
     let context = this.browserManager.contexts.get(accountId);
 
+    // 🔍 验证 context 是否仍然有效
+    if (context) {
+      try {
+        // 检查浏览器是否已断开
+        const browser = context.browser();
+        if (!browser || !browser.isConnected()) {
+          logger.warn(`⚠️  Browser disconnected for account ${accountId}, recreating context...`);
+          // 清理无效的 context
+          this.browserManager.contexts.delete(accountId);
+          this.browserManager.browsers.delete(accountId);
+          // 清理所有已注册的 tabs（它们都已失效）
+          this.tabs.delete(accountId);
+          context = null;
+        }
+      } catch (error) {
+        logger.warn(`⚠️  Failed to check context validity: ${error.message}, recreating...`);
+        context = null;
+      }
+    }
+
     if (!context) {
-      logger.warn(`Context not found for account ${accountId}, creating...`);
+      logger.warn(`Context not found or invalid for account ${accountId}, creating...`);
       context = await this.browserManager.createContextForAccount(accountId);
 
       if (!context) {

@@ -864,8 +864,14 @@ async function extractMessagesFromVirtualList(page) {
                   content: textContent.substring(0, 500) || (props.text || '').substring(0, 500),
                   timestamp: props.timestamp || props.createdAt || new Date().toISOString(),
                   message_type: props.type || 'text',
-                  platform_sender_id: props.senderId || (props.isFromMe ? 'self' : 'other'),
-                  platform_sender_name: props.senderName || (props.isFromMe ? 'Me' : 'Other'),
+                  // ✅ 新增：使用 props.sender 作为发送者ID（这是实际的用户ID）
+                  platform_sender_id: props.sender || props.senderId || (props.isFromMe ? 'self' : 'other'),
+                  // ✅ 新增：使用 props.nickname 作为发送者昵称
+                  platform_sender_name: props.nickname || props.senderName || (props.isFromMe ? 'Me' : 'Other'),
+                  // ✅ 新增：发送者头像URL（仅对方消息有此字段）
+                  sender_avatar: props.avatar || null,
+                  // ✅ 新增：发送者昵称（仅对方消息有此字段）
+                  sender_nickname: props.nickname || null,
                   direction: props.isFromMe ? 'outbound' : 'inbound',
                   created_at: Math.floor(new Date(props.timestamp || props.createdAt).getTime() / 1000),
                   is_read: props.isRead || false,
@@ -1045,6 +1051,9 @@ function extractCompleteMessageObjects(messages, apiResponses) {
         content: msg.content || '',
         platform_sender_id: msg.platform_sender_id || 'unknown',
         platform_sender_name: msg.platform_sender_name || 'Unknown',
+        // ✅ 新增：发送者头像和昵称
+        sender_avatar: msg.sender_avatar || null,
+        sender_nickname: msg.sender_nickname || null,
         platform_receiver_id: msg.platform_receiver_id,
         platform_receiver_name: msg.platform_receiver_name,
         message_type: msg.message_type || 'text',

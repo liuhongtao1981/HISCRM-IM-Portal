@@ -17,10 +17,12 @@ class LoginHandler {
   /**
    * @param {Database} db - SQLite 数据库实例
    * @param {Object} adminNamespace - Admin Socket.IO namespace
+   * @param {Object} workerNamespace - Worker Socket.IO namespace（可选）
    */
-  constructor(db, adminNamespace) {
+  constructor(db, adminNamespace, workerNamespace = null) {
     this.db = db;
     this.adminNamespace = adminNamespace;
+    this.workerNamespace = workerNamespace;
 
     // 登录会话缓存 (sessionId -> session)
     this.sessions = new Map();
@@ -214,6 +216,27 @@ class LoginHandler {
           user_info: userInfo,  // 包含用户信息
           timestamp: Date.now(),
         });
+      }
+
+      // ⭐ 新增：通知Worker账户配置已更新
+      // 这样Worker可以重新加载账户配置，获取最新的platform_user_id
+      if (this.workerNamespace) {
+        const { MASTER_ACCOUNT_CONFIG_UPDATE, createMessage } = require('@hiscrm-im/shared/protocol/messages');
+
+        // 找到Worker的socket连接
+        const workerSocket = this.workerNamespace.sockets.get(session.worker_id);
+        if (workerSocket) {
+          const configUpdateMessage = createMessage(MASTER_ACCOUNT_CONFIG_UPDATE, {
+            account_id: session.account_id,
+            reason: 'login_success',
+            updated_fields: ['platform_user_id', 'login_status', 'user_info'],
+          });
+
+          workerSocket.emit(MASTER_ACCOUNT_CONFIG_UPDATE, configUpdateMessage);
+          logger.info(`Sent config update notification to Worker ${session.worker_id} for account ${session.account_id}`);
+        } else {
+          logger.warn(`Worker socket not found for worker_id ${session.worker_id}, cannot send config update`);
+        }
       }
 
       // 清理会话缓存（登录成功后不再需要）

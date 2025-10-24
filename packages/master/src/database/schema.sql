@@ -20,7 +20,32 @@ CREATE TABLE accounts (
   cookies_valid_until INTEGER,
   assigned_worker_id TEXT,
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL, user_info TEXT, fingerprint TEXT, total_comments INTEGER DEFAULT 0, total_works INTEGER DEFAULT 0, total_followers INTEGER DEFAULT 0, total_following INTEGER DEFAULT 0, recent_comments_count INTEGER DEFAULT 0, recent_works_count INTEGER DEFAULT 0, worker_status TEXT DEFAULT 'offline', last_crawl_time INTEGER, last_heartbeat_time INTEGER, error_count INTEGER DEFAULT 0, last_error_message TEXT, platform_user_id TEXT, platform_username TEXT, avatar TEXT, signature TEXT, verified BOOLEAN DEFAULT 0,
+  updated_at INTEGER NOT NULL,
+
+  -- 用户信息字段
+  user_info TEXT,
+  fingerprint TEXT,
+  platform_user_id TEXT,
+  platform_username TEXT,
+  avatar TEXT,
+  signature TEXT,
+  verified BOOLEAN DEFAULT 0,
+
+  -- 统计信息字段
+  total_comments INTEGER DEFAULT 0,
+  total_works INTEGER DEFAULT 0,
+  total_followers INTEGER DEFAULT 0,
+  total_following INTEGER DEFAULT 0,
+  recent_comments_count INTEGER DEFAULT 0,
+  recent_works_count INTEGER DEFAULT 0,
+
+  -- Worker状态字段
+  worker_status TEXT DEFAULT 'offline',
+  last_crawl_time INTEGER,
+  last_heartbeat_time INTEGER,
+  error_count INTEGER DEFAULT 0,
+  last_error_message TEXT,
+
   UNIQUE(platform, account_id)
 );
 
@@ -58,12 +83,16 @@ CREATE TABLE "comments" (
   content TEXT NOT NULL,
   author_name TEXT,
   author_id TEXT,
+  author_avatar TEXT,
   post_id TEXT,
   post_title TEXT,
   is_read BOOLEAN DEFAULT 0,
+  is_new BOOLEAN DEFAULT 1,
+  push_count INTEGER DEFAULT 0,
+  like_count INTEGER DEFAULT 0,
+  reply_count INTEGER DEFAULT 0,
   detected_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  is_new BOOLEAN DEFAULT 1, push_count INTEGER DEFAULT 0, author_avatar TEXT, like_count INTEGER DEFAULT 0, reply_count INTEGER DEFAULT 0,
 
   -- 三字段组合唯一约束：account_id + platform_user_id + platform_comment_id
   UNIQUE(account_id, platform_user_id, platform_comment_id),
@@ -88,12 +117,17 @@ CREATE TABLE conversations (
   platform_user_name TEXT,
   platform_user_avatar TEXT,
   is_group BOOLEAN DEFAULT 0,
+  is_pinned BOOLEAN DEFAULT 0,
+  is_muted BOOLEAN DEFAULT 0,
   unread_count INTEGER DEFAULT 0,
   platform_message_id TEXT,
   last_message_time INTEGER,
   last_message_content TEXT,
+  last_message_type TEXT DEFAULT 'text',
+  status TEXT DEFAULT 'active',
   created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL, is_pinned BOOLEAN DEFAULT 0, is_muted BOOLEAN DEFAULT 0, last_message_type TEXT DEFAULT 'text', status TEXT DEFAULT 'active',
+  updated_at INTEGER NOT NULL,
+
   FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
   UNIQUE(account_id, platform_user_id)
 );
@@ -118,12 +152,28 @@ CREATE TABLE "direct_messages" (
   platform_sender_name TEXT,
   platform_receiver_id TEXT,
   platform_receiver_name TEXT,
+  sender_name TEXT DEFAULT NULL,
+  -- ✅ 新增：发送者头像和昵称字段
+  sender_avatar TEXT,                 -- 发送者头像URL
+  sender_nickname TEXT,               -- 发送者昵称
   message_type TEXT DEFAULT 'text',
   direction TEXT NOT NULL,
+  conversation_id TEXT,
   is_read BOOLEAN DEFAULT 0,
+  is_new BOOLEAN DEFAULT 1,
+  is_deleted BOOLEAN DEFAULT 0,
+  is_recalled BOOLEAN DEFAULT 0,
+  push_count INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'sent',
+  reply_to_message_id TEXT,
+  media_url TEXT,
+  media_thumbnail TEXT,
+  file_size INTEGER,
+  file_name TEXT,
+  duration INTEGER,
+  recalled_at INTEGER,
   detected_at INTEGER NOT NULL,
   created_at INTEGER NOT NULL,
-  conversation_id TEXT, is_new BOOLEAN DEFAULT 1, push_count INTEGER DEFAULT 0, sender_name TEXT DEFAULT NULL, status TEXT DEFAULT 'sent', reply_to_message_id TEXT, media_url TEXT, media_thumbnail TEXT, file_size INTEGER, file_name TEXT, duration INTEGER, is_deleted BOOLEAN DEFAULT 0, is_recalled BOOLEAN DEFAULT 0, recalled_at INTEGER,
 
   -- 三字段组合唯一约束：account_id + platform_user_id + platform_message_id
   UNIQUE(account_id, platform_user_id, platform_message_id),
@@ -161,6 +211,7 @@ CREATE TABLE discussions (
         content TEXT NOT NULL,
         author_name TEXT,
         author_id TEXT,
+        author_avatar TEXT,
 
         -- 关联作品信息
         work_id TEXT,
@@ -171,10 +222,11 @@ CREATE TABLE discussions (
         is_read BOOLEAN DEFAULT 0,
         is_new BOOLEAN DEFAULT 1,
         push_count INTEGER DEFAULT 0,
+        like_count INTEGER DEFAULT 0,
 
         -- 时间戳
         detected_at INTEGER NOT NULL,
-        created_at INTEGER NOT NULL, author_avatar TEXT, like_count INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
 
         -- 三字段组合唯一约束
         UNIQUE(account_id, platform_user_id, platform_discussion_id),
@@ -220,9 +272,13 @@ CREATE TABLE "douyin_videos" (
   crawl_status TEXT DEFAULT 'pending',
   crawl_error TEXT,
 
+  -- 状态标记
+  is_new BOOLEAN DEFAULT 1,
+  push_count INTEGER DEFAULT 0,
+
   -- 时间戳
   created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
-  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')), is_new BOOLEAN DEFAULT 1, push_count INTEGER DEFAULT 0,
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
 
   -- 三字段组合唯一约束：account_id + platform_user_id + platform_videos_id
   UNIQUE(account_id, platform_user_id, platform_videos_id)

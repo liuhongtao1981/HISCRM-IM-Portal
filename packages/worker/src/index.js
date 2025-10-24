@@ -21,6 +21,7 @@ const { MASTER_TASK_ASSIGN, MASTER_TASK_REVOKE, MASTER_ACCOUNT_LOGOUT, WORKER_AC
 const { MESSAGE } = require('@hiscrm-im/shared/protocol/events');
 const ChromeDevToolsMCP = require('./debug/chrome-devtools-mcp');
 const debugConfig = require('./config/debug-config');
+const { TabTag } = require('./browser/tab-manager');
 
 // 初始化logger
 const logger = createLogger('worker', './logs');
@@ -43,6 +44,54 @@ let accountInitializer;
 let accountStatusReporter;
 let isNewPushTask;
 let chromeDevToolsMCP; // Chrome DevTools MCP 调试接口
+
+// ⭐ 账户配置缓存（accountId -> account对象）
+const accountsCache = new Map();
+
+/**
+ * ⭐ 重新加载账户配置（从Master获取最新配置）
+ * @param {string} accountId - 账户ID
+ * @returns {Promise<Object|null>} 返回更新后的账户对象，失败返回null
+ */
+async function reloadAccountConfig(accountId) {
+  try {
+    logger.info(`🔄 Reloading configuration for account ${accountId}...`);
+
+    // 1. 从Master获取最新账户配置
+    if (!workerRegistration) {
+      logger.error('WorkerRegistration not initialized, cannot reload account config');
+      return null;
+    }
+
+    // 通过WorkerRegistration获取最新的账户列表
+    const updatedAccounts = await workerRegistration.register();
+
+    // 2. 查找目标账户的新配置
+    const updatedAccount = updatedAccounts.find(acc => acc.id === accountId);
+    if (!updatedAccount) {
+      logger.warn(`Account ${accountId} not found in updated accounts list`);
+      return null;
+    }
+
+    // 3. 更新缓存
+    accountsCache.set(accountId, updatedAccount);
+    logger.info(`✅ Account config reloaded for ${accountId}`, {
+      platform_user_id: updatedAccount.platform_user_id || '(still missing)',
+      login_status: updatedAccount.login_status,
+    });
+
+    // 4. 通知taskRunner更新任务配置
+    if (taskRunner) {
+      taskRunner.updateAccountConfig(accountId, updatedAccount);
+      logger.info(`✅ Task runner config updated for account ${accountId}`);
+    }
+
+    return updatedAccount;
+  } catch (error) {
+    logger.error(`Failed to reload account config for ${accountId}:`, error);
+    return null;
+  }
+}
 
 /**
  * 启动Worker
@@ -118,6 +167,31 @@ async function start() {
     const assignedAccounts = await workerRegistration.register();
     logger.info(`✓ Registered with master (${assignedAccounts.length} accounts assigned)`);
 
+    // ⭐ 7.5 填充账户配置缓存
+    for (const account of assignedAccounts) {
+      accountsCache.set(account.id, account);
+    }
+    logger.info(`✓ Cached ${accountsCache.size} account configurations`);
+
+    // ⭐ 7.6 注册配置更新处理器
+    const { MASTER_ACCOUNT_CONFIG_UPDATE, MASTER_ACCOUNT_CONFIG_UPDATE_ACK, createMessage } = require('@hiscrm-im/shared/protocol/messages');
+    socketClient.onMessage(MASTER_ACCOUNT_CONFIG_UPDATE, async (msg) => {
+      const { account_id, reason, updated_fields } = msg.payload;
+      logger.info(`📥 Received config update for account ${account_id}, reason: ${reason}, fields: ${updated_fields?.join(', ')}`);
+
+      // 重新加载账户配置
+      const updated = await reloadAccountConfig(account_id);
+
+      // 发送确认
+      const ackMessage = createMessage(MASTER_ACCOUNT_CONFIG_UPDATE_ACK, {
+        account_id,
+        success: !!updated,
+        reloaded_at: Date.now(),
+      });
+      socketClient.sendMessage(ackMessage);
+    });
+    logger.info(`✓ Registered config update handler`);
+
     // 8. 为所有分配的账号初始化浏览器环境
     logger.info(`Initializing browsers for ${assignedAccounts.length} accounts...`);
     const initResults = await accountInitializer.initializeAccounts(assignedAccounts);
@@ -144,11 +218,56 @@ async function start() {
     }
     logger.info(`✓ Added ${addedTasksCount} monitoring tasks`);
 
-    // 12. 为所有账号设置初始在线状态（在启动前设置）
+    // 12. 检查登录状态并上报给 Master
+    logger.info('Checking login status for all accounts...');
     for (const account of assignedAccounts) {
       if (accountInitializer.isInitialized(account.id)) {
-        accountStatusReporter.setAccountOnline(account.id);
-        logger.info(`Set account ${account.id} status to online`);
+        try {
+          // 获取平台实例
+          const platform = platformManager.getPlatform(account.platform);
+          if (!platform) {
+            logger.warn(`Platform ${account.platform} not found for account ${account.id}`);
+            continue;
+          }
+
+          // 获取浏览器上下文
+          const context = browserManager.contexts.get(account.id);
+          if (!context) {
+            logger.warn(`Browser context not found for account ${account.id}`);
+            continue;
+          }
+
+          // 获取账户页面（Spider1）
+          // ⭐ getAccountPage() 现在会自动导航到创作中心，无需手动导航
+          const page = await browserManager.getAccountPage(account.id);
+          if (!page) {
+            logger.warn(`Account page not found for account ${account.id}`);
+            continue;
+          }
+
+          // 检查登录状态（页面已由 getAccountPage() 导航到创作中心）
+          logger.info(`Checking login status for account ${account.id}...`);
+          const loginStatus = await platform.checkLoginStatus(page);
+
+          if (loginStatus.isLoggedIn) {
+            logger.info(`✓ Account ${account.id} is logged in - setting status to online`);
+            accountStatusReporter.updateAccountStatus(account.id, {
+              worker_status: 'online',
+              login_status: 'logged_in'
+            });
+          } else {
+            logger.warn(`✗ Account ${account.id} is NOT logged in - setting status to not_logged_in`);
+            accountStatusReporter.recordError(account.id, 'Not logged in - login required');
+            // 设置为离线状态并更新登录状态
+            accountStatusReporter.updateAccountStatus(account.id, {
+              worker_status: 'offline',
+              login_status: 'not_logged_in'
+            });
+          }
+        } catch (error) {
+          logger.error(`Failed to check login status for account ${account.id}:`, error);
+          accountStatusReporter.recordError(account.id, `Login check failed: ${error.message}`);
+        }
       }
     }
 
@@ -278,34 +397,65 @@ async function handleTaskRevoke(msg) {
  * @param {object} data - 登录请求数据
  */
 async function handleLoginRequest(data) {
+  logger.info(`[handleLoginRequest] ========== START ==========`);
+  logger.info(`[handleLoginRequest] Raw data:`, JSON.stringify(data, null, 2));
+
   const { account_id, session_id, platform, proxy } = data;
 
   try {
-    logger.info(`Received login request for account ${account_id}, platform ${platform}, session ${session_id}`);
+    logger.info(`[handleLoginRequest] Parsed: account_id=${account_id}, platform=${platform}, session_id=${session_id}`);
 
     // 如果有代理配置，记录日志
     if (proxy) {
-      logger.info(`Using proxy for account ${account_id}: ${proxy.server}`);
+      logger.info(`[handleLoginRequest] Using proxy: ${proxy.server}`);
+    } else {
+      logger.info(`[handleLoginRequest] No proxy configured`);
     }
 
+    // 验证 platformManager
+    if (!platformManager) {
+      throw new Error('platformManager is not initialized');
+    }
+    logger.info(`[handleLoginRequest] platformManager is available`);
+
     // 获取对应平台实例
+    logger.info(`[handleLoginRequest] Getting platform instance for: ${platform}`);
     const platformInstance = platformManager.getPlatform(platform);
+
     if (!platformInstance) {
+      logger.error(`[handleLoginRequest] Platform ${platform} NOT FOUND!`);
+      logger.error(`[handleLoginRequest] Available platforms:`, Object.keys(platformManager.platforms || {}));
       throw new Error(`Platform ${platform} not supported or not loaded`);
     }
 
+    logger.info(`[handleLoginRequest] ✓ Platform instance found: ${platformInstance.config.displayName} (${platformInstance.config.platform})`);
+
     // 启动登录流程（传递代理配置）
+    logger.info(`[handleLoginRequest] Calling startLogin()...`);
     await platformInstance.startLogin({
       accountId: account_id,
       sessionId: session_id,
-      proxy,
+      proxy: proxy
     });
 
-    logger.info(`Login process started for account ${account_id} on platform ${platform}`);
+    logger.info(`[handleLoginRequest] ✓ Login process started successfully`);
+    logger.info(`[handleLoginRequest] ========== END (SUCCESS) ==========`);
+
   } catch (error) {
-    logger.error(`Failed to handle login request for account ${account_id}:`, error);
-    // 发送登录失败事件
-    workerBridge.sendLoginStatus(data.account_id, data.session_id, 'failed', error.message);
+    logger.error(`[handleLoginRequest] ========== END (ERROR) ==========`);
+    logger.error(`[handleLoginRequest] FATAL ERROR for account ${account_id}:`, error.message);
+    logger.error(`[handleLoginRequest] Error stack:`, error.stack);
+
+    // 确保发送登录失败事件
+    try {
+      workerBridge.sendLoginStatus(session_id, 'failed', {
+        account_id: account_id,
+        error_message: error.message
+      });
+      logger.info(`[handleLoginRequest] Sent failure status to Master`);
+    } catch (sendError) {
+      logger.error(`[handleLoginRequest] Failed to send error status:`, sendError);
+    }
   }
 }
 
@@ -429,3 +579,9 @@ process.on('SIGINT', () => shutdown('SIGINT'));
 
 // 启动Worker
 start();
+
+// ⭐ 导出 TabTag 供平台代码使用
+module.exports = {
+  TabTag,
+  getBrowserManager: () => browserManager,
+};
