@@ -128,7 +128,16 @@ hiscrm-im/
 │   │   │   └── services/
 │   │   └── public/
 │   │
-│   ├── desktop-client/      # Electron 桌面应用
+│   ├── crm-pc-im/           # CRM PC IM 客户端 (Electron + Vite)
+│   │   ├── src/
+│   │   │   ├── components/  # React 组件
+│   │   │   ├── pages/       # 页面
+│   │   │   ├── services/    # 通信服务
+│   │   │   ├── store/       # Redux 状态管理
+│   │   │   └── App.tsx
+│   │   └── electron-main/   # Electron 主进程
+│   │
+│   ├── desktop-client/      # 传统桌面应用
 │   ├── mobile-client/       # React Native 移动应用
 │   ├── shared/              # 共享代码
 │   │   ├── protocol/        # 消息协议定义
@@ -201,6 +210,12 @@ npm run start:worker
 npm run start:admin
 npm run start:desktop
 
+# 启动 CRM PC IM (Electron 客户端)
+cd packages/crm-pc-im && npm run electron:dev
+
+# 或只启动前端开发服务
+cd packages/crm-pc-im && npm run dev
+
 # 运行所有测试
 npm test
 
@@ -215,10 +230,46 @@ npm run install:all  # 安装所有依赖
 npm run dev:all      # 启动所有服务
 
 # 或者分别在不同终端启动
-npm run start:master
-npm run start:worker
-npm run start:admin
+npm run start:master       # Terminal 1
+npm run start:worker       # Terminal 2
+npm run start:admin        # Terminal 3
+cd packages/crm-pc-im && npm run electron:dev  # Terminal 4 - Electron 客户端
 ```
+
+### CRM PC IM (Electron 客户端)
+
+CRM PC IM 是基于 Electron + Vite + React 的桌面即时通讯客户端。
+
+**启动方式**:
+
+```bash
+# 1. 开发模式（推荐）- 同时运行 Vite 开发服务器和 Electron
+cd packages/crm-pc-im
+npm run electron:dev
+
+# 2. 仅启动前端开发服务器（不启动 Electron）
+cd packages/crm-pc-im
+npm run dev
+# 开发服务器运行在 http://localhost:5173
+
+# 3. 预览模式
+cd packages/crm-pc-im
+npm run preview
+
+# 4. 生产构建
+cd packages/crm-pc-im
+npm run build
+
+# 5. 打包成 Windows 可执行文件
+cd packages/crm-pc-im
+npm run electron:build
+# 生成的 exe 文件在 release/ 目录
+```
+
+**说明**:
+- `npm run electron:dev` - 启动 Vite 开发服务器 → 等待 5173 端口启动 → 启动 Electron 应用，连接 WebSocket 到 Master 服务
+- 确保 Master 服务已启动（端口 3000），否则 Electron 应用无法连接
+- 开发模式支持热更新（HMR）
 
 ### 生产部署
 
