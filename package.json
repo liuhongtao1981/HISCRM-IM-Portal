@@ -13,9 +13,12 @@
     "start:worker": "npm run start --workspace=packages/worker",
     "start:admin": "npm run start --workspace=packages/admin-web",
     "start:desktop": "npm run start --workspace=packages/desktop-client",
+    "start:im": "cd packages/crm-pc-im && npm run electron:dev",
+    "start:im:dev": "cd packages/crm-pc-im && npm run dev",
     "test": "npm run test --workspaces --if-present",
     "dev": "concurrently \"npm run start:master\" \"npm run start:worker\"",
     "dev:all": "concurrently \"npm run start:master\" \"npm run start:worker\" \"npm run start:admin\"",
+    "dev:im": "concurrently \"npm run start:master\" \"npm run start:worker\" \"npm run start:admin\" \"npm run start:im\"",
     "build": "npm run build --workspaces --if-present"
   },
   "devDependencies": {
