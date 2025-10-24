@@ -59,11 +59,11 @@ class DouyinPlatform extends PlatformBase {
 
       // 2. ⭐ 使用 TabManager 获取登录窗口
       // 登录窗口特性：
-      // - 临时窗口，登录成功后会关闭
+      // - 临时窗口 (persistent=false)，登录成功后会自动关闭
       // - 可复用（如果已有登录窗口）
       // - 不强制创建新窗口（复用已有登录窗口）
       logger.info('Getting login tab from TabManager...');
-      const { tabId, page: loginPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
+      const { page: loginPage, release } = await this.browserManager.tabManager.getPageForTask(accountId, {
         tag: TabTag.LOGIN,
         persistent: false,     // 登录成功后关闭
         shareable: true,       // 登录窗口可复用
@@ -99,35 +99,11 @@ class DouyinPlatform extends PlatformBase {
           const userInfo = await this.extractUserInfo(loginPage);
           logger.info('Extracted user info:', JSON.stringify(userInfo));
 
-          // ⭐ 关键改进: 先创建爬虫窗口,确保不会因为"最后窗口保护"而无法关闭登录窗口
-          logger.info('Pre-creating spider windows before closing login window...');
-
-          try {
-            // 创建私信爬虫窗口
-            const { page: dmPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
-              tag: TabTag.SPIDER_DM,
-              persistent: true,
-              shareable: false,
-              forceNew: false
-            });
-            logger.info('✅ DM spider window pre-created');
-
-            // 创建评论爬虫窗口
-            const { page: commentPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
-              tag: TabTag.SPIDER_COMMENT,
-              persistent: true,
-              shareable: false,
-              forceNew: false
-            });
-            logger.info('✅ Comment spider window pre-created');
-          } catch (error) {
-            logger.warn('Failed to pre-create spider windows:', error.message);
-            // 继续执行,不影响登录流程
-          }
-
-          // 关闭登录页面 - 使用 TabManager (现在不是最后一个窗口了)
-          const closed = await this.browserManager.tabManager.closeTab(accountId, tabId);
-          logger.info(closed ? '✅ Login window closed' : '⚠️  Login window not closed (may be converted to placeholder)');
+          // ⭐ 使用 release() 告诉 TabManager 登录窗口已用完
+          // 由于是 persistent=false，TabManager 会自动关闭此窗口
+          logger.info('Releasing login window...');
+          await release();
+          logger.info('✅ Login window released (will be auto-closed)');
 
           // 发送登录成功状态给 Master
           await this.sendLoginStatus(sessionId, 'success', {

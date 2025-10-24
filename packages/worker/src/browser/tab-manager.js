@@ -74,6 +74,9 @@ class TabManager {
           tabId: existingTab.tabId,
           page: existingTab.page,
           shouldClose: false, // 公用的不关闭
+          release: async () => {
+            await this.releaseTab(accountId, existingTab.tabId);
+          }
         };
       }
     }
@@ -87,6 +90,9 @@ class TabManager {
           tabId: existingTab.tabId,
           page: existingTab.page,
           shouldClose: !persistent, // 非持久的需要关闭
+          release: async () => {
+            await this.releaseTab(accountId, existingTab.tabId);
+          }
         };
       }
     }
@@ -99,7 +105,10 @@ class TabManager {
     return {
       tabId,
       page,
-      shouldClose: !persistent, // 非持久的需要关闭
+      shouldClose: !persistent, // 非持久的需要关闭 (已废弃,使用 release 代替)
+      release: async () => {
+        await this.releaseTab(accountId, tabId);
+      }
     };
   }
 
@@ -140,6 +149,8 @@ class TabManager {
       tag,
       persistent,
       createdAt: Date.now(),
+      status: 'ACTIVE',  // 'ACTIVE' | 'RELEASED' | 'CLOSED'
+      releasedAt: null,
     });
 
     logger.info(`✅ Registered tab ${tabId}: tag=${tag}, persistent=${persistent}`);
@@ -182,7 +193,46 @@ class TabManager {
   }
 
   /**
+   * ⭐ 释放 Tab（业务代码调用，表示已用完）
+   *
+   * 非持久窗口: 立即关闭
+   * 持久窗口: 不做任何操作
+   *
+   * @param {string} accountId - 账户ID
+   * @param {string} tabId - Tab ID
+   */
+  async releaseTab(accountId, tabId) {
+    const tab = this.getTab(accountId, tabId);
+
+    if (!tab) {
+      logger.warn(`Tab ${tabId} not found for account ${accountId}`);
+      return;
+    }
+
+    if (tab.status === 'RELEASED' || tab.status === 'CLOSED') {
+      logger.warn(`Tab ${tabId} already released/closed`);
+      return;
+    }
+
+    if (!tab.persistent) {
+      // 非持久窗口: 立即关闭
+      logger.info(`🗑️  Releasing non-persistent tab ${tabId} (tag=${tab.tag})`);
+
+      tab.status = 'RELEASED';
+      tab.releasedAt = Date.now();
+
+      // 立即清理
+      await this.closeTab(accountId, tabId);
+    } else {
+      // 持久窗口: 不做任何操作
+      logger.debug(`🔒 Persistent tab ${tabId} (tag=${tab.tag}) - release ignored`);
+    }
+  }
+
+  /**
    * ⭐ 安全关闭 Tab（保留最后一个窗口）
+   *
+   * ⚠️ 这是内部方法，业务代码应该使用 releaseTab() 而不是直接调用此方法
    *
    * @param {string} accountId - 账户ID
    * @param {string} tabId - Tab ID
@@ -203,14 +253,19 @@ class TabManager {
 
     // ⚠️ 检查是否是最后一个窗口
     if (accountTabs.size <= 1) {
-      logger.warn(`⚠️  Cannot close last tab ${tabId} for account ${accountId} - would exit browser`);
-
-      // ⭐ 将此窗口转换为占位窗口
-      tab.tag = TabTag.PLACEHOLDER;
-      tab.persistent = true; // 占位窗口是持久的
-
-      logger.info(`🔄 Tab ${tabId} converted to PLACEHOLDER to keep browser alive`);
-      return false;
+      // ⭐ 改进: 区分持久窗口和临时窗口
+      if (tab.persistent) {
+        // 持久窗口: 转换为 PLACEHOLDER (保持浏览器存活)
+        logger.warn(`⚠️  Cannot close last persistent tab ${tabId} - converting to PLACEHOLDER`);
+        tab.tag = TabTag.PLACEHOLDER;
+        tab.status = 'ACTIVE';
+        logger.info(`🔄 Tab ${tabId} converted to PLACEHOLDER to keep browser alive`);
+        return false;
+      } else {
+        // 临时窗口: 允许关闭 (浏览器会退出，但这是预期行为)
+        logger.warn(`⚠️  Closing last temporary tab ${tabId} - browser will exit`);
+        // 继续执行关闭流程
+      }
     }
 
     // 安全关闭
@@ -220,6 +275,7 @@ class TabManager {
         logger.info(`🗑️  Closed tab ${tabId} (tag=${tab.tag}) for account ${accountId}`);
       }
 
+      tab.status = 'CLOSED';
       accountTabs.delete(tabId);
       return true;
 
