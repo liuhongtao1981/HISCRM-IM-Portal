@@ -66,7 +66,7 @@ function triggerCrawl() {
   socket.emit('admin:trigger_crawl', {
     worker_id: WORKER_ID,
     account_id: ACCOUNT_ID,
-    crawl_type: 'comments', // comments, direct_messages, works
+    crawl_type: 'comments', // comments, direct_messages, contents
     options: {
       includeDiscussions: true, // 同时爬取讨论
     },
@@ -89,7 +89,7 @@ function triggerCrawl() {
     socket.emit('admin:trigger_crawl', {
       worker_id: WORKER_ID,
       account_id: ACCOUNT_ID,
-      crawl_type: 'works',
+      crawl_type: 'contents',
       options: {},
     });
   }, 6000);
@@ -129,7 +129,7 @@ function listenForResults() {
 
   // 监听作品数据
   socket.on('worker:bulk_insert_works', (data) => {
-    console.log(`📊 收到作品数据: ${data.works?.length || 0} 个作品`);
+    console.log(`📊 收到作品数据: ${data.contents?.length || 0} 个作品`);
   });
 
   // 监听通知 (Master 广播的)

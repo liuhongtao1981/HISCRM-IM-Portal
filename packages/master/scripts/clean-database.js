@@ -2,7 +2,7 @@
 
 /**
  * 数据库清理脚本
- * 清理 direct_messages, comments, douyin_videos 表中的数据
+ * 清理 direct_messages, comments, contents 表中的数据
  * 保留 accounts 表的账户信息
  */
 
@@ -45,10 +45,10 @@ try {
     const commentsResult = commentsStmt.run();
     console.log(`🗑️  已清理 comments 表: ${commentsResult.changes} 条记录\n`);
 
-    // 4. 清理 douyin_videos 表
-    const videosStmt = db.prepare('DELETE FROM douyin_videos');
-    const videosResult = videosStmt.run();
-    console.log(`🗑️  已清理 douyin_videos 表: ${videosResult.changes} 条记录\n`);
+    // 4. 清理 contents 表
+    const worksStmt = db.prepare('DELETE FROM contents');
+    const worksResult = worksStmt.run();
+    console.log(`🗑️  已清理 contents 表: ${worksResult.changes} 条记录\n`);
 
     // 5. 清理 replies 表
     const repliesStmt = db.prepare('DELETE FROM replies');
@@ -72,7 +72,7 @@ try {
       'direct_messages',
       'conversations',
       'comments',
-      'douyin_videos',
+      'contents',
       'replies'
     ];
 

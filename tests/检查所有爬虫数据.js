@@ -21,14 +21,14 @@ console.log('  Worker状态:', account.worker_status);
 console.log('');
 
 // 2. 统计各类数据
-const worksCount = db.prepare('SELECT COUNT(*) as count FROM douyin_videos WHERE account_id = ?').get(account.id)?.count || 0;
+const worksCount = db.prepare('SELECT COUNT(*) as count FROM contents WHERE account_id = ?').get(account.id)?.count || 0;
 const commentsCount = db.prepare('SELECT COUNT(*) as count FROM comments WHERE account_id = ?').get(account.id)?.count || 0;
 const discussionsCount = db.prepare('SELECT COUNT(*) as count FROM discussions WHERE account_id = ?').get(account.id)?.count || 0;
 const messagesCount = db.prepare('SELECT COUNT(*) as count FROM direct_messages WHERE account_id = ?').get(account.id)?.count || 0;
 const conversationsCount = db.prepare('SELECT COUNT(*) as count FROM conversations WHERE account_id = ?').get(account.id)?.count || 0;
 
 console.log('📈 数据统计:');
-console.log(`  🎬 作品 (douyin_videos): ${worksCount} 个`);
+console.log(`  🎬 作品 (contents): ${worksCount} 个`);
 console.log(`  💬 评论 (comments): ${commentsCount} 条`);
 console.log(`  🗣️  讨论 (discussions): ${discussionsCount} 条`);
 console.log(`  📩 私信 (direct_messages): ${messagesCount} 条`);
@@ -58,17 +58,17 @@ if (messagesCount > 0) {
 }
 
 // 4. 检查作品表结构
-console.log('📋 检查 douyin_videos 表是否存在:');
+console.log('📋 检查 contents 表是否存在:');
 try {
-  const tableInfo = db.prepare('PRAGMA table_info(douyin_videos)').all();
+  const tableInfo = db.prepare('PRAGMA table_info(contents)').all();
   if (tableInfo.length > 0) {
-    console.log('  ✅ douyin_videos 表存在');
+    console.log('  ✅ contents 表存在');
     console.log(`  字段数: ${tableInfo.length}`);
   } else {
-    console.log('  ❌ douyin_videos 表不存在');
+    console.log('  ❌ contents 表不存在');
   }
 } catch (error) {
-  console.log('  ❌ douyin_videos 表不存在:', error.message);
+  console.log('  ❌ contents 表不存在:', error.message);
 }
 console.log('');
 

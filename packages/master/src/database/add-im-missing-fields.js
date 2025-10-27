@@ -158,7 +158,7 @@ function runMigration() {
 
     const commentFields = [
       { name: 'author_avatar', sql: `ALTER TABLE comments ADD COLUMN author_avatar TEXT` },
-      { name: 'like_count', sql: `ALTER TABLE comments ADD COLUMN like_count INTEGER DEFAULT 0` },
+      { name: 'stats_like_count', sql: `ALTER TABLE comments ADD COLUMN stats_like_count INTEGER DEFAULT 0` },
       { name: 'reply_count', sql: `ALTER TABLE comments ADD COLUMN reply_count INTEGER DEFAULT 0` },
     ];
 
@@ -174,7 +174,7 @@ function runMigration() {
     }
 
     // 添加索引
-    db.exec(`CREATE INDEX IF NOT EXISTS idx_comments_like_count ON comments(like_count)`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_comments_like_count ON comments(stats_like_count)`);
 
     console.log(`   📊 comments: 添加 ${commentAdded} 个字段`);
 
@@ -188,7 +188,7 @@ function runMigration() {
 
     const discussionFields = [
       { name: 'author_avatar', sql: `ALTER TABLE discussions ADD COLUMN author_avatar TEXT` },
-      { name: 'like_count', sql: `ALTER TABLE discussions ADD COLUMN like_count INTEGER DEFAULT 0` },
+      { name: 'stats_like_count', sql: `ALTER TABLE discussions ADD COLUMN stats_like_count INTEGER DEFAULT 0` },
     ];
 
     let discussionAdded = 0;

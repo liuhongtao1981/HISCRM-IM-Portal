@@ -15,7 +15,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 
 // 统计各表数据量
 const tables = {
-  'douyin_videos': '作品',
+  'contents': '作品',
   'comments': '评论',
   'discussions': '讨论',
   'direct_messages': '私信',
@@ -37,21 +37,21 @@ console.log('🎬 作品数据 (最新5条)');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
-  const videos = db.prepare(`
-    SELECT video_title, video_url, comment_count, created_at
-    FROM douyin_videos
+  const contents = db.prepare(`
+    SELECT title, url, stats_comment_count, created_at
+    FROM contents
     ORDER BY created_at DESC
     LIMIT 5
   `).all();
 
-  if (videos.length === 0) {
+  if (contents.length === 0) {
     console.log('暂无作品数据\n');
   } else {
-    videos.forEach((video, i) => {
-      console.log(`${i + 1}. ${video.video_title || '(无标题)'}`);
-      console.log(`   URL: ${video.video_url || 'N/A'}`);
-      console.log(`   评论数: ${video.comment_count || 0}`);
-      console.log(`   时间: ${new Date(video.created_at * 1000).toLocaleString('zh-CN')}\n`);
+    contents.forEach((work, i) => {
+      console.log(`${i + 1}. ${work.title || '(无标题)'}`);
+      console.log(`   URL: ${work.url || 'N/A'}`);
+      console.log(`   评论数: ${work.stats_comment_count || 0}`);
+      console.log(`   时间: ${new Date(work.created_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
 } catch (e) {
@@ -117,7 +117,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 
 try {
   const conversations = db.prepare(`
-    SELECT platform_user_name, last_message_text, message_count, updated_at
+    SELECT platform_user_name, last_message_content, unread_count, updated_at
     FROM conversations
     ORDER BY updated_at DESC
     LIMIT 10
@@ -128,8 +128,8 @@ try {
   } else {
     conversations.forEach((conv, i) => {
       console.log(`${i + 1}. ${conv.platform_user_name || '(未知用户)'}`);
-      console.log(`   最后消息: ${conv.last_message_text || 'N/A'}`);
-      console.log(`   消息数: ${conv.message_count || 0}`);
+      console.log(`   最后消息: ${conv.last_message_content || 'N/A'}`);
+      console.log(`   未读数: ${conv.unread_count || 0}`);
       console.log(`   更新时间: ${new Date(conv.updated_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
@@ -144,7 +144,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 
 try {
   const messages = db.prepare(`
-    SELECT content_text, message_type, is_from_me, conversation_id, created_at
+    SELECT content, message_type, direction, conversation_id, created_at, sender_name
     FROM direct_messages
     ORDER BY created_at DESC
     LIMIT 20
@@ -154,9 +154,9 @@ try {
     console.log('暂无私信数据\n');
   } else {
     messages.forEach((msg, i) => {
-      const direction = msg.is_from_me ? '➡️ 我发送' : '⬅️ 收到';
-      console.log(`${i + 1}. ${direction} [${msg.message_type || 'unknown'}]`);
-      console.log(`   内容: ${msg.content_text || '(无文本内容)'}`);
+      const directionText = msg.direction === 'sent' ? '➡️ 我发送' : '⬅️ 收到';
+      console.log(`${i + 1}. ${directionText} [${msg.message_type || 'unknown'}] - ${msg.sender_name || '未知'}`);
+      console.log(`   内容: ${msg.content || '(无文本内容)'}`);
       console.log(`   会话ID: ${msg.conversation_id || 'N/A'}`);
       console.log(`   时间: ${new Date(msg.created_at * 1000).toLocaleString('zh-CN')}\n`);
     });

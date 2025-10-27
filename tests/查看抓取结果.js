@@ -20,7 +20,7 @@ function checkCrawlResults() {
         author_name,
         content,
         datetime(create_time, 'unixepoch', 'localtime') as create_time,
-        like_count,
+        stats_like_count,
         reply_count
       FROM comments
       ORDER BY create_time DESC
@@ -35,7 +35,7 @@ function checkCrawlResults() {
       console.log(`${i + 1}. ${c.author_name}: ${c.content.substring(0, 50)}${c.content.length > 50 ? '...' : ''}`);
       console.log(`   ID: ${c.platform_comment_id.substring(0, 40)}...`);
       console.log(`   时间: ${c.create_time}`);
-      console.log(`   👍 ${c.like_count} | 💬 ${c.reply_count} 回复`);
+      console.log(`   👍 ${c.stats_like_count} | 💬 ${c.reply_count} 回复`);
       console.log('');
     });
 
@@ -50,7 +50,7 @@ function checkCrawlResults() {
           author_name,
           content,
           datetime(create_time, 'unixepoch', 'localtime') as create_time,
-          like_count,
+          stats_like_count,
           reply_count
         FROM discussions
         ORDER BY create_time DESC
@@ -73,7 +73,7 @@ function checkCrawlResults() {
           console.log(`${i + 1}. ${d.author_name}: ${d.content.substring(0, 50)}${d.content.length > 50 ? '...' : ''}`);
           console.log(`   父评论ID: ${d.parent_comment_id.substring(0, 40)}...`);
           console.log(`   时间: ${d.create_time}`);
-          console.log(`   👍 ${d.like_count} | 💬 ${d.reply_count} 回复`);
+          console.log(`   👍 ${d.stats_like_count} | 💬 ${d.reply_count} 回复`);
           console.log('');
         });
       }

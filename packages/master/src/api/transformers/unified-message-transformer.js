@@ -30,7 +30,7 @@ class UnifiedMessageTransformer {
 
       // 评论特定字段
       content: comment.content,
-      work_id: comment.post_id,
+      content_id: comment.post_id,
       work_title: comment.post_title,
 
       // 状态
@@ -70,7 +70,7 @@ class UnifiedMessageTransformer {
       // 讨论特定字段
       content: discussion.content,
       parent_comment_id: discussion.parent_comment_id,
-      work_id: discussion.work_id,
+      content_id: discussion.content_id,
       work_title: discussion.post_title,
 
       // 状态

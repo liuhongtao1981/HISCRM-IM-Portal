@@ -15,8 +15,8 @@ console.log('=' .repeat(80));
 // 1. 统计所有表的数据
 console.log('\n📈 数据统计:');
 const tables = [
-  { name: 'douyin_videos', label: '作品 (douyin_videos)' },
-  { name: 'works', label: '作品 (works)' },
+  { name: 'contents', label: '作品 (contents)' },
+  { name: 'contents', label: '作品 (contents)' },
   { name: 'comments', label: '评论 (comments)' },
   { name: 'discussions', label: '讨论 (discussions)' },
   { name: 'direct_messages', label: '私信 (direct_messages)' },
@@ -49,7 +49,7 @@ try {
       content,
       author_name,
       author_id,
-      like_count,
+      stats_like_count,
       detected_at,
       created_at
     FROM discussions
@@ -71,7 +71,7 @@ try {
       console.log(`      父评论ID: ${d.parent_comment_id}`);
       console.log(`      内容: ${d.content?.substring(0, 50) || ''}...`);
       console.log(`      作者: ${d.author_name} (ID: ${d.author_id})`);
-      console.log(`      点赞数: ${d.like_count}`);
+      console.log(`      点赞数: ${d.stats_like_count}`);
       console.log(`      检测时间: ${new Date(d.detected_at * 1000).toLocaleString('zh-CN')}`);
       console.log(`      创建时间: ${new Date(d.created_at * 1000).toLocaleString('zh-CN')}`);
       console.log();

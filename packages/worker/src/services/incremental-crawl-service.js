@@ -71,7 +71,7 @@ class IncrementalCrawlService {
           post_id: video.aweme_id,
           post_title: video.title || '',
           post_cover: video.cover || '',
-          like_count: comment.like_count || 0,
+          stats_like_count: comment.stats_like_count || 0,
           reply_to_comment_id: comment.reply_to_comment_id || null,
           ip_label: comment.ip_label || '',
           is_new: isNew,

@@ -5,7 +5,7 @@
 
 const { v4: uuidv4 } = require('uuid');
 
-class WorksDAO {
+class ContentsDAO {
   constructor(db) {
     this.db = db;
   }
@@ -18,16 +18,16 @@ class WorksDAO {
     const id = work.id || uuidv4();
 
     const stmt = this.db.prepare(`
-      INSERT INTO works (
-        id, account_id, platform, platform_work_id, platform_user_id,
-        work_type, title, description, cover, url, publish_time,
-        total_comment_count, new_comment_count, like_count, share_count, view_count,
+      INSERT INTO contents (
+        id, account_id, platform, platform_content_id, platform_user_id,
+        content_type, title, description, cover, url, publish_time,
+        stats_comment_count, stats_new_comment_count, stats_like_count, stats_share_count, stats_view_count,
         last_crawl_time, crawl_status, crawl_error,
         is_new, push_count, created_at, updated_at
       ) VALUES (
-        @id, @account_id, @platform, @platform_work_id, @platform_user_id,
-        @work_type, @title, @description, @cover, @url, @publish_time,
-        @total_comment_count, @new_comment_count, @like_count, @share_count, @view_count,
+        @id, @account_id, @platform, @platform_content_id, @platform_user_id,
+        @content_type, @title, @description, @cover, @url, @publish_time,
+        @stats_comment_count, @stats_new_comment_count, @stats_like_count, @stats_share_count, @stats_view_count,
         @last_crawl_time, @crawl_status, @crawl_error,
         @is_new, @push_count, @created_at, @updated_at
       )
@@ -37,19 +37,19 @@ class WorksDAO {
       id,
       account_id: work.account_id,
       platform: work.platform,
-      platform_work_id: work.platform_work_id,
+      platform_content_id: work.platform_content_id,
       platform_user_id: work.platform_user_id || null,
-      work_type: work.work_type,
+      content_type: work.content_type,
       title: work.title || null,
       description: work.description || null,
       cover: work.cover || null,
       url: work.url || null,
       publish_time: work.publish_time || null,
-      total_comment_count: work.total_comment_count || 0,
-      new_comment_count: work.new_comment_count || 0,
-      like_count: work.like_count || 0,
-      share_count: work.share_count || 0,
-      view_count: work.view_count || 0,
+      stats_comment_count: work.stats_comment_count || 0,
+      stats_new_comment_count: work.stats_new_comment_count || 0,
+      stats_like_count: work.stats_like_count || 0,
+      stats_share_count: work.stats_share_count || 0,
+      stats_view_count: work.stats_view_count || 0,
       last_crawl_time: work.last_crawl_time || null,
       crawl_status: work.crawl_status || 'pending',
       crawl_error: work.crawl_error || null,
@@ -66,7 +66,7 @@ class WorksDAO {
    * 根据 ID 查询作品
    */
   findById(id) {
-    const stmt = this.db.prepare('SELECT * FROM works WHERE id = ?');
+    const stmt = this.db.prepare('SELECT * FROM contents WHERE id = ?');
     return stmt.get(id);
   }
 
@@ -75,8 +75,8 @@ class WorksDAO {
    */
   findByPlatformWorkId(accountId, platform, platformWorkId) {
     const stmt = this.db.prepare(`
-      SELECT * FROM works
-      WHERE account_id = ? AND platform = ? AND platform_work_id = ?
+      SELECT * FROM contents
+      WHERE account_id = ? AND platform = ? AND platform_content_id = ?
     `);
     return stmt.get(accountId, platform, platformWorkId);
   }
@@ -85,14 +85,14 @@ class WorksDAO {
    * 查询账号的所有作品
    */
   findByAccountId(accountId, options = {}) {
-    const { limit = 50, offset = 0, work_type, is_new } = options;
+    const { limit = 50, offset = 0, content_type, is_new } = options;
 
-    let sql = 'SELECT * FROM works WHERE account_id = ?';
+    let sql = 'SELECT * FROM contents WHERE account_id = ?';
     const params = [accountId];
 
-    if (work_type) {
-      sql += ' AND work_type = ?';
-      params.push(work_type);
+    if (content_type) {
+      sql += ' AND content_type = ?';
+      params.push(content_type);
     }
 
     if (is_new !== undefined) {
@@ -111,9 +111,9 @@ class WorksDAO {
    * 查询所有作品（分页）
    */
   findAll(options = {}) {
-    const { limit = 50, offset = 0, platform, work_type, is_new } = options;
+    const { limit = 50, offset = 0, platform, content_type, is_new } = options;
 
-    let sql = 'SELECT * FROM works WHERE 1=1';
+    let sql = 'SELECT * FROM contents WHERE 1=1';
     const params = [];
 
     if (platform) {
@@ -121,9 +121,9 @@ class WorksDAO {
       params.push(platform);
     }
 
-    if (work_type) {
-      sql += ' AND work_type = ?';
-      params.push(work_type);
+    if (content_type) {
+      sql += ' AND content_type = ?';
+      params.push(content_type);
     }
 
     if (is_new !== undefined) {
@@ -146,7 +146,7 @@ class WorksDAO {
     updates.updated_at = now;
 
     const fields = Object.keys(updates).map(key => `${key} = @${key}`).join(', ');
-    const sql = `UPDATE works SET ${fields} WHERE id = @id`;
+    const sql = `UPDATE contents SET ${fields} WHERE id = @id`;
 
     const stmt = this.db.prepare(sql);
     stmt.run({ id, ...updates });
@@ -159,11 +159,11 @@ class WorksDAO {
    */
   updateStats(id, stats) {
     const updates = {
-      total_comment_count: stats.total_comment_count,
-      new_comment_count: stats.new_comment_count,
-      like_count: stats.like_count,
-      share_count: stats.share_count,
-      view_count: stats.view_count,
+      stats_comment_count: stats.stats_comment_count,
+      stats_new_comment_count: stats.stats_new_comment_count,
+      stats_like_count: stats.stats_like_count,
+      stats_share_count: stats.stats_share_count,
+      stats_view_count: stats.stats_view_count,
       last_crawl_time: Math.floor(Date.now() / 1000),
     };
 
@@ -174,7 +174,7 @@ class WorksDAO {
    * 删除作品
    */
   delete(id) {
-    const stmt = this.db.prepare('DELETE FROM works WHERE id = ?');
+    const stmt = this.db.prepare('DELETE FROM contents WHERE id = ?');
     const result = stmt.run(id);
     return result.changes > 0;
   }
@@ -183,9 +183,9 @@ class WorksDAO {
    * 统计作品数量
    */
   count(options = {}) {
-    const { account_id, platform, work_type, is_new } = options;
+    const { account_id, platform, content_type, is_new } = options;
 
-    let sql = 'SELECT COUNT(*) as count FROM works WHERE 1=1';
+    let sql = 'SELECT COUNT(*) as count FROM contents WHERE 1=1';
     const params = [];
 
     if (account_id) {
@@ -198,9 +198,9 @@ class WorksDAO {
       params.push(platform);
     }
 
-    if (work_type) {
-      sql += ' AND work_type = ?';
-      params.push(work_type);
+    if (content_type) {
+      sql += ' AND content_type = ?';
+      params.push(content_type);
     }
 
     if (is_new !== undefined) {
@@ -224,11 +224,11 @@ class WorksDAO {
    */
   markManyAsRead(ids) {
     const placeholders = ids.map(() => '?').join(',');
-    const sql = `UPDATE works SET is_new = 0 WHERE id IN (${placeholders})`;
+    const sql = `UPDATE contents SET is_new = 0 WHERE id IN (${placeholders})`;
     const stmt = this.db.prepare(sql);
     const result = stmt.run(...ids);
     return result.changes;
   }
 }
 
-module.exports = WorksDAO;
+module.exports = ContentsDAO;

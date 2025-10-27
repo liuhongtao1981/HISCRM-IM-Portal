@@ -21,13 +21,13 @@ class DiscussionsDAO {
       INSERT INTO discussions (
         id, account_id, platform, platform_user_id, platform_discussion_id,
         parent_comment_id, content, author_name, author_id,
-        work_id, post_id, post_title,
+        content_id, post_id, post_title,
         is_read, is_new, push_count,
         detected_at, created_at
       ) VALUES (
         @id, @account_id, @platform, @platform_user_id, @platform_discussion_id,
         @parent_comment_id, @content, @author_name, @author_id,
-        @work_id, @post_id, @post_title,
+        @content_id, @post_id, @post_title,
         @is_read, @is_new, @push_count,
         @detected_at, @created_at
       )
@@ -43,7 +43,7 @@ class DiscussionsDAO {
       content: discussion.content,
       author_name: discussion.author_name || null,
       author_id: discussion.author_id || null,
-      work_id: discussion.work_id || null,
+      content_id: discussion.content_id || null,
       post_id: discussion.post_id || null,
       post_title: discussion.post_title || null,
       is_read: discussion.is_read !== undefined ? discussion.is_read : 0,
@@ -122,7 +122,7 @@ class DiscussionsDAO {
   findByWorkId(workId, options = {}) {
     const { limit = 50, offset = 0, is_read, is_new } = options;
 
-    let sql = 'SELECT * FROM discussions WHERE work_id = ?';
+    let sql = 'SELECT * FROM discussions WHERE content_id = ?';
     const params = [workId];
 
     if (is_read !== undefined) {
@@ -217,7 +217,7 @@ class DiscussionsDAO {
    * 统计讨论数量
    */
   count(options = {}) {
-    const { account_id, platform, parent_comment_id, work_id, is_read, is_new } = options;
+    const { account_id, platform, parent_comment_id, content_id, is_read, is_new } = options;
 
     let sql = 'SELECT COUNT(*) as count FROM discussions WHERE 1=1';
     const params = [];
@@ -237,9 +237,9 @@ class DiscussionsDAO {
       params.push(parent_comment_id);
     }
 
-    if (work_id) {
-      sql += ' AND work_id = ?';
-      params.push(work_id);
+    if (content_id) {
+      sql += ' AND content_id = ?';
+      params.push(content_id);
     }
 
     if (is_read !== undefined) {

@@ -126,7 +126,7 @@ const comments = db.prepare(`
   SELECT
     id,
     account_id,
-    work_id,
+    content_id,
     comment_text,
     author_name,
     created_at
@@ -143,7 +143,7 @@ if (comments.length === 0) {
     const preview = text.length > 50 ? text.substring(0, 50) + '...' : text;
     console.log(`\n[${index + 1}] 评论 ID: ${comment.id}`);
     console.log(`    账户 ID: ${comment.account_id}`);
-    console.log(`    作品 ID: ${comment.work_id}`);
+    console.log(`    作品 ID: ${comment.content_id}`);
     console.log(`    评论内容: ${preview}`);
     console.log(`    作者: ${comment.author_name}`);
     console.log(`    创建时间: ${new Date(comment.created_at * 1000).toLocaleString('zh-CN')}`);

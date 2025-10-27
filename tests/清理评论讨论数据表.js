@@ -29,10 +29,10 @@ function cleanCommentTables() {
 
     // 3. 清理作品表 (如果需要)
     try {
-      const worksResult = db.prepare('DELETE FROM douyin_videos').run();
-      console.log(`✅ douyin_videos 表: 删除 ${worksResult.changes} 条记录`);
+      const worksResult = db.prepare('DELETE FROM contents').run();
+      console.log(`✅ contents 表: 删除 ${worksResult.changes} 条记录`);
     } catch (e) {
-      console.log(`⚠️  douyin_videos 表不存在或清理失败: ${e.message}`);
+      console.log(`⚠️  contents 表不存在或清理失败: ${e.message}`);
     }
 
     // 4. 清理回复表
@@ -61,10 +61,10 @@ function cleanCommentTables() {
     }
 
     try {
-      const worksCount = db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get();
-      console.log(`   douyin_videos: ${worksCount.count} 条`);
+      const worksCount = db.prepare('SELECT COUNT(*) as count FROM contents').get();
+      console.log(`   contents: ${worksCount.count} 条`);
     } catch (e) {
-      console.log(`   douyin_videos: 表不存在`);
+      console.log(`   contents: 表不存在`);
     }
 
     try {

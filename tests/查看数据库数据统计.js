@@ -25,7 +25,7 @@ try {
 
 // 要统计的表
 const tables = [
-  { name: 'works', desc: '作品' },
+  { name: 'contents', desc: '作品' },
   { name: 'comments', desc: '评论' },
   { name: 'discussions', desc: '讨论（二级/三级回复）' },
   { name: 'direct_messages', desc: '私信' },
@@ -63,8 +63,8 @@ tables.forEach(table => {
         const timeStr = timestamp ? new Date(timestamp * 1000).toLocaleString() : '未知时间';
 
         // 根据不同表类型显示不同字段
-        if (table.name === 'works') {
-          console.log(`   ${index + 1}. ${row.title || row.platform_work_id} (${timeStr})`);
+        if (table.name === 'contents') {
+          console.log(`   ${index + 1}. ${row.title || row.platform_content_id} (${timeStr})`);
         } else if (table.name === 'comments') {
           console.log(`   ${index + 1}. ${(row.content || '').substring(0, 50)} (${timeStr})`);
         } else if (table.name === 'discussions') {

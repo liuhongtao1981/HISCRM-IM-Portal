@@ -4,16 +4,16 @@
  */
 
 const express = require('express');
-const WorksDAO = require('../../../dao/WorksDAO');
+const ContentsDAO = require('../../../dao/ContentsDAO');
 const WorkTransformer = require('../../transformers/work-transformer');
 const ResponseWrapper = require('../../transformers/response-wrapper');
 
 function createIMWorksRouter(db) {
   const router = express.Router();
-  const worksDAO = new WorksDAO(db);
+  const contentsDAO = new ContentsDAO(db);
 
   /**
-   * GET /api/im/works
+   * GET /api/im/contents
    * 获取作品列表
    */
   router.get('/', (req, res) => {
@@ -22,7 +22,7 @@ function createIMWorksRouter(db) {
         cursor = 0,
         count = 20,
         platform,
-        work_type,
+        content_type,
         is_new,
         account_id,
       } = req.query;
@@ -35,32 +35,32 @@ function createIMWorksRouter(db) {
         offset,
         limit: limit + 1, // 多查询一条用于判断 has_more
         platform,
-        work_type,
+        content_type,
         is_new: is_new !== undefined ? is_new === 'true' : undefined,
       };
 
       // 查询作品
-      let works;
+      let contents;
       if (account_id) {
-        works = worksDAO.findByAccountId(account_id, options);
+        contents = contentsDAO.findByAccountId(account_id, options);
       } else {
-        works = worksDAO.findAll(options);
+        contents = contentsDAO.findAll(options);
       }
 
       // 判断是否有更多
-      const hasMore = works.length > limit;
+      const hasMore = contents.length > limit;
       if (hasMore) {
-        works = works.slice(0, limit);
+        contents = contents.slice(0, limit);
       }
 
       // 转换为 IM 格式
-      const imWorks = WorkTransformer.toIMWorks(works);
+      const imWorks = WorkTransformer.toIMWorks(contents);
 
       // 返回响应
       res.json(ResponseWrapper.success(
-        { works: imWorks },
+        { contents: imWorks },
         {
-          cursor: offset + works.length,
+          cursor: offset + contents.length,
           has_more: hasMore,
         }
       ));
@@ -71,14 +71,14 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * GET /api/im/works/:workId
+   * GET /api/im/contents/:workId
    * 获取单个作品
    */
   router.get('/:workId', (req, res) => {
     try {
       const { workId } = req.params;
 
-      const work = worksDAO.findById(workId);
+      const work = contentsDAO.findById(workId);
 
       if (!work) {
         return res.status(404).json(ResponseWrapper.error(404, '作品不存在'));
@@ -93,7 +93,7 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * POST /api/im/works
+   * POST /api/im/contents
    * 创建作品
    */
   router.post('/', (req, res) => {
@@ -104,7 +104,7 @@ function createIMWorksRouter(db) {
       const masterWork = WorkTransformer.toMasterWork(workData);
 
       // 创建作品
-      const createdWork = worksDAO.create(masterWork);
+      const createdWork = contentsDAO.create(masterWork);
 
       // 转换为 IM 格式
       const imWork = WorkTransformer.toIMWork(createdWork);
@@ -117,7 +117,7 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * PUT /api/im/works/:workId
+   * PUT /api/im/contents/:workId
    * 更新作品
    */
   router.put('/:workId', (req, res) => {
@@ -126,7 +126,7 @@ function createIMWorksRouter(db) {
       const updates = req.body;
 
       // 检查作品是否存在
-      const existingWork = worksDAO.findById(workId);
+      const existingWork = contentsDAO.findById(workId);
       if (!existingWork) {
         return res.status(404).json(ResponseWrapper.error(404, '作品不存在'));
       }
@@ -135,7 +135,7 @@ function createIMWorksRouter(db) {
       const masterUpdates = WorkTransformer.toMasterWork(updates);
 
       // 更新作品
-      const updatedWork = worksDAO.update(workId, masterUpdates);
+      const updatedWork = contentsDAO.update(workId, masterUpdates);
 
       // 转换为 IM 格式
       const imWork = WorkTransformer.toIMWork(updatedWork);
@@ -148,7 +148,7 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * PUT /api/im/works/:workId/read
+   * PUT /api/im/contents/:workId/read
    * 标记作品为已读
    */
   router.put('/:workId/read', (req, res) => {
@@ -156,13 +156,13 @@ function createIMWorksRouter(db) {
       const { workId } = req.params;
 
       // 检查作品是否存在
-      const existingWork = worksDAO.findById(workId);
+      const existingWork = contentsDAO.findById(workId);
       if (!existingWork) {
         return res.status(404).json(ResponseWrapper.error(404, '作品不存在'));
       }
 
       // 标记为已读
-      const updatedWork = worksDAO.markAsRead(workId);
+      const updatedWork = contentsDAO.markAsRead(workId);
 
       // 转换为 IM 格式
       const imWork = WorkTransformer.toIMWork(updatedWork);
@@ -175,7 +175,7 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * DELETE /api/im/works/:workId
+   * DELETE /api/im/contents/:workId
    * 删除作品
    */
   router.delete('/:workId', (req, res) => {
@@ -183,13 +183,13 @@ function createIMWorksRouter(db) {
       const { workId } = req.params;
 
       // 检查作品是否存在
-      const existingWork = worksDAO.findById(workId);
+      const existingWork = contentsDAO.findById(workId);
       if (!existingWork) {
         return res.status(404).json(ResponseWrapper.error(404, '作品不存在'));
       }
 
       // 删除作品
-      const deleted = worksDAO.delete(workId);
+      const deleted = contentsDAO.delete(workId);
 
       res.json(ResponseWrapper.success({ deleted }));
     } catch (error) {
@@ -199,26 +199,26 @@ function createIMWorksRouter(db) {
   });
 
   /**
-   * GET /api/im/works/:workId/stats
+   * GET /api/im/contents/:workId/stats
    * 获取作品统计信息
    */
   router.get('/:workId/stats', (req, res) => {
     try {
       const { workId } = req.params;
 
-      const work = worksDAO.findById(workId);
+      const work = contentsDAO.findById(workId);
 
       if (!work) {
         return res.status(404).json(ResponseWrapper.error(404, '作品不存在'));
       }
 
       const stats = {
-        work_id: work.id,
-        total_comments: work.total_comment_count || 0,
-        new_comments: work.new_comment_count || 0,
-        likes: work.like_count || 0,
-        shares: work.share_count || 0,
-        views: work.view_count || 0,
+        content_id: work.id,
+        total_comments: work.stats_comment_count || 0,
+        new_comments: work.stats_new_comment_count || 0,
+        likes: work.stats_like_count || 0,
+        shares: work.stats_share_count || 0,
+        views: work.stats_view_count || 0,
       };
 
       res.json(ResponseWrapper.success(stats));

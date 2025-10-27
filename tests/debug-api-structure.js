@@ -97,7 +97,7 @@ console.log('      Content:');
 console.log('         aweme_id: "7xxx..."');
 console.log('         desc: "第一次排位五杀，感谢中国好队友"  ← 视频标题！');
 console.log('         create_time: 1703200978');
-console.log('         statistics: {Object, keys: play_count, like_count, ...}');
+console.log('         statistics: {Object, keys: play_count, stats_like_count, ...}');
 console.log('');
 console.log('╚═══════════════════════════════════════════════════════════════╝\n');
 

@@ -322,11 +322,11 @@ class MonitorTask {
       if (this.accountStatusReporter) {
         this.accountStatusReporter.recordCrawlComplete(this.account.id, {
           total_comments: this.totalComments,
-          total_works: this.totalWorks,
+          total_contents: this.totalWorks,
           total_followers: this.totalFollowers,  // 可从 userInfo 获取
           total_following: this.totalFollowing,  // 可从 userInfo 获取
           recent_comments_count: commentStats.recent_comments_count || newComments.length,
-          recent_works_count: 0,  // 暂时未实现作品爬取
+          recent_contents_count: 0,  // 暂时未实现作品爬取
         });
       }
 
@@ -335,7 +335,7 @@ class MonitorTask {
         new_comments: newComments.length,
         new_dms: newDMs.length,
         total_comments: this.totalComments,
-        total_works: this.totalWorks,
+        total_contents: this.totalWorks,
       });
     } catch (error) {
       logger.error('Monitor execution failed:', error);

@@ -33,11 +33,11 @@ CREATE TABLE accounts (
 
   -- 统计信息字段
   total_comments INTEGER DEFAULT 0,
-  total_works INTEGER DEFAULT 0,
+  total_contents INTEGER DEFAULT 0,
   total_followers INTEGER DEFAULT 0,
   total_following INTEGER DEFAULT 0,
   recent_comments_count INTEGER DEFAULT 0,
-  recent_works_count INTEGER DEFAULT 0,
+  recent_contents_count INTEGER DEFAULT 0,
 
   -- Worker状态字段
   worker_status TEXT DEFAULT 'offline',
@@ -213,8 +213,8 @@ CREATE TABLE discussions (
         author_id TEXT,
         author_avatar TEXT,
 
-        -- 关联作品信息
-        work_id TEXT,
+        -- 关联内容信息
+        content_id TEXT,
         post_id TEXT,
         post_title TEXT,
 
@@ -233,13 +233,13 @@ CREATE TABLE discussions (
 
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
         FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE,
-        FOREIGN KEY (work_id) REFERENCES works(id) ON DELETE SET NULL
+        FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE SET NULL
       );
 
 CREATE INDEX idx_discussions_account ON discussions(account_id);
 CREATE INDEX idx_discussions_platform ON discussions(platform);
 CREATE INDEX idx_discussions_parent_comment ON discussions(parent_comment_id);
-CREATE INDEX idx_discussions_work ON discussions(work_id);
+CREATE INDEX idx_discussions_content ON discussions(content_id);
 CREATE INDEX idx_discussions_read ON discussions(is_read);
 CREATE INDEX idx_discussions_is_new ON discussions(is_new);
 CREATE INDEX idx_discussions_detected ON discussions(detected_at);
@@ -534,17 +534,17 @@ CREATE TABLE workers (
 CREATE INDEX idx_workers_status ON workers(status);
 
 -- ============================================================================
--- Table: works
+-- Table: contents (作品/内容表 - 统一存储各平台的视频、文章、图片等内容)
 -- ============================================================================
-CREATE TABLE works (
+CREATE TABLE contents (
         id TEXT PRIMARY KEY,
         account_id TEXT NOT NULL,
         platform TEXT NOT NULL,
-        platform_work_id TEXT NOT NULL,
+        platform_content_id TEXT NOT NULL,
         platform_user_id TEXT,
 
-        -- 作品类型和信息
-        work_type TEXT NOT NULL CHECK(work_type IN ('video', 'article', 'image', 'audio', 'text')),
+        -- 内容类型和信息
+        content_type TEXT NOT NULL CHECK(content_type IN ('video', 'article', 'image', 'audio', 'text')),
         title TEXT,
         description TEXT,
         cover TEXT,
@@ -552,11 +552,11 @@ CREATE TABLE works (
         publish_time INTEGER,
 
         -- 统计信息
-        total_comment_count INTEGER DEFAULT 0,
-        new_comment_count INTEGER DEFAULT 0,
-        like_count INTEGER DEFAULT 0,
-        share_count INTEGER DEFAULT 0,
-        view_count INTEGER DEFAULT 0,
+        stats_comment_count INTEGER DEFAULT 0,
+        stats_new_comment_count INTEGER DEFAULT 0,
+        stats_like_count INTEGER DEFAULT 0,
+        stats_share_count INTEGER DEFAULT 0,
+        stats_view_count INTEGER DEFAULT 0,
 
         -- 爬取状态
         last_crawl_time INTEGER,
@@ -572,17 +572,17 @@ CREATE TABLE works (
         updated_at INTEGER NOT NULL,
 
         -- 三字段组合唯一约束
-        UNIQUE(account_id, platform, platform_work_id),
+        UNIQUE(account_id, platform, platform_content_id),
 
         FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
       );
 
-CREATE INDEX idx_works_account ON works(account_id);
-CREATE INDEX idx_works_platform ON works(platform);
-CREATE INDEX idx_works_platform_work ON works(platform_work_id);
-CREATE INDEX idx_works_last_crawl ON works(last_crawl_time);
-CREATE INDEX idx_works_platform_user ON works(platform_user_id);
-CREATE INDEX idx_works_work_type ON works(work_type);
-CREATE INDEX idx_works_is_new ON works(is_new);
-CREATE INDEX idx_works_account_platform_work ON works(account_id, platform, platform_work_id);
+CREATE INDEX idx_contents_account ON contents(account_id);
+CREATE INDEX idx_contents_platform ON contents(platform);
+CREATE INDEX idx_contents_platform_content ON contents(platform_content_id);
+CREATE INDEX idx_contents_last_crawl ON contents(last_crawl_time);
+CREATE INDEX idx_contents_platform_user ON contents(platform_user_id);
+CREATE INDEX idx_contents_content_type ON contents(content_type);
+CREATE INDEX idx_contents_is_new ON contents(is_new);
+CREATE INDEX idx_contents_account_platform_content ON contents(account_id, platform, platform_content_id);
 

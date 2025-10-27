@@ -25,7 +25,7 @@ async function cleanTestData() {
       conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get().count,
       comments: db.prepare('SELECT COUNT(*) as count FROM comments').get().count,
       discussions: db.prepare('SELECT COUNT(*) as count FROM discussions').get().count,
-      douyin_videos: db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get().count,
+      contents: db.prepare('SELECT COUNT(*) as count FROM contents').get().count,
       replies: db.prepare('SELECT COUNT(*) as count FROM replies').get().count,
       notifications: db.prepare('SELECT COUNT(*) as count FROM notifications').get().count,
       worker_logs: db.prepare('SELECT COUNT(*) as count FROM worker_logs').get().count,
@@ -48,8 +48,8 @@ async function cleanTestData() {
       console.log('  ✓ 清理讨论 (discussions)');
       db.prepare('DELETE FROM discussions').run();
 
-      console.log('  ✓ 清理作品 (douyin_videos)');
-      db.prepare('DELETE FROM douyin_videos').run();
+      console.log('  ✓ 清理作品 (contents)');
+      db.prepare('DELETE FROM contents').run();
 
       console.log('  ✓ 清理回复记录 (replies)');
       db.prepare('DELETE FROM replies').run();
@@ -68,7 +68,7 @@ async function cleanTestData() {
       conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get().count,
       comments: db.prepare('SELECT COUNT(*) as count FROM comments').get().count,
       discussions: db.prepare('SELECT COUNT(*) as count FROM discussions').get().count,
-      douyin_videos: db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get().count,
+      contents: db.prepare('SELECT COUNT(*) as count FROM contents').get().count,
       replies: db.prepare('SELECT COUNT(*) as count FROM replies').get().count,
       notifications: db.prepare('SELECT COUNT(*) as count FROM notifications').get().count,
       worker_logs: db.prepare('SELECT COUNT(*) as count FROM worker_logs').get().count,
@@ -116,7 +116,7 @@ async function cleanTestData() {
     console.log(`  ✓ 会话: ${beforeStats.conversations} → 0`);
     console.log(`  ✓ 评论: ${beforeStats.comments} → 0`);
     console.log(`  ✓ 讨论: ${beforeStats.discussions} → 0`);
-    console.log(`  ✓ 作品: ${beforeStats.douyin_videos} → 0`);
+    console.log(`  ✓ 作品: ${beforeStats.contents} → 0`);
     console.log(`  ✓ 回复: ${beforeStats.replies} → 0`);
     console.log(`  ✓ 通知: ${beforeStats.notifications} → 0`);
     console.log(`  ✓ 日志: ${beforeStats.worker_logs} → 0`);

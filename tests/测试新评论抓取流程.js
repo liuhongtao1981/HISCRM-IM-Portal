@@ -55,7 +55,7 @@ async function testNewCommentCrawl() {
 
     console.log(`评论数量: ${result.comments.length}`);
     console.log(`讨论数量: ${result.discussions.length}`);
-    console.log(`作品数量: ${result.works.length}`);
+    console.log(`作品数量: ${result.contents.length}`);
     console.log('');
 
     // 5. 显示详细数据
@@ -63,7 +63,7 @@ async function testNewCommentCrawl() {
       console.log('📝 前3条评论:');
       result.comments.slice(0, 3).forEach((c, i) => {
         console.log(`  ${i + 1}. ${c.author_name}: ${c.content.substring(0, 50)}${c.content.length > 50 ? '...' : ''}`);
-        console.log(`     👍 ${c.like_count} 点赞 | 💬 ${c.reply_count} 回复 | ⏰ ${c.create_time_formatted}`);
+        console.log(`     👍 ${c.stats_like_count} 点赞 | 💬 ${c.reply_count} 回复 | ⏰ ${c.create_time_formatted}`);
       });
       console.log('');
     }

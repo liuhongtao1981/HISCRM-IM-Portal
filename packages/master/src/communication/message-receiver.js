@@ -17,7 +17,7 @@ const { DirectMessage } = require('@hiscrm-im/shared/models/DirectMessage');
 const Notification = require('@hiscrm-im/shared/models/Notification');
 const CommentsDAO = require('../database/comments-dao');
 const DirectMessagesDAO = require('../database/messages-dao');
-const WorksDAO = require('../database/works-dao');
+const ContentsDAO = require('../database/contents-dao');
 const DiscussionsDAO = require('../database/discussions-dao');
 const ConversationsDAO = require('../database/conversations-dao');
 
@@ -32,7 +32,7 @@ class MessageReceiver {
     this.db = db;
     this.commentsDAO = new CommentsDAO(db);
     this.messagesDAO = new DirectMessagesDAO(db);
-    this.worksDAO = new WorksDAO(db);
+    this.contentsDAO = new ContentsDAO(db);
     this.discussionsDAO = new DiscussionsDAO(db);
     this.conversationsDAO = new ConversationsDAO(db);
     this.notificationQueue = notificationQueue;
@@ -166,12 +166,12 @@ class MessageReceiver {
    */
   async handleBulkInsertWorks(socket, message) {
     const { payload } = message;
-    const { account_id, works } = payload;
+    const { account_id, contents } = payload;
 
     try {
-      logger.info(`Bulk inserting ${works.length} works for account ${account_id} from worker ${socket.workerId}`);
+      logger.info(`Bulk inserting ${contents.length} contents for account ${account_id} from worker ${socket.workerId}`);
 
-      const result = this.worksDAO.bulkInsert(works);
+      const result = this.contentsDAO.bulkInsert(contents);
 
       logger.info(`Works bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
 
@@ -183,7 +183,7 @@ class MessageReceiver {
         failed: result.failed,
       }));
     } catch (error) {
-      logger.error('Failed to handle bulk insert works:', error);
+      logger.error('Failed to handle bulk insert contents:', error);
       socket.emit('message', createMessage('worker:bulk_insert_works:ack', {
         success: false,
         error: error.message,

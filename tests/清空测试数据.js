@@ -4,7 +4,7 @@
  * 功能：清空以下表的数据
  * - direct_messages (私信)
  * - conversations (会话)
- * - works (作品)
+ * - contents (作品)
  * - comments (评论)
  * - discussions (讨论)
  */
@@ -34,7 +34,7 @@ const tables = [
   { name: 'comments', desc: '评论' },
   { name: 'direct_messages', desc: '私信' },
   { name: 'conversations', desc: '会话' },
-  { name: 'works', desc: '作品' },
+  { name: 'contents', desc: '作品' },
 ];
 
 // 清空函数

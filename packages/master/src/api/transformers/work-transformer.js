@@ -11,10 +11,10 @@ class WorkTransformer {
     if (!masterWork) return null;
 
     return {
-      work_id: masterWork.id,
+      content_id: masterWork.id,
       platform: masterWork.platform,
-      platform_work_id: masterWork.platform_work_id,
-      work_type: masterWork.work_type,
+      platform_content_id: masterWork.platform_content_id,
+      content_type: masterWork.content_type,
 
       // 作品信息
       title: masterWork.title || '',
@@ -25,11 +25,11 @@ class WorkTransformer {
 
       // 统计信息
       stats: {
-        total_comments: masterWork.total_comment_count || 0,
-        new_comments: masterWork.new_comment_count || 0,
-        likes: masterWork.like_count || 0,
-        shares: masterWork.share_count || 0,
-        views: masterWork.view_count || 0,
+        total_comments: masterWork.stats_comment_count || 0,
+        new_comments: masterWork.stats_new_comment_count || 0,
+        likes: masterWork.stats_like_count || 0,
+        shares: masterWork.stats_share_count || 0,
+        views: masterWork.stats_view_count || 0,
       },
 
       // 状态
@@ -50,11 +50,11 @@ class WorkTransformer {
     if (!imWork) return null;
 
     return {
-      id: imWork.work_id,
+      id: imWork.content_id,
       platform: imWork.platform,
-      platform_work_id: imWork.platform_work_id,
+      platform_content_id: imWork.platform_content_id,
       platform_user_id: imWork.platform_user_id,
-      work_type: imWork.work_type,
+      content_type: imWork.content_type,
 
       title: imWork.title,
       description: imWork.description,
@@ -62,11 +62,11 @@ class WorkTransformer {
       url: imWork.url,
       publish_time: this.convertTimestampToSeconds(imWork.publish_time),
 
-      total_comment_count: imWork.stats?.total_comments || 0,
-      new_comment_count: imWork.stats?.new_comments || 0,
-      like_count: imWork.stats?.likes || 0,
-      share_count: imWork.stats?.shares || 0,
-      view_count: imWork.stats?.views || 0,
+      stats_comment_count: imWork.stats?.total_comments || 0,
+      stats_new_comment_count: imWork.stats?.new_comments || 0,
+      stats_like_count: imWork.stats?.likes || 0,
+      stats_share_count: imWork.stats?.shares || 0,
+      stats_view_count: imWork.stats?.views || 0,
 
       is_new: imWork.is_new ? 1 : 0,
       crawl_status: imWork.crawl_status || 'pending',

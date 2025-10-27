@@ -1,6 +1,6 @@
 /**
  * 清空测试数据表
- * 清空：works（作品）、discussions（讨论）、comments（评论）、
+ * 清空：contents（作品）、discussions（讨论）、comments（评论）、
  *      direct_messages（私信）、conversations（会话）
  */
 
@@ -21,20 +21,20 @@ try {
   console.log('-'.repeat(80));
 
   const beforeStats = {
-    works: db.prepare('SELECT COUNT(*) as count FROM works').get(),
+    contents: db.prepare('SELECT COUNT(*) as count FROM contents').get(),
     discussions: db.prepare('SELECT COUNT(*) as count FROM discussions').get(),
     comments: db.prepare('SELECT COUNT(*) as count FROM comments').get(),
     direct_messages: db.prepare('SELECT COUNT(*) as count FROM direct_messages').get(),
     conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get(),
-    douyin_videos: db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get(),
+    contents: db.prepare('SELECT COUNT(*) as count FROM contents').get(),
   };
 
-  console.log(`  作品(works): ${beforeStats.works.count} 条`);
+  console.log(`  作品(contents): ${beforeStats.contents.count} 条`);
   console.log(`  讨论(discussions): ${beforeStats.discussions.count} 条`);
   console.log(`  评论(comments): ${beforeStats.comments.count} 条`);
   console.log(`  私信(direct_messages): ${beforeStats.direct_messages.count} 条`);
   console.log(`  会话(conversations): ${beforeStats.conversations.count} 条`);
-  console.log(`  抖音视频(douyin_videos): ${beforeStats.douyin_videos.count} 条`);
+  console.log(`  抖音视频(contents): ${beforeStats.contents.count} 条`);
   console.log('');
 
   // 开始事务
@@ -45,12 +45,12 @@ try {
 
   // 清空表（按依赖顺序，先删除子表）
   const tables = [
-    'discussions',      // 依赖 comments 和 works
+    'discussions',      // 依赖 comments 和 contents
     'comments',
     'direct_messages',
     'conversations',
-    'works',
-    'douyin_videos',
+    'contents',
+    'contents',
   ];
 
   for (const table of tables) {
@@ -71,20 +71,20 @@ try {
   console.log('-'.repeat(80));
 
   const afterStats = {
-    works: db.prepare('SELECT COUNT(*) as count FROM works').get(),
+    contents: db.prepare('SELECT COUNT(*) as count FROM contents').get(),
     discussions: db.prepare('SELECT COUNT(*) as count FROM discussions').get(),
     comments: db.prepare('SELECT COUNT(*) as count FROM comments').get(),
     direct_messages: db.prepare('SELECT COUNT(*) as count FROM direct_messages').get(),
     conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get(),
-    douyin_videos: db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get(),
+    contents: db.prepare('SELECT COUNT(*) as count FROM contents').get(),
   };
 
-  console.log(`  作品(works): ${afterStats.works.count} 条`);
+  console.log(`  作品(contents): ${afterStats.contents.count} 条`);
   console.log(`  讨论(discussions): ${afterStats.discussions.count} 条`);
   console.log(`  评论(comments): ${afterStats.comments.count} 条`);
   console.log(`  私信(direct_messages): ${afterStats.direct_messages.count} 条`);
   console.log(`  会话(conversations): ${afterStats.conversations.count} 条`);
-  console.log(`  抖音视频(douyin_videos): ${afterStats.douyin_videos.count} 条`);
+  console.log(`  抖音视频(contents): ${afterStats.contents.count} 条`);
   console.log('');
 
   console.log('='.repeat(80));

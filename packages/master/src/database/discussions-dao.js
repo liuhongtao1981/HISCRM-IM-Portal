@@ -31,10 +31,10 @@ class DiscussionsDAO {
         author_name,
         author_id,
         author_avatar,
-        work_id,
+        content_id,
         post_id,
         post_title,
-        like_count = 0,
+        stats_like_count = 0,
         is_read = 0,
         is_new = 1,
         push_count = 0,
@@ -51,8 +51,8 @@ class DiscussionsDAO {
         INSERT INTO discussions (
           id, account_id, platform, platform_user_id, platform_discussion_id,
           parent_comment_id, content, author_name, author_id, author_avatar,
-          work_id, post_id, post_title,
-          like_count, is_read, is_new, push_count,
+          content_id, post_id, post_title,
+          stats_like_count, is_read, is_new, push_count,
           detected_at, created_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,8 +61,8 @@ class DiscussionsDAO {
       stmt.run(
         id, account_id, platform, platform_user_id, platform_discussion_id,
         parent_comment_id, content, author_name, author_id, author_avatar,
-        work_id, post_id, post_title,
-        like_count, is_read, is_new, push_count,
+        content_id, post_id, post_title,
+        stats_like_count, is_read, is_new, push_count,
         detected_at, created_at
       );
 
@@ -216,7 +216,7 @@ class DiscussionsDAO {
     try {
       const stmt = this.db.prepare(`
         SELECT * FROM discussions
-        WHERE work_id = ?
+        WHERE content_id = ?
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
       `);
@@ -238,7 +238,7 @@ class DiscussionsDAO {
       platform,
       is_read,
       is_new,
-      work_id,
+      content_id,
       start_time,
       end_time,
       limit = 100,
@@ -265,9 +265,9 @@ class DiscussionsDAO {
         params.push(is_new ? 1 : 0);
       }
 
-      if (work_id) {
-        sql += ' AND work_id = ?';
-        params.push(work_id);
+      if (content_id) {
+        sql += ' AND content_id = ?';
+        params.push(content_id);
       }
 
       if (start_time) {
@@ -301,7 +301,7 @@ class DiscussionsDAO {
     try {
       const allowedFields = [
         'content', 'author_name', 'author_id', 'author_avatar',
-        'like_count', 'is_read', 'is_new', 'push_count',
+        'stats_like_count', 'is_read', 'is_new', 'push_count',
       ];
 
       const fields = [];
@@ -403,7 +403,7 @@ class DiscussionsDAO {
    * @returns {number}
    */
   getUnreadCount(accountId, options = {}) {
-    const { platform, work_id } = options;
+    const { platform, content_id } = options;
 
     try {
       let sql = 'SELECT COUNT(*) as count FROM discussions WHERE account_id = ? AND is_read = 0';
@@ -414,9 +414,9 @@ class DiscussionsDAO {
         params.push(platform);
       }
 
-      if (work_id) {
-        sql += ' AND work_id = ?';
-        params.push(work_id);
+      if (content_id) {
+        sql += ' AND content_id = ?';
+        params.push(content_id);
       }
 
       const stmt = this.db.prepare(sql);
@@ -435,7 +435,7 @@ class DiscussionsDAO {
    * @returns {Object}
    */
   getDiscussionStats(accountId, options = {}) {
-    const { platform, work_id } = options;
+    const { platform, content_id } = options;
 
     try {
       let sql = `
@@ -443,7 +443,7 @@ class DiscussionsDAO {
           COUNT(*) as total_discussions,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_discussions,
           SUM(CASE WHEN is_new = 1 THEN 1 ELSE 0 END) as new_discussions,
-          SUM(like_count) as total_likes
+          SUM(stats_like_count) as total_likes
         FROM discussions
         WHERE account_id = ?
       `;
@@ -454,9 +454,9 @@ class DiscussionsDAO {
         params.push(platform);
       }
 
-      if (work_id) {
-        sql += ' AND work_id = ?';
-        params.push(work_id);
+      if (content_id) {
+        sql += ' AND content_id = ?';
+        params.push(content_id);
       }
 
       const stmt = this.db.prepare(sql);
@@ -488,7 +488,7 @@ class DiscussionsDAO {
         SELECT
           COUNT(*) as total_replies,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_replies,
-          SUM(like_count) as total_likes
+          SUM(stats_like_count) as total_likes
         FROM discussions
         WHERE parent_comment_id = ?
       `);
@@ -533,7 +533,7 @@ class DiscussionsDAO {
    */
   deleteByWork(workId) {
     try {
-      const stmt = this.db.prepare('DELETE FROM discussions WHERE work_id = ?');
+      const stmt = this.db.prepare('DELETE FROM discussions WHERE content_id = ?');
       const result = stmt.run(workId);
 
       logger.info(`Deleted ${result.changes} discussions for work ${workId}`);

@@ -13,7 +13,7 @@ console.log('='.repeat(70));
 
 // 检查各表的数据量
 const tables = [
-  'works',
+  'contents',
   'comments',
   'discussions',
   'conversations',
@@ -32,38 +32,38 @@ for (const table of tables) {
 }
 
 // 如果有作品数据,检查字段
-if (stats.works > 0) {
-  console.log('\n📋 works 表数据示例 (验证字段映射):');
+if (stats.contents > 0) {
+  console.log('\n📋 contents 表数据示例 (验证字段映射):');
   console.log('-'.repeat(70));
-  const works = db.prepare(`
+  const contents = db.prepare(`
     SELECT
       id,
       platform,
-      platform_work_id,
+      platform_content_id,
       platform_user_id,
       title,
       description,
-      view_count,
-      like_count,
-      total_comment_count,
-      share_count,
+      stats_view_count,
+      stats_like_count,
+      stats_comment_count,
+      stats_share_count,
       datetime(publish_time, 'unixepoch') as publish_time_readable,
       publish_time,
       datetime(created_at, 'unixepoch') as created_at_readable
-    FROM works
+    FROM contents
     ORDER BY created_at DESC
     LIMIT 3
   `).all();
 
-  works.forEach((work, idx) => {
+  contents.forEach((work, idx) => {
     console.log(`\n作品 ${idx + 1}:`);
     console.log(`  ID: ${work.id}`);
     console.log(`  平台: ${work.platform}`);
-    console.log(`  平台作品ID: ${work.platform_work_id}`);
+    console.log(`  平台作品ID: ${work.platform_content_id}`);
     console.log(`  平台用户ID: ${work.platform_user_id}`);
     console.log(`  标题: ${work.title || '(无标题)'}`);
     console.log(`  描述: ${work.description ? work.description.substring(0, 50) + '...' : '(无)'}`);
-    console.log(`  播放: ${work.view_count}, 点赞: ${work.like_count}, 评论: ${work.total_comment_count}, 分享: ${work.share_count}`);
+    console.log(`  播放: ${work.stats_view_count}, 点赞: ${work.stats_like_count}, 评论: ${work.stats_comment_count}, 分享: ${work.stats_share_count}`);
     console.log(`  发布时间: ${work.publish_time_readable} (时间戳: ${work.publish_time})`);
 
     // 验证时间戳格式
@@ -93,13 +93,13 @@ if (stats.comments > 0) {
       c.author_name,
       c.post_title,
       c.post_id,
-      w.id as work_id,
+      w.id as content_id,
       w.title as work_title,
-      w.platform_work_id,
+      w.platform_content_id,
       w.platform,
       datetime(c.created_at, 'unixepoch') as created_at_readable
     FROM comments c
-    LEFT JOIN works w ON c.post_id = w.platform_work_id
+    LEFT JOIN contents w ON c.post_id = w.platform_content_id
     ORDER BY c.created_at DESC
     LIMIT 3
   `).all();
@@ -122,15 +122,15 @@ if (stats.comments > 0) {
       console.log(`    ✅ post_title 正确`);
     }
 
-    console.log(`  关联作品ID: ${comment.work_id || '(未关联)'}`);
+    console.log(`  关联作品ID: ${comment.content_id || '(未关联)'}`);
     console.log(`  关联作品标题: ${comment.work_title || '(未关联)'}`);
-    console.log(`  关联作品platform_work_id: ${comment.platform_work_id || '(未关联)'}`);
+    console.log(`  关联作品platform_content_id: ${comment.platform_content_id || '(未关联)'}`);
 
     // 验证关联
-    if (comment.post_id && comment.work_id) {
+    if (comment.post_id && comment.content_id) {
       console.log(`    ✅ 评论已正确关联到作品`);
-    } else if (comment.post_id && !comment.work_id) {
-      console.log(`    ⚠️  有 post_id 但未关联到作品 (works 表可能缺少该作品)`);
+    } else if (comment.post_id && !comment.content_id) {
+      console.log(`    ⚠️  有 post_id 但未关联到作品 (contents 表可能缺少该作品)`);
     }
 
     console.log(`  创建时间: ${comment.created_at_readable}`);
@@ -231,11 +231,11 @@ const hasData = Object.values(stats).some(count => count > 0);
 if (hasData) {
   console.log('✅ 已检测到抓取的数据');
   console.log('\n验证项:');
-  if (stats.works > 0) {
-    console.log('  ✅ works 表有数据 - 请检查 publish_time 时间戳格式');
+  if (stats.contents > 0) {
+    console.log('  ✅ contents 表有数据 - 请检查 publish_time 时间戳格式');
   }
   if (stats.comments > 0) {
-    console.log('  ✅ comments 表有数据 - 请检查 post_title 和 work_id 关联');
+    console.log('  ✅ comments 表有数据 - 请检查 post_title 和 content_id 关联');
   }
   if (stats.conversations > 0) {
     console.log('  ✅ conversations 表有数据 - 请检查 platform_user_id 是否为真实 ID');

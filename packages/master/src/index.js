@@ -512,13 +512,13 @@ async function start() {
     const CommentsDAO = require('./database/comments-dao');
     const DirectMessagesDAO = require('./database/messages-dao');
     const ConversationsDAO = require('./database/conversations-dao');
-    const WorksDAO = require('./database/works-dao');
+    const ContentsDAO = require('./database/contents-dao');
     const DiscussionsDAO = require('./database/discussions-dao');
 
     const commentsDAO = new CommentsDAO(db);
     const directMessagesDAO = new DirectMessagesDAO(db);
     const conversationsDAO = new ConversationsDAO(db);
-    const worksDAO = new WorksDAO(db);
+    const contentsDAO = new ContentsDAO(db);
     const discussionsDAO = new DiscussionsDAO(db);
 
     // ============================================
@@ -835,9 +835,8 @@ async function start() {
         // 处理每个视频
         for (const video of videos) {
           try {
-            // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
             // 检查作品是否已存在
-            let existingWork = worksDAO.findByPlatformWorkId(account_id, 'douyin', video.id);
+            let existingWork = contentsDAO.findByPlatformWorkId(account_id, 'douyin', video.id);
 
             if (!existingWork) {
               // 新作品：插入数据库 + 加入通知列表
@@ -846,20 +845,20 @@ async function start() {
                 id: uuidv4(),
                 account_id,
                 platform: 'douyin',
-                platform_work_id: video.id,
+                platform_content_id: video.id,
                 platform_user_id,
-                work_type: 'video',
+                content_type: 'video',
                 title: video.title || '',
                 cover: video.cover || '',
                 publish_time: video.publish_time || Math.floor(Date.now() / 1000),
-                total_comment_count: video.total_comment_count || 0,
+                stats_comment_count: video.stats_comment_count || 0,
                 is_new: 1,
                 created_at: Math.floor(Date.now() / 1000),
                 updated_at: Math.floor(Date.now() / 1000),
               };
 
               try {
-                worksDAO.insert(newWork);
+                contentsDAO.insert(newWork);
                 inserted++;
                 videosToNotify.push({
                   type: 'new_video',
@@ -956,9 +955,8 @@ async function start() {
         // 获取该账号的所有历史评论ID
         const commentIds = commentsDAO.findAll({ account_id }).map(c => c.id);
 
-        // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
         // 获取该账号的所有历史作品ID
-        const workIds = worksDAO.getAllWorkIds(account_id);
+        const workIds = contentsDAO.getAllWorkIds(account_id);
 
         // 获取该账号的所有历史私信ID
         const messageIds = directMessagesDAO.findAll({ account_id }).map(m => m.id);
@@ -985,38 +983,37 @@ async function start() {
       }
     };
 
-    // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
     // 更新/插入作品信息
     tempHandlers.onUpsertVideo = async (data, socket) => {
       try {
-        const { account_id, platform_user_id, aweme_id, title, cover, publish_time, total_comment_count } = data;
+        const { account_id, platform_user_id, aweme_id, title, cover, publish_time, stats_comment_count } = data;
 
         // 检查作品是否已存在
-        let existingWork = worksDAO.findByPlatformWorkId(account_id, 'douyin', aweme_id);
+        let existingWork = contentsDAO.findByPlatformWorkId(account_id, 'douyin', aweme_id);
 
         if (existingWork) {
           // 更新现有作品
-          worksDAO.update(existingWork.id, {
+          contentsDAO.update(existingWork.id, {
             title,
             cover,
             publish_time,
-            total_comment_count: total_comment_count || 0,
+            stats_comment_count: stats_comment_count || 0,
             updated_at: Math.floor(Date.now() / 1000),
           });
         } else {
           // 插入新作品
           const { v4: uuidv4 } = require('uuid');
-          worksDAO.insert({
+          contentsDAO.insert({
             id: uuidv4(),
             account_id,
             platform: 'douyin',
-            platform_work_id: aweme_id,
+            platform_content_id: aweme_id,
             platform_user_id,
-            work_type: 'video',
+            content_type: 'video',
             title,
             cover,
             publish_time,
-            total_comment_count: total_comment_count || 0,
+            stats_comment_count: stats_comment_count || 0,
             created_at: Math.floor(Date.now() / 1000),
             updated_at: Math.floor(Date.now() / 1000),
           });
@@ -1084,20 +1081,20 @@ async function start() {
     // ✨ 新增: 处理批量作品插入
     tempHandlers.onBulkInsertWorks = async (data, socket) => {
       try {
-        const { account_id, works } = data;
+        const { account_id, contents } = data;
 
-        logger.info(`Bulk inserting ${works?.length || 0} works for account ${account_id}`);
+        logger.info(`Bulk inserting ${contents?.length || 0} contents for account ${account_id}`);
 
-        if (!Array.isArray(works) || works.length === 0) {
-          logger.warn('No works to insert');
+        if (!Array.isArray(contents) || contents.length === 0) {
+          logger.warn('No contents to insert');
           return;
         }
 
-        const result = worksDAO.bulkInsert(works);
+        const result = contentsDAO.bulkInsert(contents);
 
         logger.info(`✅ Works bulk insert result: ${result.inserted} inserted, ${result.skipped} skipped, ${result.failed} failed`);
       } catch (error) {
-        logger.error('Failed to bulk insert works:', error);
+        logger.error('Failed to bulk insert contents:', error);
       }
     };
 

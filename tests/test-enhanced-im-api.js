@@ -7,7 +7,7 @@
  *
  * 前置条件：
  *   - Master 服务器运行在 localhost:3000
- *   - 数据库已迁移（包含 works 和 discussions 表）
+ *   - 数据库已迁移（包含 contents 和 discussions 表）
  */
 
 const fetch = require('node-fetch');
@@ -78,22 +78,22 @@ async function testGetWorks() {
   logSection('测试 1: 获取作品列表');
 
   try {
-    const response = await request('/works?count=10');
+    const response = await request('/contents?count=10');
 
     if (response.status_code === 0) {
-      const works = response.data.works || [];
-      logSuccess(`作品列表获取成功: 共 ${works.length} 个作品`);
+      const contents = response.data.contents || [];
+      logSuccess(`作品列表获取成功: 共 ${contents.length} 个作品`);
 
-      if (works.length > 0) {
-        const firstWork = works[0];
+      if (contents.length > 0) {
+        const firstWork = contents[0];
         logInfo(`  第一个作品: ${firstWork.title || '无标题'}`);
-        logInfo(`    ID: ${firstWork.work_id}`);
-        logInfo(`    类型: ${firstWork.work_type}`);
+        logInfo(`    ID: ${firstWork.content_id}`);
+        logInfo(`    类型: ${firstWork.content_type}`);
         logInfo(`    平台: ${firstWork.platform}`);
         logInfo(`    统计: ${firstWork.stats.total_comments} 评论, ${firstWork.stats.likes} 点赞`);
       }
 
-      return works.length > 0 ? works[0].work_id : null;
+      return contents.length > 0 ? contents[0].content_id : null;
     } else {
       logError(`作品列表获取失败: status_code=${response.status_code}`);
       return null;
@@ -116,11 +116,11 @@ async function testGetWork(workId) {
   }
 
   try {
-    const response = await request(`/works/${workId}`);
+    const response = await request(`/contents/${workId}`);
 
     if (response.status_code === 0) {
       logSuccess(`作品获取成功: ${response.data.title || '无标题'}`);
-      logInfo(`  作品类型: ${response.data.work_type}`);
+      logInfo(`  作品类型: ${response.data.content_type}`);
       logInfo(`  评论数: ${response.data.stats.total_comments}`);
       return true;
     } else if (response.status_code === 404) {
@@ -297,17 +297,17 @@ async function testDatabaseTables() {
     const dbPath = path.join(__dirname, '../packages/master/data/master.db');
     const db = new Database(dbPath, { readonly: true });
 
-    // 检查 works 表
+    // 检查 contents 表
     const worksTable = db.prepare(`
       SELECT name FROM sqlite_master
-      WHERE type='table' AND name='works'
+      WHERE type='table' AND name='contents'
     `).get();
 
     if (worksTable) {
-      const worksCount = db.prepare('SELECT COUNT(*) as count FROM works').get().count;
-      logSuccess(`works 表存在，包含 ${worksCount} 条记录`);
+      const worksCount = db.prepare('SELECT COUNT(*) as count FROM contents').get().count;
+      logSuccess(`contents 表存在，包含 ${worksCount} 条记录`);
     } else {
-      logError('works 表不存在');
+      logError('contents 表不存在');
     }
 
     // 检查 discussions 表

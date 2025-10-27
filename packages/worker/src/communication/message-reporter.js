@@ -107,23 +107,23 @@ class MessageReporter {
   /**
    * ✨ 新增: 上报作品
    * @param {string} accountId - 账户ID
-   * @param {Array} works - 作品数组
+   * @param {Array} contents - 作品数组
    */
-  reportWorks(accountId, works) {
-    if (!Array.isArray(works) || works.length === 0) {
+  reportWorks(accountId, contents) {
+    if (!Array.isArray(contents) || contents.length === 0) {
       return;
     }
 
-    logger.info(`Reporting ${works.length} works for account ${accountId}`);
+    logger.info(`Reporting ${contents.length} contents for account ${accountId}`);
 
     // 使用批量上报接口 (性能更好)
     const message = createMessage(WORKER_BULK_INSERT_WORKS, {
       account_id: accountId,
-      works: works,
+      contents: contents,
     });
 
     this.socketClient.sendMessage(message);
-    logger.debug(`Bulk reported ${works.length} works to master`);
+    logger.debug(`Bulk reported ${contents.length} contents to master`);
   }
 
   /**
@@ -172,7 +172,7 @@ class MessageReporter {
   /**
    * 批量上报消息
    * @param {string} accountId - 账户ID
-   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [], conversations: [], works: [], discussions: [] }
+   * @param {object} detectedMessages - 检测到的消息 { comments: [], directMessages: [], conversations: [], contents: [], discussions: [] }
    */
   reportAll(accountId, detectedMessages) {
     if (detectedMessages.comments && detectedMessages.comments.length > 0) {
@@ -190,8 +190,8 @@ class MessageReporter {
     }
 
     // ✨ 新增: 上报作品数据
-    if (detectedMessages.works && detectedMessages.works.length > 0) {
-      this.reportWorks(accountId, detectedMessages.works);
+    if (detectedMessages.contents && detectedMessages.contents.length > 0) {
+      this.reportWorks(accountId, detectedMessages.contents);
     }
 
     // ✨ 新增: 上报讨论数据
@@ -202,7 +202,7 @@ class MessageReporter {
     const totalReported =
       (detectedMessages.comments?.length || 0) +
       (detectedMessages.directMessages?.length || 0) +
-      (detectedMessages.works?.length || 0) +
+      (detectedMessages.contents?.length || 0) +
       (detectedMessages.discussions?.length || 0);
 
     logger.info(`Total reported ${totalReported} messages + ${detectedMessages.conversations?.length || 0} conversations for account ${accountId}`);

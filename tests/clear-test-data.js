@@ -2,7 +2,7 @@
  * 清空测试数据脚本
  *
  * 清空以下表的数据用于验证数据抓取：
- * - works (作品表)
+ * - contents (作品表)
  * - comments (评论表)
  * - discussions (讨论/二级回复表)
  * - replies (回复任务表)
@@ -38,11 +38,11 @@ db.pragma('journal_mode = WAL');
 // 定义要清空的表（按照外键依赖顺序）
 const TABLES_TO_CLEAR = [
   'discussions',        // 依赖 comments
-  'comments',          // 依赖 works
+  'comments',          // 依赖 contents
   'replies',           // 回复任务
   'direct_messages',   // 私信
   'conversations',     // 会话
-  'works'              // 作品（最后清空，因为其他表可能依赖它）
+  'contents'              // 作品（最后清空，因为其他表可能依赖它）
 ];
 
 // 定义不清空的系统表

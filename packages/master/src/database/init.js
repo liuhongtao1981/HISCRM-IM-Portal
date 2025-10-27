@@ -100,7 +100,7 @@ function validateDatabaseSchema(db) {
     'notification_rules',
     'client_sessions',
     'worker_logs',
-    'works',
+    'contents',
     'discussions'
   ];
 

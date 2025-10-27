@@ -31,7 +31,7 @@ const logger = createLogger('douyin-crawl-comments');
  * @param {Object} options - 爬取选项
  * @param {number} [options.maxVideos] - 最多爬取的作品数量（默认全部）
  * @param {boolean} [options.includeDiscussions=true] - 是否同时爬取讨论（二级/三级回复）
- * @returns {Promise<Object>} { comments: Array, discussions: Array, works: Array, stats: Object }
+ * @returns {Promise<Object>} { comments: Array, discussions: Array, contents: Array, stats: Object }
  */
 async function crawlComments(page, account, options = {}) {
   const { includeDiscussions = true } = options;
@@ -542,7 +542,7 @@ async function crawlComments(page, account, options = {}) {
             author_avatar: c.user_info?.avatar_url || '',
             create_time: createTimeSeconds,
             create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
-            like_count: parseInt(c.digg_count) || 0,
+            stats_like_count: parseInt(c.digg_count) || 0,
             reply_count: parseInt(c.reply_count) || 0,
             detected_at: Math.floor(Date.now() / 1000),
           });
@@ -643,14 +643,14 @@ async function crawlComments(page, account, options = {}) {
             discussions.push({
               platform_discussion_id: reply.comment_id,  // 修正: 使用 comment_id
               parent_comment_id: parentCommentId,  // 父评论 ID
-              work_id: reply.aweme_id || null,     // 作品 ID（如果有）
+              content_id: reply.aweme_id || null,     // 作品 ID（如果有）
               content: reply.text || reply.content,
               author_name: reply.user_info?.screen_name || '匿名',
               author_id: reply.user_info?.user_id || '',
               author_avatar: reply.user_info?.avatar_url || '',
               create_time: createTimeSeconds,
               create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
-              like_count: parseInt(reply.digg_count) || 0,
+              stats_like_count: parseInt(reply.digg_count) || 0,
               reply_count: parseInt(reply.reply_count) || 0,  // 三级回复数量
               detected_at: Math.floor(Date.now() / 1000),
             });
@@ -685,7 +685,7 @@ async function crawlComments(page, account, options = {}) {
     return {
       comments: allComments,
       discussions: allDiscussions,
-      works: videosWithComments,  // 重命名为 works 以保持一致性
+      contents: videosWithComments,  // 重命名为 contents 以保持一致性
       stats,
     };
   } catch (error) {

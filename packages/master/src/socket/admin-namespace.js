@@ -119,7 +119,7 @@ function initAdminNamespace(io, masterServer) {
 
         // 运行时统计
         const totalComments = db.prepare('SELECT SUM(total_comments) as sum FROM accounts').get().sum || 0;
-        const totalWorks = db.prepare('SELECT SUM(total_works) as sum FROM accounts').get().sum || 0;
+        const totalWorks = db.prepare('SELECT SUM(total_contents) as sum FROM accounts').get().sum || 0;
         const totalFollowers = db.prepare('SELECT SUM(total_followers) as sum FROM accounts').get().sum || 0;
 
         // 登录会话统计

@@ -317,7 +317,7 @@ function createAccountsRouter(db, accountAssigner) {
    * - worker_status: 过滤 Worker 状态 (online/offline/error)
    * - login_status: 过滤登录状态 (logged_in/not_logged_in/login_failed)
    * - platform: 过滤平台 (douyin/xiaohongshu)
-   * - sort: 排序字段 (last_crawl_time/total_comments/total_works)
+   * - sort: 排序字段 (last_crawl_time/total_comments/total_contents)
    * - order: 排序顺序 (asc/desc)
    */
   router.get('/status/all', (req, res) => {
@@ -346,7 +346,7 @@ function createAccountsRouter(db, accountAssigner) {
         : '';
 
       // 排序逻辑
-      const validSortFields = ['last_crawl_time', 'total_comments', 'total_works', 'last_heartbeat_time'];
+      const validSortFields = ['last_crawl_time', 'total_comments', 'total_contents', 'last_heartbeat_time'];
       const sortField = validSortFields.includes(req.query.sort) ? req.query.sort : 'last_heartbeat_time';
       const sortOrder = req.query.order === 'asc' ? 'ASC' : 'DESC';
 
@@ -362,11 +362,11 @@ function createAccountsRouter(db, accountAssigner) {
           a.assigned_worker_id,
           a.worker_status,
           a.total_comments,
-          a.total_works,
+          a.total_contents,
           a.total_followers,
           a.total_following,
           a.recent_comments_count,
-          a.recent_works_count,
+          a.recent_contents_count,
           a.last_crawl_time,
           a.last_heartbeat_time,
           a.error_count,
@@ -412,11 +412,11 @@ function createAccountsRouter(db, accountAssigner) {
           runtime_stats: {
             worker_status: acc.worker_status,
             total_comments: acc.total_comments || 0,
-            total_works: acc.total_works || 0,
+            total_contents: acc.total_contents || 0,
             total_followers: acc.total_followers || 0,
             total_following: acc.total_following || 0,
             recent_comments_count: acc.recent_comments_count || 0,
-            recent_works_count: acc.recent_works_count || 0,
+            recent_contents_count: acc.recent_contents_count || 0,
             last_crawl_time: acc.last_crawl_time,
             last_heartbeat_time: acc.last_heartbeat_time,
             error_count: acc.error_count || 0,

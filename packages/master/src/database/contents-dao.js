@@ -6,9 +6,9 @@
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
 
-const logger = createLogger('works-dao');
+const logger = createLogger('contents-dao');
 
-class WorksDAO {
+class ContentsDAO {
   constructor(db) {
     this.db = db;
   }
@@ -24,19 +24,19 @@ class WorksDAO {
         id = uuidv4(),
         account_id,
         platform,
-        platform_work_id,
+        platform_content_id,
         platform_user_id,
-        work_type,
+        content_type,
         title,
         description,
         cover,
         url,
         publish_time,
-        total_comment_count = 0,
-        new_comment_count = 0,
-        like_count = 0,
-        share_count = 0,
-        view_count = 0,
+        stats_comment_count = 0,
+        stats_new_comment_count = 0,
+        stats_like_count = 0,
+        stats_share_count = 0,
+        stats_view_count = 0,
         last_crawl_time,
         crawl_status = 'pending',
         crawl_error,
@@ -47,21 +47,21 @@ class WorksDAO {
       } = work;
 
       // 验证必需字段
-      if (!account_id || !platform || !platform_work_id || !work_type) {
-        throw new Error('Missing required fields: account_id, platform, platform_work_id, work_type');
+      if (!account_id || !platform || !platform_content_id || !content_type) {
+        throw new Error('Missing required fields: account_id, platform, platform_content_id, content_type');
       }
 
-      // 验证 work_type
+      // 验证 content_type
       const validTypes = ['video', 'article', 'image', 'audio', 'text'];
-      if (!validTypes.includes(work_type)) {
-        throw new Error(`Invalid work_type: ${work_type}. Must be one of: ${validTypes.join(', ')}`);
+      if (!validTypes.includes(content_type)) {
+        throw new Error(`Invalid content_type: ${content_type}. Must be one of: ${validTypes.join(', ')}`);
       }
 
       const stmt = this.db.prepare(`
-        INSERT INTO works (
-          id, account_id, platform, platform_work_id, platform_user_id,
-          work_type, title, description, cover, url, publish_time,
-          total_comment_count, new_comment_count, like_count, share_count, view_count,
+        INSERT INTO contents (
+          id, account_id, platform, platform_content_id, platform_user_id,
+          content_type, title, description, cover, url, publish_time,
+          stats_comment_count, stats_new_comment_count, stats_like_count, stats_share_count, stats_view_count,
           last_crawl_time, crawl_status, crawl_error,
           is_new, push_count, created_at, updated_at
         )
@@ -69,21 +69,21 @@ class WorksDAO {
       `);
 
       stmt.run(
-        id, account_id, platform, platform_work_id, platform_user_id,
-        work_type, title, description, cover, url, publish_time,
-        total_comment_count, new_comment_count, like_count, share_count, view_count,
+        id, account_id, platform, platform_content_id, platform_user_id,
+        content_type, title, description, cover, url, publish_time,
+        stats_comment_count, stats_new_comment_count, stats_like_count, stats_share_count, stats_view_count,
         last_crawl_time, crawl_status, crawl_error,
         is_new, push_count, created_at, updated_at
       );
 
-      logger.info(`Work inserted: ${id} (${platform}/${work_type}: ${title || platform_work_id})`);
+      logger.info(`Work inserted: ${id} (${platform}/${content_type}: ${title || platform_content_id})`);
       return id;
     } catch (error) {
       // 检查是否是唯一约束冲突
       if (error.message.includes('UNIQUE constraint')) {
-        logger.warn(`Work already exists: ${work.platform}/${work.platform_work_id} for account ${work.account_id}`);
+        logger.warn(`Work already exists: ${work.platform}/${work.platform_content_id} for account ${work.account_id}`);
         // 返回现有作品的ID
-        const existing = this.findByPlatformWorkId(work.account_id, work.platform, work.platform_work_id);
+        const existing = this.findByPlatformWorkId(work.account_id, work.platform, work.platform_content_id);
         return existing ? existing.id : null;
       }
       logger.error('Failed to insert work:', error);
@@ -93,12 +93,12 @@ class WorksDAO {
 
   /**
    * 批量插入作品
-   * @param {Array} works - 作品数组
+   * @param {Array} contents - 作品数组
    * @returns {Object} 插入结果统计
    */
-  bulkInsert(works) {
-    if (!Array.isArray(works) || works.length === 0) {
-      logger.warn('No works to insert');
+  bulkInsert(contents) {
+    if (!Array.isArray(contents) || contents.length === 0) {
+      logger.warn('No contents to insert');
       return { inserted: 0, skipped: 0, failed: 0 };
     }
 
@@ -120,14 +120,14 @@ class WorksDAO {
             skipped++;
           } else {
             failed++;
-            logger.error(`Failed to insert work ${work.platform_work_id}:`, error.message);
+            logger.error(`Failed to insert work ${work.platform_content_id}:`, error.message);
           }
         }
       }
     });
 
     try {
-      transaction(works);
+      transaction(contents);
       logger.info(`Bulk insert completed: ${inserted} inserted, ${skipped} skipped, ${failed} failed`);
       return { inserted, skipped, failed };
     } catch (error) {
@@ -143,7 +143,7 @@ class WorksDAO {
    */
   findById(id) {
     try {
-      const stmt = this.db.prepare('SELECT * FROM works WHERE id = ?');
+      const stmt = this.db.prepare('SELECT * FROM contents WHERE id = ?');
       return stmt.get(id);
     } catch (error) {
       logger.error(`Failed to find work by ID ${id}:`, error);
@@ -161,8 +161,8 @@ class WorksDAO {
   findByPlatformWorkId(accountId, platform, platformWorkId) {
     try {
       const stmt = this.db.prepare(`
-        SELECT * FROM works
-        WHERE account_id = ? AND platform = ? AND platform_work_id = ?
+        SELECT * FROM contents
+        WHERE account_id = ? AND platform = ? AND platform_content_id = ?
       `);
       return stmt.get(accountId, platform, platformWorkId);
     } catch (error) {
@@ -180,7 +180,7 @@ class WorksDAO {
   findByAccount(accountId, options = {}) {
     const {
       platform,
-      work_type,
+      content_type,
       is_new,
       crawl_status,
       limit = 100,
@@ -189,7 +189,7 @@ class WorksDAO {
     } = options;
 
     try {
-      let sql = 'SELECT * FROM works WHERE account_id = ?';
+      let sql = 'SELECT * FROM contents WHERE account_id = ?';
       const params = [accountId];
 
       if (platform) {
@@ -197,9 +197,9 @@ class WorksDAO {
         params.push(platform);
       }
 
-      if (work_type) {
-        sql += ' AND work_type = ?';
-        params.push(work_type);
+      if (content_type) {
+        sql += ' AND content_type = ?';
+        params.push(content_type);
       }
 
       if (is_new !== undefined) {
@@ -218,7 +218,7 @@ class WorksDAO {
       const stmt = this.db.prepare(sql);
       return stmt.all(...params);
     } catch (error) {
-      logger.error(`Failed to find works by account ${accountId}:`, error);
+      logger.error(`Failed to find contents by account ${accountId}:`, error);
       return [];
     }
   }
@@ -230,15 +230,15 @@ class WorksDAO {
    * @returns {Array}
    */
   findByPlatform(platform, options = {}) {
-    const { work_type, limit = 100, offset = 0 } = options;
+    const { content_type, limit = 100, offset = 0 } = options;
 
     try {
-      let sql = 'SELECT * FROM works WHERE platform = ?';
+      let sql = 'SELECT * FROM contents WHERE platform = ?';
       const params = [platform];
 
-      if (work_type) {
-        sql += ' AND work_type = ?';
-        params.push(work_type);
+      if (content_type) {
+        sql += ' AND content_type = ?';
+        params.push(content_type);
       }
 
       sql += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
@@ -247,7 +247,7 @@ class WorksDAO {
       const stmt = this.db.prepare(sql);
       return stmt.all(...params);
     } catch (error) {
-      logger.error(`Failed to find works by platform ${platform}:`, error);
+      logger.error(`Failed to find contents by platform ${platform}:`, error);
       return [];
     }
   }
@@ -263,14 +263,14 @@ class WorksDAO {
 
     try {
       const stmt = this.db.prepare(`
-        SELECT * FROM works
-        WHERE work_type = ?
+        SELECT * FROM contents
+        WHERE content_type = ?
         ORDER BY created_at DESC
         LIMIT ? OFFSET ?
       `);
       return stmt.all(workType, limit, offset);
     } catch (error) {
-      logger.error(`Failed to find works by type ${workType}:`, error);
+      logger.error(`Failed to find contents by type ${workType}:`, error);
       return [];
     }
   }
@@ -285,7 +285,7 @@ class WorksDAO {
     try {
       const allowedFields = [
         'title', 'description', 'cover', 'url', 'publish_time',
-        'total_comment_count', 'new_comment_count', 'like_count', 'share_count', 'view_count',
+        'stats_comment_count', 'stats_new_comment_count', 'stats_like_count', 'stats_share_count', 'stats_view_count',
         'last_crawl_time', 'crawl_status', 'crawl_error',
         'is_new', 'push_count', 'updated_at',
       ];
@@ -313,7 +313,7 @@ class WorksDAO {
 
       values.push(id);
 
-      const sql = `UPDATE works SET ${fields.join(', ')} WHERE id = ?`;
+      const sql = `UPDATE contents SET ${fields.join(', ')} WHERE id = ?`;
       const stmt = this.db.prepare(sql);
       const result = stmt.run(...values);
 
@@ -332,7 +332,7 @@ class WorksDAO {
    */
   delete(id) {
     try {
-      const stmt = this.db.prepare('DELETE FROM works WHERE id = ?');
+      const stmt = this.db.prepare('DELETE FROM contents WHERE id = ?');
       const result = stmt.run(id);
 
       logger.info(`Work deleted: ${id}`);
@@ -350,19 +350,19 @@ class WorksDAO {
    * @returns {Object}
    */
   getWorkStats(accountId, options = {}) {
-    const { platform, work_type } = options;
+    const { platform, content_type } = options;
 
     try {
       let sql = `
         SELECT
-          COUNT(*) as total_works,
+          COUNT(*) as total_contents,
           SUM(CASE WHEN is_new = 1 THEN 1 ELSE 0 END) as new_works,
-          SUM(total_comment_count) as total_comments,
-          SUM(new_comment_count) as new_comments,
-          SUM(like_count) as total_likes,
-          SUM(share_count) as total_shares,
-          SUM(view_count) as total_views
-        FROM works
+          SUM(stats_comment_count) as total_comments,
+          SUM(stats_new_comment_count) as new_comments,
+          SUM(stats_like_count) as total_likes,
+          SUM(stats_share_count) as total_shares,
+          SUM(stats_view_count) as total_views
+        FROM contents
         WHERE account_id = ?
       `;
       const params = [accountId];
@@ -372,14 +372,14 @@ class WorksDAO {
         params.push(platform);
       }
 
-      if (work_type) {
-        sql += ' AND work_type = ?';
-        params.push(work_type);
+      if (content_type) {
+        sql += ' AND content_type = ?';
+        params.push(content_type);
       }
 
       const stmt = this.db.prepare(sql);
       return stmt.get(...params) || {
-        total_works: 0,
+        total_contents: 0,
         new_works: 0,
         total_comments: 0,
         new_comments: 0,
@@ -390,7 +390,7 @@ class WorksDAO {
     } catch (error) {
       logger.error(`Failed to get work stats for account ${accountId}:`, error);
       return {
-        total_works: 0,
+        total_contents: 0,
         new_works: 0,
         total_comments: 0,
         new_comments: 0,
@@ -410,9 +410,9 @@ class WorksDAO {
   updateCommentCount(workId, count) {
     try {
       const stmt = this.db.prepare(`
-        UPDATE works
-        SET total_comment_count = total_comment_count + ?,
-            new_comment_count = new_comment_count + ?,
+        UPDATE contents
+        SET stats_comment_count = stats_comment_count + ?,
+            stats_new_comment_count = stats_new_comment_count + ?,
             updated_at = ?
         WHERE id = ?
       `);
@@ -435,8 +435,8 @@ class WorksDAO {
   updateViewCount(workId, count) {
     try {
       const stmt = this.db.prepare(`
-        UPDATE works
-        SET view_count = ?,
+        UPDATE contents
+        SET stats_view_count = ?,
             updated_at = ?
         WHERE id = ?
       `);
@@ -460,7 +460,7 @@ class WorksDAO {
   updateCrawlStatus(workId, status, error = null) {
     try {
       const stmt = this.db.prepare(`
-        UPDATE works
+        UPDATE contents
         SET crawl_status = ?,
             crawl_error = ?,
             last_crawl_time = ?,
@@ -489,7 +489,7 @@ class WorksDAO {
     try {
       const currentTime = Math.floor(Date.now() / 1000);
       const stmt = this.db.prepare(`
-        SELECT * FROM works
+        SELECT * FROM contents
         WHERE crawl_status = 'pending'
           OR (last_crawl_time IS NOT NULL AND last_crawl_time < ?)
         ORDER BY last_crawl_time ASC NULLS FIRST
@@ -498,7 +498,7 @@ class WorksDAO {
 
       return stmt.all(currentTime - intervalSeconds, limit);
     } catch (error) {
-      logger.error('Failed to get pending works:', error);
+      logger.error('Failed to get pending contents:', error);
       return [];
     }
   }
@@ -511,8 +511,8 @@ class WorksDAO {
   resetNewCommentCount(workId) {
     try {
       const stmt = this.db.prepare(`
-        UPDATE works
-        SET new_comment_count = 0,
+        UPDATE contents
+        SET stats_new_comment_count = 0,
             is_new = 0,
             updated_at = ?
         WHERE id = ?
@@ -535,7 +535,7 @@ class WorksDAO {
    */
   getAllWorkIds(accountId, platform = null) {
     try {
-      let sql = 'SELECT platform_work_id FROM works WHERE account_id = ?';
+      let sql = 'SELECT platform_content_id FROM contents WHERE account_id = ?';
       const params = [accountId];
 
       if (platform) {
@@ -545,7 +545,7 @@ class WorksDAO {
 
       const stmt = this.db.prepare(sql);
       const results = stmt.all(...params);
-      return results.map(row => row.platform_work_id);
+      return results.map(row => row.platform_content_id);
     } catch (error) {
       logger.error(`Failed to get work IDs for account ${accountId}:`, error);
       return [];
@@ -560,7 +560,7 @@ class WorksDAO {
   markAsRead(workId) {
     return this.update(workId, {
       is_new: 0,
-      new_comment_count: 0,
+      stats_new_comment_count: 0,
       updated_at: Math.floor(Date.now() / 1000),
     });
   }
@@ -578,21 +578,21 @@ class WorksDAO {
     try {
       const placeholders = workIds.map(() => '?').join(',');
       const stmt = this.db.prepare(`
-        UPDATE works
+        UPDATE contents
         SET is_new = 0,
-            new_comment_count = 0,
+            stats_new_comment_count = 0,
             updated_at = ?
         WHERE id IN (${placeholders})
       `);
 
       const result = stmt.run(Math.floor(Date.now() / 1000), ...workIds);
-      logger.info(`Bulk marked ${result.changes} works as read`);
+      logger.info(`Bulk marked ${result.changes} contents as read`);
       return result.changes;
     } catch (error) {
-      logger.error('Failed to bulk mark works as read:', error);
+      logger.error('Failed to bulk mark contents as read:', error);
       throw error;
     }
   }
 }
 
-module.exports = WorksDAO;
+module.exports = ContentsDAO;

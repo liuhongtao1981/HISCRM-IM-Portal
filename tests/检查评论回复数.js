@@ -22,7 +22,7 @@ const comments = db.prepare(`
     author_name,
     content,
     reply_count,
-    like_count,
+    stats_like_count,
     created_at
   FROM comments
   ORDER BY created_at DESC
@@ -33,7 +33,7 @@ comments.forEach(c => {
   console.log(`  作者: ${c.author_name}`);
   console.log(`  内容: ${c.content ? c.content.substring(0, 50) : 'N/A'}${c.content && c.content.length > 50 ? '...' : ''}`);
   console.log(`  回复数: ${c.reply_count} 条`);
-  console.log(`  点赞数: ${c.like_count}`);
+  console.log(`  点赞数: ${c.stats_like_count}`);
   console.log(`  时间: ${new Date(c.created_at * 1000).toLocaleString('zh-CN')}`);
   console.log('');
 });

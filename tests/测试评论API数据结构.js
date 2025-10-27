@@ -44,7 +44,7 @@ const fieldMapping = {
   'user.uid': 'author_id',
   'user.avatar_thumb.url_list[0]': 'author_avatar',
   'create_time': 'created_at',
-  'digg_count': 'like_count',
+  'digg_count': 'stats_like_count',
   'reply_comment_total': 'reply_count ⭐',
 };
 

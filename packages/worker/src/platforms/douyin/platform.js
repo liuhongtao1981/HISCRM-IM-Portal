@@ -10,7 +10,7 @@ const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
-const { crawlWorks } = require('./crawl-works');
+const { crawlWorks } = require('./crawl-contents');
 const { crawlComments: crawlCommentsV2 } = require('./crawl-comments');
 const { TabTag } = require('../../browser/tab-manager');
 
@@ -636,7 +636,7 @@ class DouyinPlatform extends PlatformBase {
    * @param {Object} options - 选项
    * @param {number} options.maxVideos - 最多爬取的作品数量（默认全部）
    * @param {boolean} options.includeDiscussions - 是否同时爬取讨论（默认true）
-   * @returns {Promise<Object>} { comments: Array, discussions: Array, works: Array, stats: Object }
+   * @returns {Promise<Object>} { comments: Array, discussions: Array, contents: Array, stats: Object }
    */
   async crawlComments(account, options = {}) {
     try {
@@ -663,12 +663,12 @@ class DouyinPlatform extends PlatformBase {
       logger.debug(`[crawlComments] Step 2: Running comments+discussions crawler (crawlCommentsV2)`);
       const crawlResult = await crawlCommentsV2(page, account, options);
 
-      const { comments, discussions, works, stats: crawlStats } = crawlResult;
-      logger.info(`[crawlComments] Crawler completed: ${comments.length} comments, ${discussions.length} discussions, ${works.length} works`);
+      const { comments, discussions, contents, stats: crawlStats } = crawlResult;
+      logger.info(`[crawlComments] Crawler completed: ${comments.length} comments, ${discussions.length} discussions, ${contents.length} contents`);
 
       // 3. 发送评论数据到 Master
       logger.debug(`[crawlComments] Step 3: Sending ${comments.length} comments to Master`);
-      await this.sendCommentsToMaster(account, comments, works);
+      await this.sendCommentsToMaster(account, comments, contents);
       logger.info(`[crawlComments] Comments sent to Master successfully`);
 
       // 4. 发送讨论数据到 Master
@@ -693,7 +693,7 @@ class DouyinPlatform extends PlatformBase {
       return {
         comments,
         discussions,
-        works,
+        contents,
         stats,
       };
     } catch (error) {
@@ -739,40 +739,40 @@ class DouyinPlatform extends PlatformBase {
   }
 
   /**
-   * ✨ 新增: 发送作品数据到 Master (使用新的 works 表)
+   * ✨ 新增: 发送作品数据到 Master (使用新的 contents 表)
    * @param {Object} account - 账户对象
    * @param {Array} videos - 视频/作品数组
    */
   async sendWorksToMaster(account, videos) {
     if (!videos || videos.length === 0) {
-      logger.debug('No works to send to Master');
+      logger.debug('No contents to send to Master');
       return;
     }
 
     try {
-      logger.info(`Sending ${videos.length} works to Master for account ${account.id}`);
+      logger.info(`Sending ${videos.length} contents to Master for account ${account.id}`);
 
-      // 将视频数据转换为 works 表格式
-      const works = videos.map(video => ({
+      // 将视频数据转换为 contents 表格式
+      const contents = videos.map(video => ({
         account_id: account.id,
         platform: 'douyin',
-        platform_work_id: video.aweme_id || video.item_id,
+        platform_content_id: video.aweme_id || video.item_id,
         platform_user_id: account.platform_user_id,
-        work_type: 'video',
+        content_type: 'video',
         title: video.title,
-        total_comment_count: video.total_count || video.comment_count || 0,
+        stats_comment_count: video.total_count || video.comment_count || 0,
         detected_at: Math.floor(Date.now() / 1000),
       }));
 
       // 使用 Socket.IO 批量发送作品数据
       this.bridge.socket.emit('worker:bulk_insert_works', {
         account_id: account.id,
-        works: works,
+        contents: contents,
       });
 
-      logger.info(`✅ Sent ${works.length} works to Master`);
+      logger.info(`✅ Sent ${contents.length} contents to Master`);
     } catch (error) {
-      logger.error('Failed to send works to Master:', error);
+      logger.error('Failed to send contents to Master:', error);
       throw error;
     }
   }
@@ -1502,7 +1502,7 @@ class DouyinPlatform extends PlatformBase {
             post_title: '', // API响应中没有作品标题，需要从其他地方获取
             post_id: comment.aweme_id || '',
             reply_to_comment_id: comment.reply_id || null,
-            like_count: comment.digg_count || 0,
+            stats_like_count: comment.digg_count || 0,
             detected_at: Math.floor(Date.now() / 1000),
             create_time: comment.create_time || Math.floor(Date.now() / 1000),
             ip_label: comment.ip_label || '',
@@ -1620,7 +1620,7 @@ class DouyinPlatform extends PlatformBase {
       if (newComments.length === 0) {
         logger.info(`No new comments to send (all ${comments.length} comments are duplicates)`);
 
-        // 即使没有新评论，也发送作品信息更新 (使用新的 works 表)
+        // 即使没有新评论，也发送作品信息更新 (使用新的 contents 表)
         if (videos && videos.length > 0) {
           await this.sendWorksToMaster(account, videos);
         }
@@ -1630,7 +1630,7 @@ class DouyinPlatform extends PlatformBase {
 
       logger.info(`Sending ${newComments.length} NEW comments (filtered from ${comments.length} total) and ${videos.length} videos to Master`);
 
-      // 发送作品信息 (使用新的 works 表)
+      // 发送作品信息 (使用新的 contents 表)
       if (videos && videos.length > 0) {
         await this.sendWorksToMaster(account, videos);
       }

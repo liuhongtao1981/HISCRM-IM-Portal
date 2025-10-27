@@ -9,7 +9,7 @@ const express = require('express');
 const createIMAccountsRouter = require('./accounts');
 const createIMConversationsRouter = require('./conversations');
 const createIMMessagesRouter = require('./messages');
-const createIMWorksRouter = require('./works');
+const createIMWorksRouter = require('./contents');
 const createIMDiscussionsRouter = require('./discussions');
 const createIMUnifiedMessagesRouter = require('./unified-messages');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -37,7 +37,7 @@ function createIMRouter(db) {
   router.use('/accounts', createIMAccountsRouter(db));
   router.use('/conversations', createIMConversationsRouter(db));
   router.use('/messages', createIMMessagesRouter(db));
-  router.use('/works', createIMWorksRouter(db));
+  router.use('/contents', createIMWorksRouter(db));
   router.use('/discussions', createIMDiscussionsRouter(db));
   router.use('/unified-messages', createIMUnifiedMessagesRouter(db));
 

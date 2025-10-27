@@ -121,17 +121,17 @@ class AccountStatusReporter {
     this.updateAccountStatus(accountId, {
       worker_status: 'online',
       total_comments: stats.total_comments,
-      total_works: stats.total_works,
+      total_contents: stats.total_contents,
       total_followers: stats.total_followers,
       total_following: stats.total_following,
       recent_comments_count: stats.recent_comments_count || 0,
-      recent_works_count: stats.recent_works_count || 0,
+      recent_contents_count: stats.recent_contents_count || 0,
       last_crawl_time: now,
     });
 
     logger.info(`Recorded crawl complete for account ${accountId}`, {
       comments: stats.total_comments,
-      works: stats.total_works,
+      contents: stats.total_contents,
     });
   }
 

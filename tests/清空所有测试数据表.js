@@ -13,7 +13,7 @@ console.log('🧹 清空所有测试数据表\n');
 
 // 要清空的表
 const tables = [
-  'douyin_videos',     // 作品
+  'contents',             // 作品
   'direct_messages',   // 私信
   'comments',          // 评论
   'conversations',     // 会话

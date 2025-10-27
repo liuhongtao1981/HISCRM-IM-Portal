@@ -29,7 +29,7 @@ const REQUIRED_TABLES = [
   'notification_rules',
   'client_sessions',
   'worker_logs',
-  'works',
+  'contents',
   'discussions'
 ];
 

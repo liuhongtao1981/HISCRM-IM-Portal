@@ -26,7 +26,7 @@ class DiscussionTransformer {
       },
 
       // 关联作品信息
-      work_id: masterDiscussion.work_id,
+      content_id: masterDiscussion.content_id,
       post_id: masterDiscussion.post_id,
       post_title: masterDiscussion.post_title,
 
@@ -58,7 +58,7 @@ class DiscussionTransformer {
       author_name: imDiscussion.author?.author_name,
       author_id: imDiscussion.author?.author_id,
 
-      work_id: imDiscussion.work_id,
+      content_id: imDiscussion.content_id,
       post_id: imDiscussion.post_id,
       post_title: imDiscussion.post_title,
 

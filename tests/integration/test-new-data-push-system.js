@@ -69,7 +69,7 @@ function generateTestVideos(count = 1) {
       title: `测试视频 #${i}`,
       cover: 'https://example.com/cover.jpg',
       publish_time: baseTime - (i * 86400),
-      total_comment_count: Math.floor(Math.random() * 100),
+      stats_comment_count: Math.floor(Math.random() * 100),
     });
   }
 

@@ -52,7 +52,7 @@ async function testOfficialCrawler() {
 
     console.log(`评论数量: ${result.comments.length}`);
     console.log(`讨论数量: ${result.discussions.length}`);
-    console.log(`作品数量: ${result.works.length}\n`);
+    console.log(`作品数量: ${result.contents.length}\n`);
 
     if (result.discussions.length === 0) {
       console.log('❌ 讨论数量为 0！按钮点击可能未执行\n');

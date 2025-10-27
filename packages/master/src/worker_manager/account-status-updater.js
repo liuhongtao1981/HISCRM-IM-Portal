@@ -24,11 +24,11 @@ class AccountStatusUpdater {
         worker_status,           // Worker 状态: online/offline/error
         login_status,            // 登录状态: logged_in/not_logged_in
         total_comments,          // 总评论数
-        total_works,             // 总作品数
+        total_contents,             // 总作品数
         total_followers,         // 总粉丝数
         total_following,         // 总关注数
         recent_comments_count,   // 最近一次爬取的评论数
-        recent_works_count,      // 最近一次爬取的作品数
+        recent_contents_count,      // 最近一次爬取的作品数
         last_crawl_time,         // 最后一次爬取时间（秒级时间戳）
         last_heartbeat_time,     // 最后一次心跳时间
         error_count,             // 错误计数
@@ -56,9 +56,9 @@ class AccountStatusUpdater {
         values.push(total_comments);
       }
 
-      if (total_works !== undefined) {
-        updateFields.push('total_works = ?');
-        values.push(total_works);
+      if (total_contents !== undefined) {
+        updateFields.push('total_contents = ?');
+        values.push(total_contents);
       }
 
       if (total_followers !== undefined) {
@@ -76,9 +76,9 @@ class AccountStatusUpdater {
         values.push(recent_comments_count);
       }
 
-      if (recent_works_count !== undefined) {
-        updateFields.push('recent_works_count = ?');
-        values.push(recent_works_count);
+      if (recent_contents_count !== undefined) {
+        updateFields.push('recent_contents_count = ?');
+        values.push(recent_contents_count);
       }
 
       if (last_crawl_time !== undefined) {

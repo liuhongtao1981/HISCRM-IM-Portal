@@ -43,7 +43,7 @@ async function triggerCommentCrawl() {
       timestamp: Date.now(),
       payload: {
         accountId: account.id,
-        crawlType: 'comments',  // 'comments', 'direct_messages', 'works'
+        crawlType: 'comments',  // 'comments', 'direct_messages', 'contents'
         options: {
           maxVideos: 1,           // 只抓取1个视频
           includeDiscussions: true,  // 包含讨论(回复)
@@ -80,7 +80,7 @@ async function triggerCommentCrawl() {
 
       const commentsCount = db.prepare('SELECT COUNT(*) as count FROM comments').get().count;
       const discussionsCount = db.prepare('SELECT COUNT(*) as count FROM discussions').get().count;
-      const worksCount = db.prepare('SELECT COUNT(*) as count FROM douyin_videos').get().count;
+      const worksCount = db.prepare('SELECT COUNT(*) as count FROM contents').get().count;
 
       console.log(`评论数量: ${commentsCount}`);
       console.log(`讨论数量: ${discussionsCount}`);

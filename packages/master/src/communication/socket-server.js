@@ -191,12 +191,12 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
 
     // ✨ 新增: 监听批量作品插入
     socket.on('worker:bulk_insert_works', async (data) => {
-      logger.info(`Worker ${socket.id} bulk inserting ${data.works?.length || 0} works`);
+      logger.info(`Worker ${socket.id} bulk inserting ${data.contents?.length || 0} contents`);
       if (handlers.onBulkInsertWorks) {
         try {
           await handlers.onBulkInsertWorks(data, socket);
         } catch (error) {
-          logger.error('Failed to bulk insert works:', error);
+          logger.error('Failed to bulk insert contents:', error);
         }
       }
     });

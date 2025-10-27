@@ -26,7 +26,7 @@ function createIMDiscussionsRouter(db) {
         is_new,
         account_id,
         parent_comment_id,
-        work_id,
+        content_id,
       } = req.query;
 
       const offset = parseInt(cursor);
@@ -45,8 +45,8 @@ function createIMDiscussionsRouter(db) {
       let discussions;
       if (parent_comment_id) {
         discussions = discussionsDAO.findByParentCommentId(parent_comment_id, options);
-      } else if (work_id) {
-        discussions = discussionsDAO.findByWorkId(work_id, options);
+      } else if (content_id) {
+        discussions = discussionsDAO.findByWorkId(content_id, options);
       } else if (account_id) {
         discussions = discussionsDAO.findByAccountId(account_id, options);
       } else {
