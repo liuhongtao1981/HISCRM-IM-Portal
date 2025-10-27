@@ -34,13 +34,16 @@ class DiscussionsDAO {
         content_id,
         post_id,
         post_title,
-        stats_like_count = 0,
+        stats_like_count = 0,  // Worker 发送的字段名
         is_read = 0,
         is_new = 1,
         push_count = 0,
         detected_at = Math.floor(Date.now() / 1000),
         created_at = Math.floor(Date.now() / 1000),
       } = discussion;
+
+      // 映射字段名: Worker 使用 stats_like_count, DB 使用 like_count
+      const like_count = stats_like_count;
 
       // 验证必需字段
       if (!account_id || !platform || !parent_comment_id || !content) {
@@ -52,7 +55,7 @@ class DiscussionsDAO {
           id, account_id, platform, platform_user_id, platform_discussion_id,
           parent_comment_id, content, author_name, author_id, author_avatar,
           content_id, post_id, post_title,
-          stats_like_count, is_read, is_new, push_count,
+          like_count, is_read, is_new, push_count,
           detected_at, created_at
         )
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -62,7 +65,7 @@ class DiscussionsDAO {
         id, account_id, platform, platform_user_id, platform_discussion_id,
         parent_comment_id, content, author_name, author_id, author_avatar,
         content_id, post_id, post_title,
-        stats_like_count, is_read, is_new, push_count,
+        like_count, is_read, is_new, push_count,
         detected_at, created_at
       );
 
