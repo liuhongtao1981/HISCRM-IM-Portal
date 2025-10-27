@@ -510,14 +510,12 @@ async function start() {
 
     // 4.4 添加爬虫相关处理器
     const CommentsDAO = require('./database/comments-dao');
-    const DouyinVideoDAO = require('./database/douyin-video-dao');
     const DirectMessagesDAO = require('./database/messages-dao');
     const ConversationsDAO = require('./database/conversations-dao');
     const WorksDAO = require('./database/works-dao');
     const DiscussionsDAO = require('./database/discussions-dao');
 
     const commentsDAO = new CommentsDAO(db);
-    const douyinVideoDAO = new DouyinVideoDAO(db);
     const directMessagesDAO = new DirectMessagesDAO(db);
     const conversationsDAO = new ConversationsDAO(db);
     const worksDAO = new WorksDAO(db);
@@ -837,52 +835,53 @@ async function start() {
         // 处理每个视频
         for (const video of videos) {
           try {
-            // 检查视频是否已存在 (查询条件: platform_videos_id)
-            let existingVideo = douyinVideoDAO.getVideoByPlatformVideosId(video.id, platform_user_id);
+            // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
+            // 检查作品是否已存在
+            let existingWork = worksDAO.findByPlatformWorkId(account_id, 'douyin', video.id);
 
-            if (!existingVideo) {
-              // 如果未找到，尝试用其他ID搜索（向后兼容）
-              existingVideo = douyinVideoDAO.getVideoByAwemeId(video.id, platform_user_id);
-            }
-
-            if (!existingVideo) {
-              // 新视频：插入数据库 + 加入通知列表
-              const newVideo = {
+            if (!existingWork) {
+              // 新作品：插入数据库 + 加入通知列表
+              const { v4: uuidv4 } = require('uuid');
+              const newWork = {
+                id: uuidv4(),
                 account_id,
+                platform: 'douyin',
+                platform_work_id: video.id,
                 platform_user_id,
-                aweme_id: video.id,
-                platform_videos_id: video.id,
+                work_type: 'video',
                 title: video.title || '',
                 cover: video.cover || '',
                 publish_time: video.publish_time || Math.floor(Date.now() / 1000),
                 total_comment_count: video.total_comment_count || 0,
                 is_new: 1,
+                created_at: Math.floor(Date.now() / 1000),
+                updated_at: Math.floor(Date.now() / 1000),
               };
 
               try {
-                douyinVideoDAO.upsertVideo(newVideo);
+                worksDAO.insert(newWork);
                 inserted++;
                 videosToNotify.push({
                   type: 'new_video',
-                  data: newVideo,
+                  data: newWork,
                   first_seen_at: Math.floor(Date.now() / 1000)
                 });
-                logger.debug(`[IsNew] New video inserted: ${video.id}`);
+                logger.debug(`[IsNew] New work inserted: ${video.id}`);
               } catch (insertError) {
-                logger.warn(`[IsNew] Failed to insert video ${video.id}:`, insertError.message);
+                logger.warn(`[IsNew] Failed to insert work ${video.id}:`, insertError.message);
                 skipped++;
               }
             } else {
               // 历史数据：检查 is_new 标志
-              if (existingVideo.is_new) {
+              if (existingWork.is_new) {
                 // 历史但标记为新的：加入通知列表
                 skipped++;
                 videosToNotify.push({
                   type: 'history_video',
-                  data: existingVideo,
-                  first_seen_at: existingVideo.detected_at || Math.floor(Date.now() / 1000)
+                  data: existingWork,
+                  first_seen_at: existingWork.detected_at || existingWork.created_at || Math.floor(Date.now() / 1000)
                 });
-                logger.debug(`[IsNew] History video with is_new=true: ${video.id}`);
+                logger.debug(`[IsNew] History work with is_new=true: ${video.id}`);
               } else {
                 // 历史且 is_new=false：不推送
                 skipped++;
@@ -957,18 +956,20 @@ async function start() {
         // 获取该账号的所有历史评论ID
         const commentIds = commentsDAO.findAll({ account_id }).map(c => c.id);
 
-        // 获取该账号的所有历史视频ID
-        const videoIds = douyinVideoDAO.getAllVideoIds(account_id);
+        // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
+        // 获取该账号的所有历史作品ID
+        const workIds = worksDAO.getAllWorkIds(account_id);
 
         // 获取该账号的所有历史私信ID
         const messageIds = directMessagesDAO.findAll({ account_id }).map(m => m.id);
 
-        logger.info(`Returning ${commentIds.length} comment IDs, ${videoIds.length} video IDs, ${messageIds.length} message IDs for account ${account_id}`);
+        logger.info(`Returning ${commentIds.length} comment IDs, ${workIds.length} work IDs, ${messageIds.length} message IDs for account ${account_id}`);
 
         return {
           success: true,
           commentIds,
-          videoIds,
+          workIds,
+          videoIds: workIds,  // 兼容旧字段名
           messageIds,
         };
       } catch (error) {
@@ -977,28 +978,51 @@ async function start() {
           success: false,
           error: error.message,
           commentIds: [],
-          videoIds: [],
+          workIds: [],
+          videoIds: [],  // 兼容旧字段名
           messageIds: [],
         };
       }
     };
 
-    // 更新/插入视频信息
+    // @TODO: 重构为使用 worksDAO (替代 douyin_videos 表)
+    // 更新/插入作品信息
     tempHandlers.onUpsertVideo = async (data, socket) => {
       try {
         const { account_id, platform_user_id, aweme_id, title, cover, publish_time, total_comment_count } = data;
 
-        douyinVideoDAO.upsertVideo({
-          account_id,
-          platform_user_id,
-          aweme_id,
-          title,
-          cover,
-          publish_time,
-          total_comment_count: total_comment_count || 0,
-        });
+        // 检查作品是否已存在
+        let existingWork = worksDAO.findByPlatformWorkId(account_id, 'douyin', aweme_id);
 
-        logger.debug(`Video upserted: ${aweme_id}`);
+        if (existingWork) {
+          // 更新现有作品
+          worksDAO.update(existingWork.id, {
+            title,
+            cover,
+            publish_time,
+            total_comment_count: total_comment_count || 0,
+            updated_at: Math.floor(Date.now() / 1000),
+          });
+        } else {
+          // 插入新作品
+          const { v4: uuidv4 } = require('uuid');
+          worksDAO.insert({
+            id: uuidv4(),
+            account_id,
+            platform: 'douyin',
+            platform_work_id: aweme_id,
+            platform_user_id,
+            work_type: 'video',
+            title,
+            cover,
+            publish_time,
+            total_comment_count: total_comment_count || 0,
+            created_at: Math.floor(Date.now() / 1000),
+            updated_at: Math.floor(Date.now() / 1000),
+          });
+        }
+
+        logger.debug(`Work upserted: ${aweme_id}`);
       } catch (error) {
         logger.error('Failed to upsert video:', error);
       }

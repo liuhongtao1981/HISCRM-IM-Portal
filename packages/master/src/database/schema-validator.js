@@ -22,14 +22,15 @@ const REQUIRED_TABLES = [
   'comments',
   'direct_messages',
   'conversations',
-  'douyin_videos',
   'login_sessions',
   'replies',
   'notifications',
   'proxies',
   'notification_rules',
   'client_sessions',
-  'worker_logs'
+  'worker_logs',
+  'works',
+  'discussions'
 ];
 
 /**
