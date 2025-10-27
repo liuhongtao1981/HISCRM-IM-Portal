@@ -95,15 +95,18 @@ function initAdminNamespace(io, masterServer) {
 
         const db = masterServer.db;
 
-        // Workers 统计 - 只统计在 worker_configs 中配置的 worker
-        const totalWorkers = db.prepare('SELECT COUNT(*) as count FROM worker_configs').get().count;
+        // Workers 统计 - 统计所有 workers 表中的 worker
+        const totalWorkers = db.prepare('SELECT COUNT(*) as count FROM workers').get().count;
         const onlineWorkers = db.prepare(`
           SELECT COUNT(*) as count
-          FROM workers w
-          INNER JOIN worker_configs wc ON w.id = wc.worker_id
-          WHERE w.status = ?
+          FROM workers
+          WHERE status = ?
         `).get('online').count;
-        const offlineWorkers = totalWorkers - onlineWorkers;
+        const offlineWorkers = db.prepare(`
+          SELECT COUNT(*) as count
+          FROM workers
+          WHERE status = ?
+        `).get('offline').count;
 
         // 账户统计
         const totalAccounts = db.prepare('SELECT COUNT(*) as count FROM accounts').get().count;
