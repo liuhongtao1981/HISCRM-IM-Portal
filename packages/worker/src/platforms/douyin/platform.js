@@ -10,7 +10,7 @@ const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
 const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
-const { crawlWorks } = require('./crawl-contents');
+const { crawlContents } = require('./crawl-contents');
 const { crawlComments: crawlCommentsV2 } = require('./crawl-comments');
 const { TabTag } = require('../../browser/tab-manager');
 

@@ -21,7 +21,7 @@ const logger = createLogger('crawl-contents', './logs');
  * @param {Object} options - 爬取选项
  * @returns {Promise<Object>} { contents, stats }
  */
-async function crawlWorks(page, account, options = {}) {
+async function crawlContents(page, account, options = {}) {
   const {
     maxWorks = 100,           // 最大作品数量
     includeTypes = ['video', 'image', 'article'],  // 包含的作品类型
@@ -549,7 +549,7 @@ function countWorksByType(contents) {
 }
 
 module.exports = {
-  crawlWorks,
+  crawlContents,
   extractWorksFromPage,
   enhanceWorksWithAPIData,
   standardizeWorkData,
