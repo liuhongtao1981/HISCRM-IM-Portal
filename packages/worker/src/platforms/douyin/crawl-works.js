@@ -483,6 +483,16 @@ function enhanceWorksWithAPIData(works, apiResponses) {
  * 标准化作品数据格式 (符合 works 表结构)
  */
 function standardizeWorkData(work, account) {
+  // 处理 publish_time：确保转换为秒级时间戳
+  let publishTime = work.publish_time || null;
+  if (publishTime) {
+    // 如果是 13 位毫秒级时间戳，转换为 10 位秒级
+    if (String(publishTime).length === 13) {
+      publishTime = Math.floor(publishTime / 1000);
+      logger.debug(`Converted publish_time from milliseconds to seconds: ${work.publish_time} -> ${publishTime}`);
+    }
+  }
+
   return {
     id: uuidv4(),
     account_id: account.id,
@@ -495,7 +505,7 @@ function standardizeWorkData(work, account) {
     description: work.description || '',
     cover: work.cover || '',
     url: work.url || '',
-    publish_time: work.publish_time || null,
+    publish_time: publishTime,
 
     total_comment_count: work.total_comment_count || 0,
     new_comment_count: 0,
