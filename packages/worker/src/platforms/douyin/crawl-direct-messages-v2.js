@@ -48,7 +48,7 @@ async function crawlDirectMessagesV2(page, account) {
 
     // 第 3 步: 获取会话列表
     logger.debug(`[Phase 8] Step 3: Extracting conversations list`);
-    const conversations = await extractConversationsList(page, account);
+    const conversations = await extractConversationsList(page, account, apiResponses);
     logger.info(`[Phase 8] Extracted ${conversations.length} conversations`);
 
     // 第 4 步: 对每个会话获取完整消息历史
@@ -331,11 +331,84 @@ function extractKeyFields(obj) {
 /**
  * 提取会话列表 - 改进版
  * 支持多种选择器和错误恢复
+ * @param {Page} page - Playwright页面对象
+ * @param {Object} account - 账户信息
+ * @param {Object} apiResponses - API响应数据
+ * @returns {Promise<Array>} conversations数组
  */
-async function extractConversationsList(page, account) {
+async function extractConversationsList(page, account, apiResponses = {}) {
   const conversations = [];
 
   try {
+    // ========================================================================
+    // 优先方案：从 API 响应中提取会话数据（最可靠）
+    // ========================================================================
+    if (apiResponses.conversations && apiResponses.conversations.length > 0) {
+      logger.info(`[extractConversationsList] Using API data: ${apiResponses.conversations.length} responses`);
+
+      apiResponses.conversations.forEach((response, idx) => {
+        if (response.data?.conversations && Array.isArray(response.data.conversations)) {
+          logger.debug(`[extractConversationsList] API Response ${idx}: ${response.data.conversations.length} conversations`);
+
+          response.data.conversations.forEach((conv, convIdx) => {
+            try {
+              // 提取用户 ID（多种可能的字段）
+              const userId = String(conv.user_id || conv.user?.uid || conv.sec_user_id || '');
+
+              // 提取用户名（多种可能的字段）
+              const userName = conv.user?.nickname || conv.user?.unique_id || conv.user?.name || 'Unknown';
+
+              // 提取头像（从嵌套对象中）
+              const userAvatar = conv.user?.avatar_thumb?.url_list?.[0] ||
+                                 conv.user?.avatar_large?.url_list?.[0] ||
+                                 conv.user?.avatar_medium?.url_list?.[0] ||
+                                 null;
+
+              if (!userId) {
+                logger.warn(`[extractConversationsList] API Conv ${convIdx}: No user_id found, skipping`);
+                return;
+              }
+
+              const conversation = {
+                id: generateConversationId(account.id, userId),
+                account_id: account.id,
+                platform_user_id: userId,  // ✅ 使用真实的平台用户 ID
+                platform_user_name: userName,  // ✅ 使用真实的用户昵称
+                platform_user_avatar: userAvatar,  // ✅ 使用真实的头像 URL
+                last_message_time: conv.last_message?.create_time || conv.update_time || Math.floor(Date.now() / 1000),
+                last_message_content: conv.last_message?.content || '',
+                platform_message_id: conv.last_message?.message_id || null,
+                is_group: conv.is_group || false,
+                unread_count: conv.unread_count || 0,
+                is_pinned: conv.is_pinned || false,
+                is_muted: conv.is_muted || false,
+                created_at: Math.floor(Date.now() / 1000),
+                updated_at: Math.floor(Date.now() / 1000)
+              };
+
+              conversations.push(conversation);
+              logger.debug(`[extractConversationsList] API Conv ${convIdx}: ${userName} (ID: ${userId})`);
+
+            } catch (error) {
+              logger.warn(`[extractConversationsList] Error extracting API conv ${convIdx}:`, error.message);
+            }
+          });
+        }
+      });
+
+      if (conversations.length > 0) {
+        logger.info(`[extractConversationsList] ✅ Extracted ${conversations.length} conversations from API`);
+        return conversations;
+      } else {
+        logger.warn(`[extractConversationsList] API data available but no conversations extracted, falling back to DOM`);
+      }
+    }
+
+    // ========================================================================
+    // 备用方案：从 DOM 提取会话数据（当 API 数据不可用时）
+    // ========================================================================
+    logger.info(`[extractConversationsList] No API data available, using DOM extraction`);
+
     // 第 1 步: 调试页面结构
     logger.debug('[extractConversationsList] Step 1: Analyzing page structure');
 
@@ -455,15 +528,20 @@ async function extractConversationsList(page, account) {
           continue;
         }
 
-        // 生成会话 ID
-        const conversationId = generateConversationId(account.id, userName);
+        // ⚠️ 警告：DOM 提取无法获取真实的 platform_user_id
+        // 使用用户名生成临时 ID (仅作为备用方案，优先使用 API 数据)
+        const tempUserId = `user_${userName}`.replace(/\s+/g, '_');
+        const conversationId = generateConversationId(account.id, tempUserId);
+
+        logger.warn(`[extractConversationsList] DOM extraction: Using temporary user_id for ${userName}`);
+        logger.warn(`[extractConversationsList] ⚠️ This may cause issues with user identification - API extraction preferred`);
 
         const conversation = {
           id: conversationId,
           account_id: account.id,
-          platform_user_id: `user_${userName}`.replace(/\s+/g, '_'),
-          platform_user_name: userName,
-          platform_user_avatar: null,
+          platform_user_id: tempUserId,  // ⚠️ 临时 ID，非真实平台 ID
+          platform_user_name: userName,  // ⚠️ 可能包含额外文本
+          platform_user_avatar: null,     // ⚠️ 无法从 DOM 获取
           last_message_time: time ? parseInt(time) : Math.floor(Date.now() / 1000),
           last_message_content: text.substring(0, 100), // 限制长度
           platform_message_id: null,
