@@ -70,6 +70,107 @@ async function crawlComments(page, account, options = {}) {
           const itemId = extractItemId(url);
           const cursor = extractCursor(url);
 
+          // 🔍 DEBUG: 输出完整的 API 响应对象结构和属性值
+          if (cursor === 0) {
+            logger.info('\n╔═══════════════════════════════════════════════════════════════╗');
+            logger.info('║  🔍 Comment API Response - Complete Object Structure          ║');
+            logger.info('╚═══════════════════════════════════════════════════════════════╝\n');
+
+            try {
+              // 递归打印对象结构的辅助函数
+              const printObjectStructure = (obj, prefix = '', maxDepth = 3, currentDepth = 0) => {
+                if (currentDepth >= maxDepth) {
+                  return;
+                }
+
+                for (const [key, value] of Object.entries(obj)) {
+                  const valueType = Array.isArray(value) ? 'array' : typeof value;
+                  const indent = prefix + '  ';
+
+                  if (value === null) {
+                    logger.info(`${indent}${key}: null`);
+                  } else if (Array.isArray(value)) {
+                    logger.info(`${indent}${key}: [Array, length: ${value.length}]`);
+                    if (value.length > 0 && typeof value[0] === 'object') {
+                      logger.info(`${indent}  First item structure:`);
+                      printObjectStructure(value[0], indent + '  ', maxDepth, currentDepth + 1);
+                    } else if (value.length > 0) {
+                      logger.info(`${indent}  Sample: ${JSON.stringify(value.slice(0, 3))}`);
+                    }
+                  } else if (typeof value === 'object') {
+                    const keys = Object.keys(value);
+                    logger.info(`${indent}${key}: {Object, keys: ${keys.length}} [${keys.join(', ')}]`);
+                    printObjectStructure(value, indent, maxDepth, currentDepth + 1);
+                  } else if (typeof value === 'string') {
+                    const displayValue = value.length > 100 ? value.substring(0, 100) + '...' : value;
+                    logger.info(`${indent}${key}: "${displayValue}" (string, length: ${value.length})`);
+                  } else {
+                    logger.info(`${indent}${key}: ${value} (${valueType})`);
+                  }
+                }
+              };
+
+              // 1. 输出完整的 JSON（格式化）
+              logger.info('📦 Complete JSON (formatted):');
+              const jsonCopy = { ...json };
+              const commentCount = jsonCopy.comment_info_list?.length || 0;
+
+              // 只保留前 2 条评论作为示例
+              if (jsonCopy.comment_info_list && jsonCopy.comment_info_list.length > 0) {
+                jsonCopy.comment_info_list = jsonCopy.comment_info_list.slice(0, 2);
+                if (commentCount > 2) {
+                  jsonCopy.comment_info_list.push(`... (${commentCount - 2} more comments)`);
+                }
+              }
+
+              logger.info(JSON.stringify(jsonCopy, null, 2));
+
+              // 2. 输出对象结构树
+              logger.info('\n📋 Object Structure Tree:');
+              logger.info('Root object:');
+              printObjectStructure(json, '', 4, 0);
+
+              // 3. 输出统计信息
+              logger.info(`\n📊 Statistics:`);
+              logger.info(`   - Top-level keys (${Object.keys(json).length}): ${Object.keys(json).join(', ')}`);
+              logger.info(`   - Total comments in response: ${commentCount}`);
+              logger.info(`   - Item ID: ${itemId || 'null'}`);
+              logger.info(`   - Has more pages: ${json.has_more}`);
+              logger.info(`   - Total count: ${json.total_count || 'N/A'}`);
+              logger.info(`   - Cursor: ${json.cursor || 0}`);
+
+              // 4. 特别输出所有对象类型的字段（可能包含视频信息）
+              logger.info(`\n🔎 All Object-type Fields (potential video info):`);
+              for (const [key, value] of Object.entries(json)) {
+                if (value && typeof value === 'object' && !Array.isArray(value)) {
+                  logger.info(`\n   📦 ${key}:`);
+                  logger.info(`      Keys (${Object.keys(value).length}): ${Object.keys(value).join(', ')}`);
+                  logger.info(`      Content:`);
+                  for (const [subKey, subValue] of Object.entries(value)) {
+                    if (typeof subValue === 'string') {
+                      const display = subValue.length > 100 ? subValue.substring(0, 100) + '...' : subValue;
+                      logger.info(`         ${subKey}: "${display}"`);
+                    } else if (typeof subValue === 'object' && subValue !== null) {
+                      if (Array.isArray(subValue)) {
+                        logger.info(`         ${subKey}: [Array, length: ${subValue.length}]`);
+                      } else {
+                        logger.info(`         ${subKey}: {Object, keys: ${Object.keys(subValue).join(', ')}}`);
+                      }
+                    } else {
+                      logger.info(`         ${subKey}: ${subValue}`);
+                    }
+                  }
+                }
+              }
+
+            } catch (error) {
+              logger.error(`Failed to print object structure: ${error.message}`);
+              logger.error(`Stack: ${error.stack}`);
+            }
+
+            logger.info('\n╚═══════════════════════════════════════════════════════════════╝\n');
+          }
+
           apiResponses.comments.push({
             timestamp: Date.now(),
             url: url,
@@ -144,6 +245,14 @@ async function crawlComments(page, account, options = {}) {
     const videosToClick = videoElements.filter(v => parseInt(v.commentCountText) > 0);
     logger.info(`Videos with comments: ${videosToClick.length}`);
 
+    // 🔍 DEBUG: 输出 videosToClick 数组的完整内容
+    logger.info('\n🎬 Videos to Click (with comment counts):');
+    videosToClick.forEach((v, i) => {
+      logger.info(`   [${i}] Title: "${v.title.substring(0, 50)}${v.title.length > 50 ? '...' : ''}"`);
+      logger.info(`       Comment Count Text: "${v.commentCountText}"`);
+      logger.info(`       Index: ${v.index}\n`);
+    });
+
     if (videosToClick.length === 0) {
       logger.warn('No videos with comments found');
       return {
@@ -156,6 +265,10 @@ async function crawlComments(page, account, options = {}) {
     // 限制处理的视频数量
     const maxToProcess = maxVideos ? Math.min(maxVideos, videosToClick.length) : videosToClick.length;
 
+    // 🔍 建立视频索引与 item_id 的映射
+    // 策略：在点击每个视频时，记录新增的 API 响应的 item_id
+    const videoIndexToItemId = {};  // { videoIndex: item_id }
+
     // 6. 逐个完整处理每个视频 (新策略)
     logger.info(`Processing ${maxToProcess} videos one by one (with scroll & reply buttons)`);
     for (let i = 0; i < maxToProcess; i++) {
@@ -163,6 +276,9 @@ async function crawlComments(page, account, options = {}) {
       logger.info(`[${i + 1}/${maxToProcess}] Processing: ${video.title.substring(0, 50)}...`);
 
       try {
+        // 记录点击前的 API 响应数量
+        const apiResponsesBeforeClick = apiResponses.comments.length;
+
         // 6.1 点击视频
         await page.evaluate((idx) => {
           const containers = document.querySelectorAll('.container-Lkxos9');
@@ -173,6 +289,26 @@ async function crawlComments(page, account, options = {}) {
 
         logger.info(`  ✅ Video clicked, waiting for comments to load...`);
         await page.waitForTimeout(3000);
+
+        // 🔍 新策略：API 请求在打开模态框时就已经发生了（点击之前）
+        // 所以我们需要在这里建立映射：将当前视频索引与对应的 API 响应关联
+        //
+        // 关键观察：
+        // - videosToClick 数组按照 DOM 顺序排列（index: 0, 1, 2...）
+        // - apiResponses.comments 数组按照 API 请求顺序排列
+        // - 假设：DOM 顺序 = API 请求顺序（需验证）
+        //
+        // 简单策略（适用于单视频场景）：
+        // - 如果只有一个视频，直接将第一个 API 响应关联到第一个视频
+        // - 如果有多个视频，按照索引顺序一一对应
+
+        if (apiResponses.comments.length > i && apiResponses.comments[i].item_id) {
+          const itemId = apiResponses.comments[i].item_id;
+          videoIndexToItemId[video.index] = itemId;
+          logger.info(`  📝 Mapped: video[${video.index}] "${video.title.substring(0, 30)}..." -> item_id: ${itemId.substring(0, 30)}...`);
+        } else {
+          logger.warn(`  ⚠️  No API response found for video[${i}]!`);
+        }
 
         // 6.2 滚动加载所有评论
         logger.info(`  📜 Scrolling to load all comments...`);
@@ -419,10 +555,45 @@ async function crawlComments(page, account, options = {}) {
       );
 
       // 匹配视频信息
-      const videoInfo = videosToClick.find(v => v.commentCountText == totalCount.toString()) || {
-        title: '未知作品',
-        index: -1,
-      };
+      // 🔍 DEBUG: 输出匹配过程
+      logger.info(`\n🔍 Matching video for item_id: ${itemId.substring(0, 30)}...`);
+      logger.info(`   Total count from API: ${totalCount}`);
+
+      // 方案 1: 通过 videoIndexToItemId 映射查找（最可靠）
+      let videoInfo = null;
+      const videoIndex = Object.keys(videoIndexToItemId).find(
+        idx => videoIndexToItemId[idx] === itemId
+      );
+
+      if (videoIndex !== undefined) {
+        videoInfo = videosToClick.find(v => v.index === parseInt(videoIndex));
+        if (videoInfo) {
+          logger.info(`   ✅ Method 1 (Index Mapping): Found video[${videoIndex}] -> "${videoInfo.title}"`);
+        }
+      }
+
+      // 方案 2: 如果映射失败，尝试通过评论数匹配（不可靠，作为备用）
+      if (!videoInfo) {
+        logger.info(`   ⚠️  Method 1 failed, trying Method 2 (Comment Count Matching)...`);
+        videoInfo = videosToClick.find(v => {
+          const match = v.commentCountText == totalCount.toString();
+          logger.info(`   - "${v.title.substring(0, 30)}..." (count: "${v.commentCountText}") -> ${match ? '✅ MATCH' : '❌'}`);
+          return match;
+        });
+
+        if (videoInfo) {
+          logger.warn(`   ⚠️  Method 2 succeeded (but unreliable): "${videoInfo.title}"`);
+        }
+      }
+
+      // 方案 3: 都失败了，使用默认值
+      if (!videoInfo) {
+        logger.warn(`   ❌ All methods failed! Using fallback: "未知作品"`);
+        videoInfo = {
+          title: '未知作品',
+          index: -1,
+        };
+      }
 
       // 为评论添加视频信息
       uniqueComments.forEach(comment => {
