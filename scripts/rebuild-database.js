@@ -88,20 +88,41 @@ try {
     // 迁移 accounts
     if (stats.accounts > 0) {
       console.log('📝 迁移 accounts 表...');
-      const accountFields = backupDb.pragma('table_info(accounts)')
-        .map(col => col.name)
-        .join(', ');
 
-      const accounts = backupDb.prepare(`SELECT ${accountFields} FROM accounts`).all();
+      // 获取备份数据库的字段列表
+      const backupFields = backupDb.pragma('table_info(accounts)').map(col => col.name);
+      const hasOldFields = backupFields.includes('total_works');
 
-      const placeholders = accountFields.split(', ').map(() => '?').join(', ');
-      const insertStmt = newDb.prepare(`
-        INSERT OR REPLACE INTO accounts (${accountFields})
-        VALUES (${placeholders})
-      `);
+      // 获取新数据库的字段列表
+      const newFields = newDb.pragma('table_info(accounts)').map(col => col.name);
+
+      const accounts = backupDb.prepare(`SELECT * FROM accounts`).all();
 
       for (const account of accounts) {
-        const values = accountFields.split(', ').map(field => account[field]);
+        // 创建字段映射
+        const mappedAccount = {};
+        for (const field of newFields) {
+          if (field === 'total_contents' && hasOldFields) {
+            mappedAccount[field] = account['total_works'] || 0;
+          } else if (field === 'recent_contents_count' && hasOldFields) {
+            mappedAccount[field] = account['recent_works_count'] || 0;
+          } else if (account.hasOwnProperty(field)) {
+            mappedAccount[field] = account[field];
+          } else {
+            // 字段不存在，使用默认值
+            mappedAccount[field] = null;
+          }
+        }
+
+        // 插入数据
+        const fields = Object.keys(mappedAccount).join(', ');
+        const placeholders = Object.keys(mappedAccount).map(() => '?').join(', ');
+        const values = Object.values(mappedAccount);
+
+        const insertStmt = newDb.prepare(`
+          INSERT OR REPLACE INTO accounts (${fields})
+          VALUES (${placeholders})
+        `);
         insertStmt.run(...values);
       }
 

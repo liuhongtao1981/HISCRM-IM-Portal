@@ -391,11 +391,6 @@ CREATE INDEX idx_replies_created ON replies(created_at);
 CREATE INDEX idx_replies_executed ON replies(executed_at);
 
 -- ============================================================================
--- Table: sqlite_sequence
--- ============================================================================
-CREATE TABLE sqlite_sequence(name,seq);
-
--- ============================================================================
 -- Table: worker_configs
 -- ============================================================================
 CREATE TABLE worker_configs (
