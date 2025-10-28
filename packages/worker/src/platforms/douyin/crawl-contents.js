@@ -11,10 +11,17 @@
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
+const { DataSource } = require('../base/data-models');
 
 const logger = createLogger('crawl-contents', './logs');
 
-// ==================== API 数据存储（模块级闭包）====================
+// ==================== 全局状态（用于 API 回调）====================
+const globalContext = {
+  dataManager: null,  // 当前活动的 DataManager
+  accountId: null,    // 当前账户 ID
+};
+
+// 保留 apiData 用于向后兼容和调试
 const apiData = {
   worksList: [],      // 作品列表 API 响应
   workDetail: [],     // 作品详情 API 响应
@@ -22,19 +29,29 @@ const apiData = {
 };
 
 /**
- * 爬取抖音作品列表
+ * 爬取抖音作品列表（使用统一数据管理架构）
  * @param {Object} page - Playwright Page 实例
  * @param {Object} account - 账户信息
  * @param {Object} options - 爬取选项
+ * @param {Object} dataManager - DataManager 实例（可选）
  * @returns {Promise<Object>} { contents, stats }
  */
-async function crawlContents(page, account, options = {}) {
+async function crawlContents(page, account, options = {}, dataManager = null) {
   const {
     maxWorks = 100,           // 最大作品数量
     includeTypes = ['video', 'image', 'article'],  // 包含的作品类型
   } = options;
 
   logger.info(`Starting contents crawl for account ${account.id}`);
+
+  // ✅ 设置全局上下文
+  if (dataManager) {
+    globalContext.dataManager = dataManager;
+    globalContext.accountId = account.id;
+    logger.info(`✅ [DataManager] 已启用统一数据管理架构`);
+  } else {
+    logger.warn(`⚠️  [DataManager] 未提供，使用旧的数据收集逻辑`);
+  }
 
   try {
     // 清空之前的 API 数据
@@ -84,6 +101,13 @@ async function crawlContents(page, account, options = {}) {
       }
     };
 
+    // ✅ 如果使用了 DataManager，添加其统计信息
+    if (dataManager) {
+      const dmStats = dataManager.getStats();
+      stats.dataManager = dmStats;
+      logger.info(`✅ [DataManager] 统计:`, JSON.stringify(dmStats));
+    }
+
     logger.info('✅ Works crawl completed', stats);
 
     return {
@@ -94,10 +118,15 @@ async function crawlContents(page, account, options = {}) {
   } catch (error) {
     logger.error('❌ FATAL ERROR in contents crawl:', error);
     throw error;
+  } finally {
+    // ✅ 清理全局上下文
+    globalContext.dataManager = null;
+    globalContext.accountId = null;
+    logger.debug('已清理全局 DataManager 上下文');
   }
 }
 
-// ==================== API 回调函数 ====================
+// ==================== API 回调函数（使用 DataManager）====================
 
 /**
  * API 回调：作品列表
@@ -116,8 +145,22 @@ async function onWorksListAPI(body, route) {
   }
 
   apiData.cache.add(url);
-  apiData.worksList.push(body);
 
+  // ✅ 使用 DataManager（如果可用）
+  if (globalContext.dataManager && body.item_info_list.length > 0) {
+    try {
+      const contents = globalContext.dataManager.batchUpsertContents(
+        body.item_info_list,
+        DataSource.API
+      );
+      logger.info(`✅ [API] 作品列表 -> DataManager: ${contents.length} 个作品`);
+    } catch (error) {
+      logger.error(`[API] 作品列表处理失败:`, error);
+    }
+  }
+
+  // 保留旧逻辑用于调试
+  apiData.worksList.push(body);
   logger.debug(`收集到作品列表: ${body.item_info_list.length} 个，has_more: ${body.has_more}, total: ${body.total_count || 'N/A'}`);
 }
 
@@ -128,6 +171,20 @@ async function onWorksListAPI(body, route) {
 async function onWorkDetailAPI(body) {
   if (!body) return;
 
+  // ✅ 使用 DataManager（如果可用）
+  if (globalContext.dataManager && body.aweme_detail) {
+    try {
+      const content = globalContext.dataManager.upsertContent(
+        body.aweme_detail,
+        DataSource.API
+      );
+      logger.info(`✅ [API] 作品详情 -> DataManager: ${content.contentId}`);
+    } catch (error) {
+      logger.error(`[API] 作品详情处理失败:`, error);
+    }
+  }
+
+  // 保留旧逻辑用于调试
   apiData.workDetail.push(body);
   logger.debug('收集到作品详情');
 }
