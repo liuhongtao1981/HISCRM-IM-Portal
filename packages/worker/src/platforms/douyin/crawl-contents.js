@@ -102,9 +102,11 @@ async function crawlContents(page, account, options = {}) {
 /**
  * API 回调：作品列表
  * 由 platform.js 注册到 APIInterceptorManager
+ * API 返回格式: { item_info_list: [...], cursor, has_more, total_count, status_code }
  */
 async function onWorksListAPI(body, route) {
-  if (!body || !body.aweme_list) return;
+  // ✅ 修正：检查 item_info_list 而不是 aweme_list
+  if (!body || !body.item_info_list) return;
 
   const url = route.request().url();
 
@@ -116,7 +118,7 @@ async function onWorksListAPI(body, route) {
   apiData.cache.add(url);
   apiData.worksList.push(body);
 
-  logger.debug(`收集到作品列表: ${body.aweme_list.length} 个`);
+  logger.debug(`收集到作品列表: ${body.item_info_list.length} 个，has_more: ${body.has_more}, total: ${body.total_count || 'N/A'}`);
 }
 
 /**
@@ -404,9 +406,10 @@ function enhanceWorksWithAPIData(contents, apiResponses) {
   const apiWorkMap = new Map();
 
   // 处理作品列表 API 响应
+  // ✅ 修正：使用 item_info_list 而不是 aweme_list
   apiResponses.worksList.forEach(response => {
-    if (response.aweme_list && Array.isArray(response.aweme_list)) {
-      response.aweme_list.forEach(aweme => {
+    if (response.item_info_list && Array.isArray(response.item_info_list)) {
+      response.item_info_list.forEach(aweme => {
         const id = aweme.aweme_id || aweme.item_id;
         if (id) {
           apiWorkMap.set(String(id), aweme);

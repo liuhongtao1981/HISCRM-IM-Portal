@@ -40,12 +40,13 @@ async function onMessageInitAPI(body) {
 /**
  * API 回调：会话列表
  * 由 platform.js 注册到 APIInterceptorManager
+ * API: /creator/im/user_detail/ 返回 { user_list: [...] }
  */
 async function onConversationListAPI(body) {
-  if (!body || !body.data) return;
+  if (!body || !body.user_list) return;
 
   apiData.conversations.push(body);
-  logger.debug(`收集到会话列表`);
+  logger.debug(`收集到会话列表: ${body.user_list.length} 个用户`);
 }
 
 /**
@@ -93,7 +94,7 @@ async function crawlDirectMessagesV2(page, account) {
 
     // 第 3 步: 获取会话列表
     logger.debug(`[Phase 8] Step 3: Extracting conversations list`);
-    const conversations = await extractConversationsList(page, account, apiResponses);
+    const conversations = await extractConversationsList(page, account, apiData);
     logger.info(`[Phase 8] Extracted ${conversations.length} conversations`);
 
     // 第 4 步: 对每个会话获取完整消息历史
@@ -113,7 +114,7 @@ async function crawlDirectMessagesV2(page, account) {
         }
 
         // 加载完整消息历史 (分页加载)
-        const messages = await crawlCompleteMessageHistory(page, conversation, account, apiResponses);
+        const messages = await crawlCompleteMessageHistory(page, conversation, account, apiData);
 
         directMessages.push(...messages);
 
@@ -131,7 +132,7 @@ async function crawlDirectMessagesV2(page, account) {
 
     // 第 5 步: 从 API 响应中提取完整对象信息 (含 ID)
     logger.debug(`[Phase 8] Step 5: Extracting complete message objects with IDs from API responses`);
-    const messagesWithIds = extractCompleteMessageObjects(directMessages, apiResponses);
+    const messagesWithIds = extractCompleteMessageObjects(directMessages, apiData);
     logger.info(`[Phase 8] Extracted complete message objects: ${messagesWithIds.length}`);
 
     // 第 6 步: 统计信息
@@ -140,10 +141,10 @@ async function crawlDirectMessagesV2(page, account) {
       messagesCount: directMessages.length,
       messagesWithIdsCount: messagesWithIds.length,
       apiResponseCounts: {
-        init: apiResponses.init.length,
-        conversations: apiResponses.conversations.length,
-        history: apiResponses.history.length,
-        websocket: apiResponses.ws.length
+        init: apiData.init.length,
+        conversations: apiData.conversations.length,
+        history: apiData.history.length,
+        websocket: apiData.ws ? apiData.ws.length : 0
       },
       crawl_time: Math.floor(Date.now() / 1000)
     };
@@ -166,39 +167,41 @@ async function crawlDirectMessagesV2(page, account) {
  * 支持多种选择器和错误恢复
  * @param {Page} page - Playwright页面对象
  * @param {Object} account - 账户信息
- * @param {Object} apiResponses - API响应数据
+ * @param {Object} apiData - API响应数据
  * @returns {Promise<Array>} conversations数组
  */
-async function extractConversationsList(page, account, apiResponses = {}) {
+async function extractConversationsList(page, account, apiData = {}) {
   const conversations = [];
 
   try {
     // ========================================================================
     // 优先方案：从 API 响应中提取会话数据（最可靠）
     // ========================================================================
-    if (apiResponses.conversations && apiResponses.conversations.length > 0) {
-      logger.info(`[extractConversationsList] Using API data: ${apiResponses.conversations.length} responses`);
+    if (apiData.conversations && apiData.conversations.length > 0) {
+      logger.info(`[extractConversationsList] Using API data: ${apiData.conversations.length} responses`);
 
-      apiResponses.conversations.forEach((response, idx) => {
-        if (response.data?.conversations && Array.isArray(response.data.conversations)) {
-          logger.debug(`[extractConversationsList] API Response ${idx}: ${response.data.conversations.length} conversations`);
+      apiData.conversations.forEach((response, idx) => {
+        // ✅ 修正：API 返回的是 user_list 而不是 data.conversations
+        if (response.user_list && Array.isArray(response.user_list)) {
+          logger.debug(`[extractConversationsList] API Response ${idx}: ${response.user_list.length} users`);
 
-          response.data.conversations.forEach((conv, convIdx) => {
+          response.user_list.forEach((userItem, userIdx) => {
             try {
-              // 提取用户 ID（多种可能的字段）
-              const userId = String(conv.user_id || conv.user?.uid || conv.sec_user_id || '');
+              // ✅ 修正：从 user_list[].user_id 和 user_list[].user 提取数据
+              const userId = String(userItem.user_id || '');
+              const user = userItem.user || {};
 
-              // 提取用户名（多种可能的字段）
-              const userName = conv.user?.nickname || conv.user?.unique_id || conv.user?.name || 'Unknown';
+              // 提取用户名
+              const userName = user.nickname || user.unique_id || user.ShortId || 'Unknown';
 
-              // 提取头像（从嵌套对象中）
-              const userAvatar = conv.user?.avatar_thumb?.url_list?.[0] ||
-                                 conv.user?.avatar_large?.url_list?.[0] ||
-                                 conv.user?.avatar_medium?.url_list?.[0] ||
+              // 提取头像
+              const userAvatar = user.avatar_thumb?.url_list?.[0] ||
+                                 user.avatar_large?.url_list?.[0] ||
+                                 user.avatar_medium?.url_list?.[0] ||
                                  null;
 
               if (!userId) {
-                logger.warn(`[extractConversationsList] API Conv ${convIdx}: No user_id found, skipping`);
+                logger.warn(`[extractConversationsList] API User ${userIdx}: No user_id found, skipping`);
                 return;
               }
 
@@ -208,22 +211,22 @@ async function extractConversationsList(page, account, apiResponses = {}) {
                 platform_user_id: userId,  // ✅ 使用真实的平台用户 ID
                 platform_user_name: userName,  // ✅ 使用真实的用户昵称
                 platform_user_avatar: userAvatar,  // ✅ 使用真实的头像 URL
-                last_message_time: conv.last_message?.create_time || conv.update_time || Math.floor(Date.now() / 1000),
-                last_message_content: conv.last_message?.content || '',
-                platform_message_id: conv.last_message?.message_id || null,
-                is_group: conv.is_group || false,
-                unread_count: conv.unread_count || 0,
-                is_pinned: conv.is_pinned || false,
-                is_muted: conv.is_muted || false,
+                last_message_time: Math.floor(Date.now() / 1000),  // API 不包含消息信息，使用当前时间
+                last_message_content: '',  // API 不包含消息内容
+                platform_message_id: null,
+                is_group: false,  // 私信一般是单聊
+                unread_count: 0,  // API 不包含未读数
+                is_pinned: false,
+                is_muted: false,
                 created_at: Math.floor(Date.now() / 1000),
                 updated_at: Math.floor(Date.now() / 1000)
               };
 
               conversations.push(conversation);
-              logger.debug(`[extractConversationsList] API Conv ${convIdx}: ${userName} (ID: ${userId})`);
+              logger.debug(`[extractConversationsList] API User ${userIdx}: ${userName} (ID: ${userId})`);
 
             } catch (error) {
-              logger.warn(`[extractConversationsList] Error extracting API conv ${convIdx}:`, error.message);
+              logger.warn(`[extractConversationsList] Error extracting API user ${userIdx}:`, error.message);
             }
           });
         }
@@ -593,7 +596,7 @@ async function openConversation(page, conversation, conversationIndex) {
  * 爬取完整消息历史 (虚拟列表分页) - 改进版
  * 支持智能延迟、收敛判断优化、平台特定指示器检测
  */
-async function crawlCompleteMessageHistory(page, conversation, account, apiResponses) {
+async function crawlCompleteMessageHistory(page, conversation, account, apiData) {
   logger.debug(`Crawling complete message history for: ${conversation.platform_user_name}`);
 
   const MAX_ATTEMPTS = 50;
@@ -915,7 +918,7 @@ async function extractMessagesFromVirtualList(page) {
  * 提取完整的消息对象 (含所有 ID 信息) - 改进版
  * 支持三层数据合并: API > WebSocket > DOM
  */
-function extractCompleteMessageObjects(messages, apiResponses) {
+function extractCompleteMessageObjects(messages, apiData) {
   logger.debug('Extracting complete message objects with IDs');
 
   const completeMessages = [];
@@ -924,9 +927,9 @@ function extractCompleteMessageObjects(messages, apiResponses) {
 
   // 第 1 步: 从所有 API 响应中提取完整数据 (最高优先级)
   const apiSources = [
-    { type: 'init', responses: apiResponses.init },
-    { type: 'history', responses: apiResponses.history },
-    { type: 'conversations', responses: apiResponses.conversations }
+    { type: 'init', responses: apiData.init },
+    { type: 'history', responses: apiData.history },
+    { type: 'conversations', responses: apiData.conversations }
   ];
 
   apiSources.forEach(source => {

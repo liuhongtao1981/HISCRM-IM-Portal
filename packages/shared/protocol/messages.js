@@ -29,6 +29,13 @@ const WORKER_BULK_INSERT_DISCUSSIONS = 'worker:bulk_insert_discussions';  // Wor
 // ✨ 新增: Conversations (会话) 批量插入
 const WORKER_BULK_INSERT_CONVERSATIONS = 'worker:bulk_insert_conversations';  // Worker批量上报会话
 
+// ✨ 新增: 统一数据管理架构消息类型
+const WORKER_CONVERSATIONS_UPDATE = 'worker:conversations:update';  // Worker更新会话数据
+const WORKER_MESSAGES_UPDATE = 'worker:messages:update';  // Worker更新消息数据
+const WORKER_CONTENTS_UPDATE = 'worker:contents:update';  // Worker更新作品数据
+const WORKER_COMMENTS_UPDATE = 'worker:comments:update';  // Worker更新评论数据
+const WORKER_NOTIFICATIONS_UPDATE = 'worker:notifications:update';  // Worker更新通知数据
+
 // ============================================
 // Master → Worker 消息类型
 // ============================================
@@ -125,6 +132,12 @@ module.exports = {
   WORKER_DISCUSSION_DETECTED,
   WORKER_BULK_INSERT_DISCUSSIONS,
   WORKER_BULK_INSERT_CONVERSATIONS,
+  // ✨ 统一数据管理架构
+  WORKER_CONVERSATIONS_UPDATE,
+  WORKER_MESSAGES_UPDATE,
+  WORKER_CONTENTS_UPDATE,
+  WORKER_COMMENTS_UPDATE,
+  WORKER_NOTIFICATIONS_UPDATE,
 
   // Master → Worker
   MASTER_TASK_ASSIGN,
@@ -153,3 +166,6 @@ module.exports = {
   createMessage,
   createErrorMessage,
 };
+
+// 便捷访问所有消息类型
+const MessageTypes = module.exports;

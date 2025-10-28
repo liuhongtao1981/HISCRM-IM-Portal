@@ -86,7 +86,7 @@ async function cleanTestData() {
       db.prepare(`
         UPDATE accounts
         SET recent_comments_count = 0,
-            recent_dms_count = 0,
+            recent_contents_count = 0,
             last_crawl_time = NULL
       `).run();
     })();

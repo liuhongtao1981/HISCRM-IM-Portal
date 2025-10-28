@@ -7,6 +7,7 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const path = require('path');
 const fs = require('fs');
 const { APIInterceptorManager } = require('./api-interceptor-manager');
+const { DataPusher } = require('./data-pusher');
 
 const logger = createLogger('platform-base');
 
@@ -18,6 +19,10 @@ class PlatformBase {
     this.accountSessions = new Map(); // accountId -> sessionData
     this.accountContexts = new Map(); // accountId -> context
     this.apiManagers = new Map(); // accountId -> APIInterceptorManager
+    this.dataManagers = new Map(); // accountId -> AccountDataManager
+
+    // 创建统一的 DataPusher 实例
+    this.dataPusher = new DataPusher(workerBridge);
   }
 
   /**
@@ -26,14 +31,107 @@ class PlatformBase {
    */
   async initialize(account) {
     logger.info(`Initializing ${this.config.platform} platform for account ${account.id}`);
-    
+
     // 创建账户专属的上下文环境
     await this.createAccountContext(account.id, null);
-    
+
     // 加载账户专属的指纹配置
     await this.loadAccountFingerprint(account.id);
-    
+
+    // 初始化账户的数据管理器
+    await this.initializeDataManager(account.id);
+
     logger.info(`${this.config.platform} platform initialized for account ${account.id}`);
+  }
+
+  /**
+   * 初始化账户的数据管理器
+   * 子类应该覆盖 createDataManager() 方法来创建平台特定的 DataManager
+   * @param {string} accountId - 账户 ID
+   */
+  async initializeDataManager(accountId) {
+    try {
+      // 检查是否已经存在
+      if (this.dataManagers.has(accountId)) {
+        logger.debug(`DataManager already exists for account ${accountId}`);
+        return this.dataManagers.get(accountId);
+      }
+
+      // 调用子类的工厂方法创建平台特定的 DataManager
+      const dataManager = await this.createDataManager(accountId);
+
+      if (!dataManager) {
+        throw new Error('createDataManager() must return a valid DataManager instance');
+      }
+
+      // 保存到 Map
+      this.dataManagers.set(accountId, dataManager);
+
+      // 启动自动同步（如果配置了）
+      if (dataManager.pushConfig.autoSync) {
+        dataManager.startAutoSync();
+        logger.info(`Auto-sync enabled for account ${accountId}`);
+      }
+
+      logger.info(`DataManager initialized for account ${accountId}`);
+
+      return dataManager;
+
+    } catch (error) {
+      logger.error(`Failed to initialize DataManager for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 创建平台特定的 DataManager（由子类实现）
+   * 子类应该覆盖此方法来返回平台特定的 DataManager 实例
+   *
+   * 示例：
+   * async createDataManager(accountId) {
+   *   const { DouyinDataManager } = require('./douyin-data-manager');
+   *   return new DouyinDataManager(accountId, this.dataPusher);
+   * }
+   *
+   * @param {string} accountId - 账户 ID
+   * @returns {Promise<AccountDataManager>} DataManager 实例
+   */
+  async createDataManager(accountId) {
+    throw new Error('createDataManager() must be implemented by subclass');
+  }
+
+  /**
+   * 获取账户的 DataManager
+   * @param {string} accountId - 账户 ID
+   * @returns {AccountDataManager|null}
+   */
+  getDataManager(accountId) {
+    return this.dataManagers.get(accountId) || null;
+  }
+
+  /**
+   * ⭐ 获取页面并自动注册 API 拦截器（框架级别）
+   * 所有爬虫方法应使用此方法而不是直接调用 TabManager.getPageForTask
+   *
+   * @param {string} accountId - 账户 ID
+   * @param {Object} options - 选项（同 TabManager.getPageForTask）
+   * @returns {Promise<Object>} { tabId, page, shouldClose, release }
+   */
+  async getPageWithAPI(accountId, options = {}) {
+    const { tag } = options;
+
+    // 1. 获取或创建标签页
+    const result = await this.browserManager.tabManager.getPageForTask(accountId, options);
+    const { tabId, page } = result;
+
+    // 2. 为该标签页注册 API 拦截器（如果尚未注册）
+    const managerKey = `${accountId}_${tag}`;
+    if (!this.apiManagers.has(managerKey)) {
+      await this.setupAPIInterceptors(managerKey, page);
+      logger.info(`🔌 API interceptors auto-setup for tab: ${tag} (key: ${managerKey})`);
+    }
+
+    return result;
   }
 
   /**
@@ -607,6 +705,21 @@ class PlatformBase {
    */
   async cleanup(accountId) {
     logger.info(`Cleaning up resources for account ${accountId}`);
+
+    // 清理 DataManager
+    const dataManager = this.dataManagers.get(accountId);
+    if (dataManager) {
+      try {
+        // 停止自动同步
+        dataManager.stopAutoSync();
+        // 执行最后一次同步
+        await dataManager.syncAll();
+        this.dataManagers.delete(accountId);
+        logger.info(`Cleaned up DataManager for account ${accountId}`);
+      } catch (error) {
+        logger.error(`Failed to cleanup DataManager for account ${accountId}:`, error);
+      }
+    }
 
     // 清理 API 拦截器
     const apiManager = this.apiManagers.get(accountId);

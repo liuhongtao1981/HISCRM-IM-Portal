@@ -3,8 +3,8 @@
  *
  * 使用方式：
  * const manager = new APIInterceptorManager(page);
- * manager.register('**/api/path/**', handlerA);
- * manager.register('**/api/path/**', handlerB); // 同一个路径可以注册多个处理器
+ * manager.register('pattern', handlerA);
+ * manager.register('pattern', handlerB); // 同一个路径可以注册多个处理器
  * await manager.enable();
  */
 
@@ -20,7 +20,7 @@ class APIInterceptorManager {
 
   /**
    * 注册处理器
-   * @param {string} pattern - API 路径模式，如 '**/api/path/**'
+   * @param {string} pattern - API 路径模式，如 '**\/api\/path\/**'
    * @param {Function} handler - 处理函数 async (body) => {}
    */
   register(pattern, handler) {

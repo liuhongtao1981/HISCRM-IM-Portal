@@ -44,13 +44,11 @@ class DouyinPlatform extends PlatformBase {
     // 调用基类初始化（创建上下文、加载指纹）
     await super.initialize(account);
 
-    // 获取主页面并设置 API 拦截器
-    const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+    // 获取主页面 - 使用 getPageWithAPI 自动注册 API 拦截器
+    await this.getPageWithAPI(account.id, {
       tag: TabTag.MAIN,
       persistent: true
     });
-
-    await this.setupAPIInterceptors(account.id, page);
 
     logger.info(`Douyin platform initialized for account ${account.id}`);
   }
@@ -63,16 +61,16 @@ class DouyinPlatform extends PlatformBase {
     logger.info(`Registering API handlers for account ${accountId}`);
 
     // 作品相关 API
-    manager.register('**/aweme/v1/web/aweme/post/**', onWorksListAPI);
+    manager.register('**/creator/item/list?**', onWorksListAPI);  // ✅ 修正：匹配带查询参数的 API
     manager.register('**/aweme/v1/web/aweme/detail/**', onWorkDetailAPI);
 
     // 评论相关 API
-    manager.register('**/comment/list/**', onCommentsListAPI);
-    manager.register('**/comment/reply/list/**', onDiscussionsListAPI);
+    manager.register('**/comment/list?**', onCommentsListAPI);  // ✅ 正确
+    manager.register('**/comment/reply/list?**', onDiscussionsListAPI);  // ✅ 正确
 
     // 私信相关 API
     manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
-    manager.register('**/v1/stranger/get_conversation_list**', onConversationListAPI);
+    manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // ✅ 修正：匹配实际的会话 API
     manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
     logger.info(`✅ API handlers registered (7 total) for account ${accountId}`);
@@ -686,10 +684,10 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取页面 - 使用 TabManager 获取评论爬虫专用标签页
-      // ⭐ 关键改进: 使用 TabManager 管理评论爬虫标签页（持久、独立、长期运行）
+      // 1. 获取页面 - 使用框架级别的 getPageWithAPI（自动注册 API 拦截器）
+      // ⭐ 关键改进: 使用 getPageWithAPI 自动为标签页注册 API 拦截器
       logger.debug(`[crawlComments] Step 1: Getting spider_comment tab for account ${account.id}`);
-      const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+      const { page } = await this.getPageWithAPI(account.id, {
         tag: TabTag.SPIDER_COMMENT,
         persistent: true,      // 长期运行，不关闭
         shareable: false,      // 独立窗口，不共享
@@ -882,10 +880,10 @@ class DouyinPlatform extends PlatformBase {
         throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
       }
 
-      // 1. 获取页面 - 使用 TabManager 获取私信爬虫专用标签页
-      // ⭐ 关键改进: 使用 TabManager 管理私信爬虫标签页（持久、独立、长期运行）
+      // 1. 获取页面 - 使用框架级别的 getPageWithAPI（自动注册 API 拦截器）
+      // ⭐ 关键改进: 使用 getPageWithAPI 自动为标签页注册 API 拦截器
       logger.debug(`[crawlDirectMessages] Step 1: Getting spider_dm tab for account ${account.id}`);
-      const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+      const { page } = await this.getPageWithAPI(account.id, {
         tag: TabTag.SPIDER_DM,
         persistent: true,      // 长期运行，不关闭
         shareable: false,      // 独立窗口，不共享
@@ -2872,6 +2870,17 @@ class DouyinPlatform extends PlatformBase {
       logger.error('Error finding message in conversation:', error);
       return null;
     }
+  }
+
+  /**
+   * 创建抖音平台的 DataManager
+   * @param {string} accountId - 账户 ID
+   * @returns {Promise<DouyinDataManager>}
+   */
+  async createDataManager(accountId) {
+    const { DouyinDataManager } = require('./douyin-data-manager');
+    logger.info(`Creating DouyinDataManager for account ${accountId}`);
+    return new DouyinDataManager(accountId, this.dataPusher);
   }
 
   /**
