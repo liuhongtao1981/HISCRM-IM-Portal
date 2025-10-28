@@ -37,7 +37,49 @@ class DouyinPlatform extends PlatformBase {
     // 调用基类初始化（创建上下文、加载指纹）
     await super.initialize(account);
 
+    // 获取主页面并设置 API 拦截器
+    const { page } = await this.browserManager.tabManager.getPageForTask(account.id, {
+      tag: TabTag.MAIN,
+      persistent: true
+    });
+
+    await this.setupAPIInterceptors(account.id, page);
+
     logger.info(`Douyin platform initialized for account ${account.id}`);
+  }
+
+  /**
+   * 注册 API 拦截器处理函数
+   * 这里注册所有抖音平台需要拦截的 API
+   */
+  async registerAPIHandlers(manager, accountId) {
+    logger.info(`Registering API handlers for account ${accountId}`);
+
+    // 作品列表 API
+    manager.register('**/aweme/v1/web/aweme/post/**', async (body) => {
+      logger.debug(`[${accountId}] 拦截到作品列表 API`);
+      // 数据处理在各个 crawl 文件中完成
+    });
+
+    // 评论列表 API
+    manager.register('**/comment/list/**', async (body) => {
+      logger.debug(`[${accountId}] 拦截到评论列表 API`);
+    });
+
+    // 私信相关 API
+    manager.register('**/v2/message/get_by_user_init**', async (body) => {
+      logger.debug(`[${accountId}] 拦截到私信初始化 API`);
+    });
+
+    manager.register('**/v1/stranger/get_conversation_list**', async (body) => {
+      logger.debug(`[${accountId}] 拦截到会话列表 API`);
+    });
+
+    manager.register('**/v1/im/message/history**', async (body) => {
+      logger.debug(`[${accountId}] 拦截到消息历史 API`);
+    });
+
+    logger.info(`API handlers registered for account ${accountId}`);
   }
 
   /**

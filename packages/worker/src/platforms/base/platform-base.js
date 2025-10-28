@@ -6,6 +6,7 @@
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const path = require('path');
 const fs = require('fs');
+const { APIInterceptorManager } = require('./api-interceptor-manager');
 
 const logger = createLogger('platform-base');
 
@@ -16,6 +17,7 @@ class PlatformBase {
     this.browserManager = browserManager;
     this.accountSessions = new Map(); // accountId -> sessionData
     this.accountContexts = new Map(); // accountId -> context
+    this.apiManagers = new Map(); // accountId -> APIInterceptorManager
   }
 
   /**
@@ -605,10 +607,22 @@ class PlatformBase {
    */
   async cleanup(accountId) {
     logger.info(`Cleaning up resources for account ${accountId}`);
-    
+
+    // 清理 API 拦截器
+    const apiManager = this.apiManagers.get(accountId);
+    if (apiManager) {
+      try {
+        await apiManager.cleanup();
+        this.apiManagers.delete(accountId);
+        logger.info(`Cleaned up API interceptors for account ${accountId}`);
+      } catch (error) {
+        logger.error(`Failed to cleanup API interceptors for account ${accountId}:`, error);
+      }
+    }
+
     // 清理会话数据
     this.accountSessions.delete(accountId);
-    
+
     // 关闭浏览器上下文
     const context = this.accountContexts.get(accountId);
     if (context) {
@@ -866,6 +880,65 @@ class PlatformBase {
     } catch (error) {
       logger.error(`Failed to take screenshot for account ${accountId}:`, error);
     }
+  }
+
+  // ==================== API 拦截器管理 ====================
+
+  /**
+   * 为账户设置 API 拦截器
+   * 子类应该在 registerAPIHandlers() 中注册自己的拦截器
+   *
+   * @param {string} accountId - 账户 ID
+   * @param {Object} page - Playwright Page 对象
+   */
+  async setupAPIInterceptors(accountId, page) {
+    // 如果已经为该账户创建了管理器，先清理
+    if (this.apiManagers.has(accountId)) {
+      const oldManager = this.apiManagers.get(accountId);
+      await oldManager.cleanup();
+    }
+
+    // 创建新的管理器
+    const manager = new APIInterceptorManager(page);
+
+    // 调用子类的注册方法
+    await this.registerAPIHandlers(manager, accountId);
+
+    // 启用拦截器
+    await manager.enable();
+
+    // 保存管理器
+    this.apiManagers.set(accountId, manager);
+
+    logger.info(`API interceptors setup complete for account ${accountId}`);
+  }
+
+  /**
+   * 注册 API 拦截器处理函数（子类实现）
+   *
+   * 示例：
+   * async registerAPIHandlers(manager, accountId) {
+   *   manager.register('** /api/path/**', async (body) => {
+   *     // 处理逻辑
+   *   });
+   * }
+   *
+   * @param {APIInterceptorManager} manager - API 拦截器管理器
+   * @param {string} accountId - 账户 ID
+   */
+  async registerAPIHandlers(manager, accountId) {
+    // 默认不注册任何拦截器
+    // 子类应该覆盖此方法来注册自己的拦截器
+    logger.debug(`No API handlers registered for platform ${this.config.platform}`);
+  }
+
+  /**
+   * 获取账户的 API 管理器
+   * @param {string} accountId - 账户 ID
+   * @returns {APIInterceptorManager|null}
+   */
+  getAPIManager(accountId) {
+    return this.apiManagers.get(accountId) || null;
   }
 }
 
