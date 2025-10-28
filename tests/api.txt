@@ -1,4 +1,11 @@
-﻿--作品
+﻿## 抖音创作者中心 API 接口文档
+
+### 1. 作品列表 API
+
+**API 路径模式 (用于拦截)**:
+- `**/aweme/v1/web/aweme/post/**` (crawl-contents.js 中使用)
+
+**实际请求 URL**:
 https://creator.douyin.com/aweme/v1/creator/item/list/?cursor=&aid=2906&msToken=eRbjrxVVxNl73JlampOtXH8nVP0R8D_DyW89u1z6g8zZr1rVVc-o4tI4hCNTuJSOZWelYiU-I8NqBzF5wTtxTM4q6Mw6gdi-OafLTyBTkGMgaBfKz1ppAS9DaTEMp1FtBbQqnOhIf07tat5jmlP5iNqHhd8Ze3CBGF1V_dJD0LFMUQ%3D%3D&a_bogus=xv05D7WJDp85Op%2FbYcGF71VlLXIArsSylei%2FWF0jtxxpOwlOy3HEFPt0roqn5D933bp9wHVHRfzAbxdcTGssZlnpKmpvSxtRJTV5I0moMqqRGzvQErbEeLDzowMxU5Gqa%2F5GiAD62UtHgndAhNQL%2FQlry%2FuKQ58BF3xSk%2FubN9Bh10yAE1nlPBSpNwNFU3CJ
 {
     "cursor": "1758867587000",

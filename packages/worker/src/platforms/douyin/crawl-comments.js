@@ -24,6 +24,62 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 
 const logger = createLogger('douyin-crawl-comments');
 
+// ==================== API 数据存储（模块级闭包）====================
+const apiData = {
+  comments: [],      // 一级评论
+  discussions: []    // 二级/三级回复（讨论）
+};
+
+// ==================== API 回调函数 ====================
+
+/**
+ * API 回调：评论列表
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onCommentsListAPI(body, route) {
+  if (!body || !body.comment_info_list || !Array.isArray(body.comment_info_list)) {
+    return;
+  }
+
+  const url = route.request().url();
+  const itemId = extractItemId(url);
+  const cursor = extractCursor(url);
+
+  apiData.comments.push({
+    timestamp: Date.now(),
+    url: url,
+    item_id: itemId,
+    cursor: cursor,
+    data: body,
+  });
+
+  logger.debug(`收集到评论: cursor=${cursor}, count=${body.comment_info_list.length}, has_more=${body.has_more}`);
+}
+
+/**
+ * API 回调：回复列表（讨论）
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onDiscussionsListAPI(body, route) {
+  if (!body || !body.comment_info_list || !Array.isArray(body.comment_info_list)) {
+    return;
+  }
+
+  const url = route.request().url();
+  const commentId = extractCommentId(url);
+  const cursor = extractCursor(url);
+
+  apiData.discussions.push({
+    timestamp: Date.now(),
+    url: url,
+    comment_id: commentId,  // 父评论 ID
+    cursor: cursor,
+    data: body,
+  });
+
+  logger.debug(`收集到讨论: comment_id=${commentId}, count=${body.comment_info_list.length}, has_more=${body.has_more}`);
+}
+
 /**
  * 爬取评论和讨论 - 使用"点击+拦截"策略
  * @param {Page} page - Playwright 页面对象
@@ -45,171 +101,20 @@ async function crawlComments(page, account, options = {}) {
       throw new Error('Account missing platform_user_id - please login first to obtain douyin_id');
     }
 
-    // 1. 设置全局API拦截器 - 持续监听评论和回复API
-    const apiResponses = {
-      comments: [],    // 一级评论
-      discussions: [], // 二级/三级回复（讨论）
-    };
+    // 清空之前的 API 数据
+    apiData.comments = [];
+    apiData.discussions = [];
+    logger.debug('已清空 API 数据存储');
 
-    const commentApiPattern = /comment.*list/i;       // 一级评论 API
-    const discussionApiPattern = /comment.*reply/i;   // 二级/三级回复 API
+    // API 拦截器已由 platform.js 在 initialize() 时统一注册
+    // 不再需要在此处设置 page.on('response') 监听器
+    logger.info('API 拦截器已全局启用（由 platform.js 管理）');
 
-    page.on('response', async (response) => {
-      const url = response.url();
-      const contentType = response.headers()['content-type'] || '';
-
-      if (!contentType.includes('application/json')) {
-        return;
-      }
-
-      try {
-        const json = await response.json();
-
-        // 拦截一级评论 API
-        if (commentApiPattern.test(url) && json.comment_info_list && Array.isArray(json.comment_info_list)) {
-          const itemId = extractItemId(url);
-          const cursor = extractCursor(url);
-
-          // 🔍 DEBUG: 输出完整的 API 响应对象结构和属性值
-          if (cursor === 0) {
-            logger.info('\n╔═══════════════════════════════════════════════════════════════╗');
-            logger.info('║  🔍 Comment API Response - Complete Object Structure          ║');
-            logger.info('╚═══════════════════════════════════════════════════════════════╝\n');
-
-            try {
-              // 递归打印对象结构的辅助函数
-              const printObjectStructure = (obj, prefix = '', maxDepth = 3, currentDepth = 0) => {
-                if (currentDepth >= maxDepth) {
-                  return;
-                }
-
-                for (const [key, value] of Object.entries(obj)) {
-                  const valueType = Array.isArray(value) ? 'array' : typeof value;
-                  const indent = prefix + '  ';
-
-                  if (value === null) {
-                    logger.info(`${indent}${key}: null`);
-                  } else if (Array.isArray(value)) {
-                    logger.info(`${indent}${key}: [Array, length: ${value.length}]`);
-                    if (value.length > 0 && typeof value[0] === 'object') {
-                      logger.info(`${indent}  First item structure:`);
-                      printObjectStructure(value[0], indent + '  ', maxDepth, currentDepth + 1);
-                    } else if (value.length > 0) {
-                      logger.info(`${indent}  Sample: ${JSON.stringify(value.slice(0, 3))}`);
-                    }
-                  } else if (typeof value === 'object') {
-                    const keys = Object.keys(value);
-                    logger.info(`${indent}${key}: {Object, keys: ${keys.length}} [${keys.join(', ')}]`);
-                    printObjectStructure(value, indent, maxDepth, currentDepth + 1);
-                  } else if (typeof value === 'string') {
-                    const displayValue = value.length > 100 ? value.substring(0, 100) + '...' : value;
-                    logger.info(`${indent}${key}: "${displayValue}" (string, length: ${value.length})`);
-                  } else {
-                    logger.info(`${indent}${key}: ${value} (${valueType})`);
-                  }
-                }
-              };
-
-              // 1. 输出完整的 JSON（格式化）
-              logger.info('📦 Complete JSON (formatted):');
-              const jsonCopy = { ...json };
-              const commentCount = jsonCopy.comment_info_list?.length || 0;
-
-              // 只保留前 2 条评论作为示例
-              if (jsonCopy.comment_info_list && jsonCopy.comment_info_list.length > 0) {
-                jsonCopy.comment_info_list = jsonCopy.comment_info_list.slice(0, 2);
-                if (commentCount > 2) {
-                  jsonCopy.comment_info_list.push(`... (${commentCount - 2} more comments)`);
-                }
-              }
-
-              logger.info(JSON.stringify(jsonCopy, null, 2));
-
-              // 2. 输出对象结构树
-              logger.info('\n📋 Object Structure Tree:');
-              logger.info('Root object:');
-              printObjectStructure(json, '', 4, 0);
-
-              // 3. 输出统计信息
-              logger.info(`\n📊 Statistics:`);
-              logger.info(`   - Top-level keys (${Object.keys(json).length}): ${Object.keys(json).join(', ')}`);
-              logger.info(`   - Total comments in response: ${commentCount}`);
-              logger.info(`   - Item ID: ${itemId || 'null'}`);
-              logger.info(`   - Has more pages: ${json.has_more}`);
-              logger.info(`   - Total count: ${json.total_count || 'N/A'}`);
-              logger.info(`   - Cursor: ${json.cursor || 0}`);
-
-              // 4. 特别输出所有对象类型的字段（可能包含视频信息）
-              logger.info(`\n🔎 All Object-type Fields (potential video info):`);
-              for (const [key, value] of Object.entries(json)) {
-                if (value && typeof value === 'object' && !Array.isArray(value)) {
-                  logger.info(`\n   📦 ${key}:`);
-                  logger.info(`      Keys (${Object.keys(value).length}): ${Object.keys(value).join(', ')}`);
-                  logger.info(`      Content:`);
-                  for (const [subKey, subValue] of Object.entries(value)) {
-                    if (typeof subValue === 'string') {
-                      const display = subValue.length > 100 ? subValue.substring(0, 100) + '...' : subValue;
-                      logger.info(`         ${subKey}: "${display}"`);
-                    } else if (typeof subValue === 'object' && subValue !== null) {
-                      if (Array.isArray(subValue)) {
-                        logger.info(`         ${subKey}: [Array, length: ${subValue.length}]`);
-                      } else {
-                        logger.info(`         ${subKey}: {Object, keys: ${Object.keys(subValue).join(', ')}}`);
-                      }
-                    } else {
-                      logger.info(`         ${subKey}: ${subValue}`);
-                    }
-                  }
-                }
-              }
-
-            } catch (error) {
-              logger.error(`Failed to print object structure: ${error.message}`);
-              logger.error(`Stack: ${error.stack}`);
-            }
-
-            logger.info('\n╚═══════════════════════════════════════════════════════════════╝\n');
-          }
-
-          apiResponses.comments.push({
-            timestamp: Date.now(),
-            url: url,
-            item_id: itemId,
-            cursor: cursor,
-            data: json,
-          });
-
-          logger.debug(`✅ Intercepted comment API: cursor=${cursor}, comments=${json.comment_info_list.length}, has_more=${json.has_more}`);
-        }
-
-        // 拦截二级/三级回复 API（讨论）
-        // 修正: API返回的是 comment_info_list, 不是 reply_list
-        if (includeDiscussions && discussionApiPattern.test(url) && json.comment_info_list && Array.isArray(json.comment_info_list)) {
-          const commentId = extractCommentId(url);
-          const cursor = extractCursor(url);
-
-          apiResponses.discussions.push({
-            timestamp: Date.now(),
-            url: url,
-            comment_id: commentId,  // 父评论 ID
-            cursor: cursor,
-            data: json,
-          });
-
-          logger.debug(`✅ Intercepted discussion API: comment_id=${commentId}, replies=${json.comment_info_list.length}, has_more=${json.has_more}`);
-        }
-      } catch (error) {
-        // JSON解析失败,忽略
-      }
-    });
-
-    logger.info(`API interceptor enabled (comments: ✅, discussions: ${includeDiscussions ? '✅' : '❌'})`);
-
-    // 2. 导航到评论管理页面
+    // 导航到评论管理页面
     await navigateToCommentManage(page);
     await page.waitForTimeout(3000);
 
-    // 3. 点击"选择作品"按钮打开模态框
+    // 点击"选择作品"按钮打开模态框
     logger.info('Opening video selector modal');
     try {
       await page.click('span:has-text("选择作品")', { timeout: 5000 });
@@ -218,7 +123,7 @@ async function crawlComments(page, account, options = {}) {
       logger.warn('Failed to open video selector, videos may already be visible');
     }
 
-    // 4. 获取所有视频元素
+    // 获取所有视频元素
     const videoElements = await page.evaluate(() => {
       const containers = document.querySelectorAll('.container-Lkxos9');
       const videos = [];
@@ -277,7 +182,7 @@ async function crawlComments(page, account, options = {}) {
 
       try {
         // 记录点击前的 API 响应数量
-        const apiResponsesBeforeClick = apiResponses.comments.length;
+        const apiResponsesBeforeClick = apiData.comments.length;
 
         // 6.1 点击视频
         await page.evaluate((idx) => {
@@ -295,15 +200,15 @@ async function crawlComments(page, account, options = {}) {
         //
         // 关键观察：
         // - videosToClick 数组按照 DOM 顺序排列（index: 0, 1, 2...）
-        // - apiResponses.comments 数组按照 API 请求顺序排列
+        // - apiData.comments 数组按照 API 请求顺序排列
         // - 假设：DOM 顺序 = API 请求顺序（需验证）
         //
         // 简单策略（适用于单视频场景）：
         // - 如果只有一个视频，直接将第一个 API 响应关联到第一个视频
         // - 如果有多个视频，按照索引顺序一一对应
 
-        if (apiResponses.comments.length > i && apiResponses.comments[i].item_id) {
-          const itemId = apiResponses.comments[i].item_id;
+        if (apiData.comments.length > i && apiData.comments[i].item_id) {
+          const itemId = apiData.comments[i].item_id;
           videoIndexToItemId[video.index] = itemId;
           logger.info(`  📝 Mapped: video[${video.index}] "${video.title.substring(0, 30)}..." -> item_id: ${itemId.substring(0, 30)}...`);
         } else {
@@ -342,7 +247,7 @@ async function crawlComments(page, account, options = {}) {
     logger.info('Checking for videos that need pagination...');
 
     // 按item_id分组当前已拦截的响应
-    let currentResponsesByItemId = groupResponsesByItemId(apiResponses.comments);
+    let currentResponsesByItemId = groupResponsesByItemId(apiData.comments);
 
     // 检查哪些视频需要加载更多
     const videosNeedMore = [];
@@ -398,7 +303,7 @@ async function crawlComments(page, account, options = {}) {
           await page.waitForTimeout(2000);
 
           // 尝试滚动加载更多评论
-          const beforeCount = apiResponses.comments.length;
+          const beforeCount = apiData.comments.length;
           let scrollAttempts = 0;
           const maxScrolls = 10;
 
@@ -430,7 +335,7 @@ async function crawlComments(page, account, options = {}) {
               scrollAttempts++;
 
               // 检查是否有新的API响应
-              if (apiResponses.comments.length > beforeCount) {
+              if (apiData.comments.length > beforeCount) {
                 logger.debug(`  Loaded more comments (attempt ${scrollAttempts}/${maxScrolls})`);
               }
             } else {
@@ -439,7 +344,7 @@ async function crawlComments(page, account, options = {}) {
             }
 
             // 检查当前视频是否已加载完成
-            const updatedResponses = groupResponsesByItemId(apiResponses.comments)[videoInfo.itemId] || [];
+            const updatedResponses = groupResponsesByItemId(apiData.comments)[videoInfo.itemId] || [];
             const currentLoaded = updatedResponses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
 
             // 检查最新响应是否 has_more = false
@@ -462,10 +367,10 @@ async function crawlComments(page, account, options = {}) {
     }
 
     // 8. 解析所有拦截到的评论和讨论
-    logger.info(`Processing ${apiResponses.comments.length} comment APIs, ${apiResponses.discussions.length} discussion APIs`);
+    logger.info(`Processing ${apiData.comments.length} comment APIs, ${apiData.discussions.length} discussion APIs`);
 
     // 按item_id分组评论响应
-    const responsesByItemId = groupResponsesByItemId(apiResponses.comments);
+    const responsesByItemId = groupResponsesByItemId(apiData.comments);
 
     const allComments = [];
     const videosWithComments = [];
@@ -619,11 +524,11 @@ async function crawlComments(page, account, options = {}) {
 
     // 9. 解析讨论数据（二级/三级回复）
     const allDiscussions = [];
-    if (includeDiscussions && apiResponses.discussions.length > 0) {
-      logger.info(`Processing ${apiResponses.discussions.length} discussion API responses`);
+    if (includeDiscussions && apiData.discussions.length > 0) {
+      logger.info(`Processing ${apiData.discussions.length} discussion API responses`);
 
       // 按 comment_id 分组讨论响应
-      const discussionsByCommentId = groupDiscussionsByCommentId(apiResponses.discussions);
+      const discussionsByCommentId = groupDiscussionsByCommentId(apiData.discussions);
 
       for (const [parentCommentId, responses] of Object.entries(discussionsByCommentId)) {
         const discussions = [];
@@ -948,7 +853,14 @@ async function clickAllReplyButtons(page) {
 }
 
 module.exports = {
+  // API 回调函数（由 platform.js 注册）
+  onCommentsListAPI,
+  onDiscussionsListAPI,
+
+  // 爬取函数
   crawlComments,
+
+  // 工具函数（保留用于测试）
   navigateToCommentManage,
   extractItemId,
   extractCursor,

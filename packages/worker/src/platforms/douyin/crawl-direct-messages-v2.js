@@ -12,6 +12,53 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 
 const logger = createLogger('crawl-direct-messages-v2', './logs');
 
+// ==================== API 数据存储（模块级闭包）====================
+const apiData = {
+  init: [],           // 初始化消息 API
+  conversations: [],  // 会话列表 API
+  history: [],        // 消息历史 API
+  cache: {
+    init: new Set(),
+    conversations: new Set(),
+    history: new Set()
+  }
+};
+
+// ==================== API 回调函数 ====================
+
+/**
+ * API 回调：初始化消息
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onMessageInitAPI(body) {
+  if (!body || !body.data || !body.data.messages) return;
+
+  apiData.init.push(body);
+  logger.debug(`收集到初始化消息: ${body.data.messages.length} 条`);
+}
+
+/**
+ * API 回调：会话列表
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onConversationListAPI(body) {
+  if (!body || !body.data) return;
+
+  apiData.conversations.push(body);
+  logger.debug(`收集到会话列表`);
+}
+
+/**
+ * API 回调：消息历史
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onMessageHistoryAPI(body) {
+  if (!body || !body.data || !body.data.messages) return;
+
+  apiData.history.push(body);
+  logger.debug(`收集到历史消息: ${body.data.messages.length} 条`);
+}
+
 /**
  * Phase 8 改进的私信爬虫
  * @param {Object} page - Playwright Page 实例
@@ -22,19 +69,17 @@ async function crawlDirectMessagesV2(page, account) {
   logger.info(`[Phase 8] Starting enhanced private message crawl for account ${account.id}`);
 
   try {
-    // 第 1 步: 初始化 API 拦截器
-    logger.debug(`[Phase 8] Step 1: Setting up API interceptors`);
-    const apiResponses = {
-      init: [],
-      conversations: [],
-      history: [],
-      ws: []
-    };
+    // 清空之前的 API 数据
+    apiData.init = [];
+    apiData.conversations = [];
+    apiData.history = [];
+    apiData.cache.init.clear();
+    apiData.cache.conversations.clear();
+    apiData.cache.history.clear();
+    logger.debug('已清空 API 数据存储');
 
-    // 拦截主要 API 端点
-    await setupAPIInterceptors(page, apiResponses);
-
-    logger.info(`[Phase 8] API interceptors configured`);
+    // API 拦截器已由 platform.js 在 initialize() 时统一注册
+    logger.info('API 拦截器已全局启用（由 platform.js 管理）');
 
     // 第 2 步: 导航到私信页面
     logger.debug(`[Phase 8] Step 2: Navigating to direct messages page`);
@@ -179,11 +224,11 @@ async function setupAPIInterceptors(page, apiResponses) {
         logger.debug(`[${apiType}] Duplicate request detected, skipping cache`);
       } else {
         cacheSet.add(signature);
-        apiResponses[apiType].push(body);
+        apiData[apiType].push(body);
 
         // 记录统计信息
         const messageCount = getMessageCount(body, apiType);
-        logger.debug(`[${apiType}] Intercepted (${apiResponses[apiType].length} total): ${messageCount} items`);
+        logger.debug(`[${apiType}] Intercepted (${apiData[apiType].length} total): ${messageCount} items`);
       }
 
       // 第 5 步: 返回响应
@@ -1257,7 +1302,15 @@ function generateConversationId(accountId, userName) {
 }
 
 module.exports = {
+  // API 回调函数（由 platform.js 注册）
+  onMessageInitAPI,
+  onConversationListAPI,
+  onMessageHistoryAPI,
+
+  // 爬取函数
   crawlDirectMessagesV2,
+
+  // 工具函数（保留用于测试）
   extractConversationsList,
   crawlCompleteMessageHistory,
   extractMessagesFromVirtualList,

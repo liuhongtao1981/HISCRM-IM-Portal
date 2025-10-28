@@ -9,10 +9,17 @@ const IncrementalCrawlService = require('../../services/incremental-crawl-servic
 const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { v4: uuidv4 } = require('uuid');
-const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
+const { TabTag } = require('../../browser/tab-manager');
+
+// 导入爬取函数
 const { crawlContents } = require('./crawl-contents');
 const { crawlComments: crawlCommentsV2 } = require('./crawl-comments');
-const { TabTag } = require('../../browser/tab-manager');
+const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
+
+// 导入 API 回调函数
+const { onWorksListAPI, onWorkDetailAPI } = require('./crawl-contents');
+const { onCommentsListAPI, onDiscussionsListAPI } = require('./crawl-comments');
+const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawl-direct-messages-v2');
 
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
@@ -50,36 +57,25 @@ class DouyinPlatform extends PlatformBase {
 
   /**
    * 注册 API 拦截器处理函数
-   * 这里注册所有抖音平台需要拦截的 API
+   * 统一注册所有抖音平台需要拦截的 API（pattern + callback）
    */
   async registerAPIHandlers(manager, accountId) {
     logger.info(`Registering API handlers for account ${accountId}`);
 
-    // 作品列表 API
-    manager.register('**/aweme/v1/web/aweme/post/**', async (body) => {
-      logger.debug(`[${accountId}] 拦截到作品列表 API`);
-      // 数据处理在各个 crawl 文件中完成
-    });
+    // 作品相关 API
+    manager.register('**/aweme/v1/web/aweme/post/**', onWorksListAPI);
+    manager.register('**/aweme/v1/web/aweme/detail/**', onWorkDetailAPI);
 
-    // 评论列表 API
-    manager.register('**/comment/list/**', async (body) => {
-      logger.debug(`[${accountId}] 拦截到评论列表 API`);
-    });
+    // 评论相关 API
+    manager.register('**/comment/list/**', onCommentsListAPI);
+    manager.register('**/comment/reply/list/**', onDiscussionsListAPI);
 
     // 私信相关 API
-    manager.register('**/v2/message/get_by_user_init**', async (body) => {
-      logger.debug(`[${accountId}] 拦截到私信初始化 API`);
-    });
+    manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
+    manager.register('**/v1/stranger/get_conversation_list**', onConversationListAPI);
+    manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
-    manager.register('**/v1/stranger/get_conversation_list**', async (body) => {
-      logger.debug(`[${accountId}] 拦截到会话列表 API`);
-    });
-
-    manager.register('**/v1/im/message/history**', async (body) => {
-      logger.debug(`[${accountId}] 拦截到消息历史 API`);
-    });
-
-    logger.info(`API handlers registered for account ${accountId}`);
+    logger.info(`✅ API handlers registered (7 total) for account ${accountId}`);
   }
 
   /**

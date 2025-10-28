@@ -14,6 +14,13 @@ const { v4: uuidv4 } = require('uuid');
 
 const logger = createLogger('crawl-contents', './logs');
 
+// ==================== API 数据存储（模块级闭包）====================
+const apiData = {
+  worksList: [],      // 作品列表 API 响应
+  workDetail: [],     // 作品详情 API 响应
+  cache: new Set()    // URL 去重缓存
+};
+
 /**
  * 爬取抖音作品列表
  * @param {Object} page - Playwright Page 实例
@@ -30,15 +37,11 @@ async function crawlContents(page, account, options = {}) {
   logger.info(`Starting contents crawl for account ${account.id}`);
 
   try {
-    // 第 1 步: 设置 API 拦截器
-    logger.debug('Step 1: Setting up API interceptors');
-    const apiResponses = {
-      worksList: [],   // 作品列表 API
-      workDetail: [],  // 作品详情 API
-    };
-
-    await setupAPIInterceptors(page, apiResponses);
-    logger.info('API interceptors configured');
+    // 清空之前的 API 数据
+    apiData.worksList = [];
+    apiData.workDetail = [];
+    apiData.cache.clear();
+    logger.debug('已清空 API 数据存储');
 
     // 第 2 步: 导航到作品管理页面
     logger.debug('Step 2: Navigating to contents page');
@@ -60,7 +63,10 @@ async function crawlContents(page, account, options = {}) {
 
     // 第 5 步: 从 API 响应中增强数据
     logger.debug('Step 5: Enhancing contents data from API responses');
-    const enhancedWorks = enhanceWorksWithAPIData(contents, apiResponses);
+    const enhancedWorks = enhanceWorksWithAPIData(contents, {
+      worksList: apiData.worksList,
+      workDetail: apiData.workDetail
+    });
     logger.info(`Enhanced ${enhancedWorks.length} contents with API data`);
 
     // 第 6 步: 标准化数据格式
@@ -73,8 +79,8 @@ async function crawlContents(page, account, options = {}) {
       byType: countWorksByType(standardizedWorks),
       crawlTime: Math.floor(Date.now() / 1000),
       apiResponseCounts: {
-        worksList: apiResponses.worksList.length,
-        workDetail: apiResponses.workDetail.length,
+        worksList: apiData.worksList.length,
+        workDetail: apiData.workDetail.length,
       }
     };
 
@@ -91,49 +97,37 @@ async function crawlContents(page, account, options = {}) {
   }
 }
 
+// ==================== API 回调函数 ====================
+
 /**
- * 设置 API 拦截器
+ * API 回调：作品列表
+ * 由 platform.js 注册到 APIInterceptorManager
  */
-async function setupAPIInterceptors(page, apiResponses) {
-  const requestCache = new Set();
+async function onWorksListAPI(body, route) {
+  if (!body || !body.aweme_list) return;
 
-  // 拦截作品列表 API
-  await page.route('**/aweme/v1/web/aweme/post/**', async (route) => {
-    try {
-      const response = await route.fetch();
-      const body = await response.json();
+  const url = route.request().url();
 
-      const signature = `${route.request().url()}`;
-      if (!requestCache.has(signature)) {
-        requestCache.add(signature);
-        apiResponses.worksList.push(body);
-        logger.debug(`Intercepted contents list API: ${body.aweme_list?.length || 0} contents`);
-      }
+  // URL 去重
+  if (apiData.cache.has(url)) {
+    return;
+  }
 
-      await route.fulfill({ response });
-    } catch (error) {
-      logger.error('API interception error:', error.message);
-      await route.continue();
-    }
-  });
+  apiData.cache.add(url);
+  apiData.worksList.push(body);
 
-  // 拦截作品详情 API
-  await page.route('**/aweme/v1/web/aweme/detail/**', async (route) => {
-    try {
-      const response = await route.fetch();
-      const body = await response.json();
+  logger.debug(`收集到作品列表: ${body.aweme_list.length} 个`);
+}
 
-      apiResponses.workDetail.push(body);
-      logger.debug('Intercepted work detail API');
+/**
+ * API 回调：作品详情
+ * 由 platform.js 注册到 APIInterceptorManager
+ */
+async function onWorkDetailAPI(body) {
+  if (!body) return;
 
-      await route.fulfill({ response });
-    } catch (error) {
-      logger.error('API interception error:', error.message);
-      await route.continue();
-    }
-  });
-
-  logger.info('✅ API interceptors setup complete');
+  apiData.workDetail.push(body);
+  logger.debug('收集到作品详情');
 }
 
 /**
@@ -549,7 +543,14 @@ function countWorksByType(contents) {
 }
 
 module.exports = {
+  // API 回调函数（由 platform.js 注册）
+  onWorksListAPI,
+  onWorkDetailAPI,
+
+  // 爬取函数
   crawlContents,
+
+  // 工具函数（保留用于测试）
   extractWorksFromPage,
   enhanceWorksWithAPIData,
   standardizeWorkData,
