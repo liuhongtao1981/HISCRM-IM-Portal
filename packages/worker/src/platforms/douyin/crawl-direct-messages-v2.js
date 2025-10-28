@@ -9,14 +9,22 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { DataSource } = require('../base/data-models');
 
 const logger = createLogger('crawl-direct-messages-v2', './logs');
 
-// ==================== API 数据存储（模块级闭包）====================
+// ==================== 全局状态（用于 API 回调）====================
+// 由于 API 回调是全局注册的，需要一个临时存储来关联 accountId 和 dataManager
+const globalContext = {
+  dataManager: null,  // 当前活动的 DataManager（在 crawl 函数中设置）
+  accountId: null,    // 当前账户 ID
+};
+
+// 保留 apiData 用于向后兼容和调试
 const apiData = {
-  init: [],           // 初始化消息 API
-  conversations: [],  // 会话列表 API
-  history: [],        // 消息历史 API
+  init: [],
+  conversations: [],
+  history: [],
   cache: {
     init: new Set(),
     conversations: new Set(),
@@ -24,7 +32,7 @@ const apiData = {
   }
 };
 
-// ==================== API 回调函数 ====================
+// ==================== API 回调函数（使用 DataManager）====================
 
 /**
  * API 回调：初始化消息
@@ -33,6 +41,20 @@ const apiData = {
 async function onMessageInitAPI(body) {
   if (!body || !body.data || !body.data.messages) return;
 
+  // ✅ 使用 DataManager（如果可用）
+  if (globalContext.dataManager && body.data.messages.length > 0) {
+    try {
+      const messages = globalContext.dataManager.batchUpsertMessages(
+        body.data.messages,
+        DataSource.API
+      );
+      logger.info(`✅ [API] 初始化消息 -> DataManager: ${messages.length} 条`);
+    } catch (error) {
+      logger.error(`[API] 初始化消息处理失败:`, error);
+    }
+  }
+
+  // 保留旧逻辑用于调试
   apiData.init.push(body);
   logger.debug(`收集到初始化消息: ${body.data.messages.length} 条`);
 }
@@ -45,6 +67,20 @@ async function onMessageInitAPI(body) {
 async function onConversationListAPI(body) {
   if (!body || !body.user_list) return;
 
+  // ✅ 使用 DataManager（如果可用）
+  if (globalContext.dataManager && body.user_list.length > 0) {
+    try {
+      const conversations = globalContext.dataManager.batchUpsertConversations(
+        body.user_list,
+        DataSource.API
+      );
+      logger.info(`✅ [API] 会话列表 -> DataManager: ${conversations.length} 个会话`);
+    } catch (error) {
+      logger.error(`[API] 会话列表处理失败:`, error);
+    }
+  }
+
+  // 保留旧逻辑用于调试
   apiData.conversations.push(body);
   logger.debug(`收集到会话列表: ${body.user_list.length} 个用户`);
 }
@@ -56,18 +92,42 @@ async function onConversationListAPI(body) {
 async function onMessageHistoryAPI(body) {
   if (!body || !body.data || !body.data.messages) return;
 
+  // ✅ 使用 DataManager（如果可用）
+  if (globalContext.dataManager && body.data.messages.length > 0) {
+    try {
+      const messages = globalContext.dataManager.batchUpsertMessages(
+        body.data.messages,
+        DataSource.API
+      );
+      logger.info(`✅ [API] 历史消息 -> DataManager: ${messages.length} 条`);
+    } catch (error) {
+      logger.error(`[API] 历史消息处理失败:`, error);
+    }
+  }
+
+  // 保留旧逻辑用于调试
   apiData.history.push(body);
   logger.debug(`收集到历史消息: ${body.data.messages.length} 条`);
 }
 
 /**
- * Phase 8 改进的私信爬虫
+ * Phase 8 改进的私信爬虫（使用统一数据管理架构）
  * @param {Object} page - Playwright Page 实例
  * @param {Object} account - 账户信息
+ * @param {Object} dataManager - DataManager 实例（可选，如果提供则使用新架构）
  * @returns {Promise<Object>} { conversations, directMessages, stats }
  */
-async function crawlDirectMessagesV2(page, account) {
+async function crawlDirectMessagesV2(page, account, dataManager = null) {
   logger.info(`[Phase 8] Starting enhanced private message crawl for account ${account.id}`);
+
+  // ✅ 设置全局上下文，让 API 回调可以访问 DataManager
+  if (dataManager) {
+    globalContext.dataManager = dataManager;
+    globalContext.accountId = account.id;
+    logger.info(`✅ [DataManager] 已启用统一数据管理架构`);
+  } else {
+    logger.warn(`⚠️  [DataManager] 未提供，使用旧的数据收集逻辑`);
+  }
 
   try {
     // 清空之前的 API 数据
@@ -149,6 +209,13 @@ async function crawlDirectMessagesV2(page, account) {
       crawl_time: Math.floor(Date.now() / 1000)
     };
 
+    // ✅ 如果使用了 DataManager，添加其统计信息
+    if (dataManager) {
+      const dmStats = dataManager.getStats();
+      stats.dataManager = dmStats;
+      logger.info(`✅ [DataManager] 统计:`, JSON.stringify(dmStats));
+    }
+
     logger.info(`[Phase 8] ✅ Crawl completed: ${JSON.stringify(stats)}`);
 
     return {
@@ -159,6 +226,11 @@ async function crawlDirectMessagesV2(page, account) {
   } catch (error) {
     logger.error(`[Phase 8] ❌ FATAL ERROR:`, error);
     throw error;
+  } finally {
+    // ✅ 清理全局上下文
+    globalContext.dataManager = null;
+    globalContext.accountId = null;
+    logger.debug('已清理全局 DataManager 上下文');
   }
 }
 

@@ -891,9 +891,17 @@ class DouyinPlatform extends PlatformBase {
       });
       logger.info(`[crawlDirectMessages] Spider DM tab retrieved successfully`);
 
+      // 1.5. 获取 DataManager（使用新架构）
+      const dataManager = this.getDataManager(account.id);
+      if (dataManager) {
+        logger.info(`✅ [crawlDirectMessages] DataManager 可用，使用统一数据管理架构`);
+      } else {
+        logger.warn(`⚠️  [crawlDirectMessages] DataManager 不可用，使用旧数据收集逻辑`);
+      }
+
       // 2. 执行 Phase 8 爬虫 (包括 API 拦截、虚拟列表提取、数据合并等)
       logger.debug(`[crawlDirectMessages] Step 2: Running Phase 8 crawler (crawlDirectMessagesV2)`);
-      const crawlResult = await crawlDirectMessagesV2(page, account);
+      const crawlResult = await crawlDirectMessagesV2(page, account, dataManager);
 
       const { conversations, directMessages: rawDirectMessages, stats: crawlStats } = crawlResult;
       logger.info(`[crawlDirectMessages] Phase 8 crawler completed: ${conversations.length} conversations, ${rawDirectMessages.length} messages`);
