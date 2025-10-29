@@ -46,6 +46,9 @@ class AccountDataManager {
     // 推送定时器
     this.pushTimer = null;
 
+    // 数据快照定时器
+    this.snapshotTimer = null;
+
     // 统计信息
     this.stats = {
       lastPushTime: null,
@@ -54,6 +57,9 @@ class AccountDataManager {
     };
 
     this.logger.info(`AccountDataManager initialized for ${accountId}`);
+
+    // 启动数据快照定时器（每30秒记录一次完整数据）
+    this.startDataSnapshot();
   }
 
   // ==================== 会话管理 ====================
@@ -444,6 +450,151 @@ class AccountDataManager {
     return await this.syncAll();
   }
 
+  // ==================== 数据快照 ====================
+
+  /**
+   * 启动数据快照定时器
+   * 定期将完整数据序列化到日志中，便于调试和数据验证
+   */
+  startDataSnapshot(interval = 30000) {
+    if (this.snapshotTimer) {
+      clearInterval(this.snapshotTimer);
+    }
+
+    this.snapshotTimer = setInterval(() => {
+      this.logDataSnapshot();
+    }, interval);
+
+    this.logger.info(`Data snapshot started (interval: ${interval}ms)`);
+  }
+
+  /**
+   * 停止数据快照
+   */
+  stopDataSnapshot() {
+    if (this.snapshotTimer) {
+      clearInterval(this.snapshotTimer);
+      this.snapshotTimer = null;
+    }
+    this.logger.info('Data snapshot stopped');
+  }
+
+  /**
+   * 记录数据快照
+   * 将所有数据序列化为 JSON 并记录到日志
+   */
+  logDataSnapshot() {
+    const snapshot = {
+      timestamp: new Date().toISOString(),
+      accountId: this.accountId,
+      platform: this.platform,
+      stats: this.getStats(),
+      data: {
+        conversations: this.getAllConversations().map(c => this.serializeConversation(c)),
+        messages: this.getAllMessages().slice(0, 10).map(m => this.serializeMessage(m)), // 只取前10条避免日志过大
+        contents: this.getAllContents().slice(0, 5).map(c => this.serializeContent(c)),
+        comments: this.getAllComments().slice(0, 10).map(c => this.serializeComment(c)),
+      },
+    };
+
+    // 直接传递对象，让 Winston 处理 JSON 序列化
+    this.logger.info('📸 Data Snapshot', { snapshot });
+  }
+
+  /**
+   * 序列化会话对象（只保留关键字段）
+   */
+  serializeConversation(conversation) {
+    return {
+      id: conversation.id,
+      conversationId: conversation.conversationId,
+      userId: conversation.userId,
+      userName: conversation.userName,
+      userAvatar: conversation.userAvatar,
+      unreadCount: conversation.unreadCount,
+      lastMessageContent: conversation.lastMessageContent,
+      lastMessageTime: conversation.lastMessageTime,
+      status: conversation.status,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    };
+  }
+
+  /**
+   * 序列化消息对象
+   */
+  serializeMessage(message) {
+    return {
+      id: message.id,
+      messageId: message.messageId,
+      conversationId: message.conversationId,
+      senderId: message.senderId,
+      senderName: message.senderName,
+      type: message.type,
+      content: message.content?.substring(0, 100), // 截断长内容
+      direction: message.direction,
+      status: message.status,
+      createdAt: message.createdAt,
+    };
+  }
+
+  /**
+   * 序列化作品对象
+   */
+  serializeContent(content) {
+    return {
+      id: content.id,
+      contentId: content.contentId,
+      type: content.type,
+      title: content.title?.substring(0, 50),
+      description: content.description?.substring(0, 100),
+      viewCount: content.viewCount,
+      likeCount: content.likeCount,
+      commentCount: content.commentCount,
+      publishTime: content.publishTime,
+      status: content.status,
+    };
+  }
+
+  /**
+   * 序列化评论对象
+   */
+  serializeComment(comment) {
+    return {
+      id: comment.id,
+      commentId: comment.commentId,
+      contentId: comment.contentId,
+      authorId: comment.authorId,
+      authorName: comment.authorName,
+      content: comment.content?.substring(0, 100),
+      likeCount: comment.likeCount,
+      replyCount: comment.replyCount,
+      status: comment.status,
+      createdAt: comment.createdAt,
+    };
+  }
+
+  /**
+   * 获取所有消息
+   */
+  getAllMessages() {
+    return Array.from(this.messages.items.values());
+  }
+
+  /**
+   * 获取所有作品
+   */
+  getAllContents() {
+    return Array.from(this.contents.items.values());
+  }
+
+  /**
+   * 获取所有评论
+   */
+  getAllComments() {
+    return Array.from(this.comments.items.values());
+  }
+
   // ==================== 统计信息 ====================
 
   /**
@@ -493,6 +644,7 @@ class AccountDataManager {
    */
   destroy() {
     this.stopAutoSync();
+    this.stopDataSnapshot();
     this.logger.info(`AccountDataManager destroyed for ${this.accountId}`);
   }
 }
