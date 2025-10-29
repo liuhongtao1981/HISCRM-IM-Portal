@@ -41,14 +41,11 @@ class DouyinPlatform extends PlatformBase {
   async initialize(account) {
     logger.info(`Initializing Douyin platform for account ${account.id}`);
 
-    // 调用基类初始化（创建上下文、加载指纹）
+    // 调用基类初始化（初始化 DataManager）
     await super.initialize(account);
 
-    // 获取主页面 - 使用 getPageWithAPI 自动注册 API 拦截器
-    await this.getPageWithAPI(account.id, {
-      tag: TabTag.MAIN,
-      persistent: true
-    });
+    // 页面和 API 拦截器会在爬虫函数中按需创建
+    // 不需要在初始化时创建页面
 
     logger.info(`Douyin platform initialized for account ${account.id}`);
   }
@@ -695,9 +692,17 @@ class DouyinPlatform extends PlatformBase {
       });
       logger.info(`[crawlComments] Spider comment tab retrieved successfully`);
 
+      // 1.5. 获取 DataManager（使用新架构，自动创建）
+      const dataManager = await this.getDataManager(account.id);
+      if (dataManager) {
+        logger.info(`✅ [crawlComments] DataManager 可用，使用统一数据管理架构`);
+      } else {
+        logger.warn(`⚠️  [crawlComments] DataManager 创建失败，使用旧数据收集逻辑`);
+      }
+
       // 2. 执行评论和讨论爬虫（新架构）
       logger.debug(`[crawlComments] Step 2: Running comments+discussions crawler (crawlCommentsV2)`);
-      const crawlResult = await crawlCommentsV2(page, account, options);
+      const crawlResult = await crawlCommentsV2(page, account, options, dataManager);
 
       const { comments, discussions, contents, stats: crawlStats } = crawlResult;
       logger.info(`[crawlComments] Crawler completed: ${comments.length} comments, ${discussions.length} discussions, ${contents.length} contents`);
@@ -891,12 +896,12 @@ class DouyinPlatform extends PlatformBase {
       });
       logger.info(`[crawlDirectMessages] Spider DM tab retrieved successfully`);
 
-      // 1.5. 获取 DataManager（使用新架构）
-      const dataManager = this.getDataManager(account.id);
+      // 1.5. 获取 DataManager（使用新架构，自动创建）
+      const dataManager = await this.getDataManager(account.id);
       if (dataManager) {
         logger.info(`✅ [crawlDirectMessages] DataManager 可用，使用统一数据管理架构`);
       } else {
-        logger.warn(`⚠️  [crawlDirectMessages] DataManager 不可用，使用旧数据收集逻辑`);
+        logger.warn(`⚠️  [crawlDirectMessages] DataManager 创建失败，使用旧数据收集逻辑`);
       }
 
       // 2. 执行 Phase 8 爬虫 (包括 API 拦截、虚拟列表提取、数据合并等)
@@ -2888,7 +2893,11 @@ class DouyinPlatform extends PlatformBase {
   async createDataManager(accountId) {
     const { DouyinDataManager } = require('./douyin-data-manager');
     logger.info(`Creating DouyinDataManager for account ${accountId}`);
-    return new DouyinDataManager(accountId, this.dataPusher);
+
+    const dataManager = new DouyinDataManager(accountId, this.dataPusher);
+    logger.info(`✅ DouyinDataManager created for account ${accountId}`);
+
+    return dataManager;
   }
 
   /**

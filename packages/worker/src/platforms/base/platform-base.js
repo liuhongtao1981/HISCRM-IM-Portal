@@ -27,21 +27,22 @@ class PlatformBase {
 
   /**
    * 初始化平台
+   * 注意：浏览器和上下文已经在 AccountInitializer 中初始化过了
+   * 这里只需要初始化平台特定的组件（如 DataManager）
    * @param {Object} account - 账户对象
    */
   async initialize(account) {
+    console.log(`[DEBUG] PlatformBase.initialize() called for ${this.config.platform}, account ${account.id}`);
     logger.info(`Initializing ${this.config.platform} platform for account ${account.id}`);
 
-    // 创建账户专属的上下文环境
-    await this.createAccountContext(account.id, null);
-
-    // 加载账户专属的指纹配置
-    await this.loadAccountFingerprint(account.id);
-
-    // 初始化账户的数据管理器
+    // 不需要创建浏览器上下文（已经在 AccountInitializer 中完成）
+    // 只需要初始化平台特定的数据管理器
+    console.log(`[DEBUG] Calling initializeDataManager()...`);
     await this.initializeDataManager(account.id);
+    console.log(`[DEBUG] initializeDataManager() completed`);
 
     logger.info(`${this.config.platform} platform initialized for account ${account.id}`);
+    console.log(`[DEBUG] PlatformBase.initialize() completed for account ${account.id}`);
   }
 
   /**
@@ -50,15 +51,19 @@ class PlatformBase {
    * @param {string} accountId - 账户 ID
    */
   async initializeDataManager(accountId) {
+    console.log(`[DEBUG] initializeDataManager() called for account ${accountId}`);
     try {
       // 检查是否已经存在
       if (this.dataManagers.has(accountId)) {
+        console.log(`[DEBUG] DataManager already exists for account ${accountId}`);
         logger.debug(`DataManager already exists for account ${accountId}`);
         return this.dataManagers.get(accountId);
       }
 
       // 调用子类的工厂方法创建平台特定的 DataManager
+      console.log(`[DEBUG] Calling createDataManager()...`);
       const dataManager = await this.createDataManager(accountId);
+      console.log(`[DEBUG] createDataManager() returned:`, dataManager ? 'valid instance' : 'null');
 
       if (!dataManager) {
         throw new Error('createDataManager() must return a valid DataManager instance');
@@ -66,18 +71,22 @@ class PlatformBase {
 
       // 保存到 Map
       this.dataManagers.set(accountId, dataManager);
+      console.log(`[DEBUG] DataManager saved to Map`);
 
       // 启动自动同步（如果配置了）
       if (dataManager.pushConfig.autoSync) {
+        console.log(`[DEBUG] Starting auto-sync...`);
         dataManager.startAutoSync();
         logger.info(`Auto-sync enabled for account ${accountId}`);
       }
 
       logger.info(`DataManager initialized for account ${accountId}`);
+      console.log(`[DEBUG] DataManager initialized successfully for account ${accountId}`);
 
       return dataManager;
 
     } catch (error) {
+      console.log(`[DEBUG] Error initializing DataManager:`, error.message);
       logger.error(`Failed to initialize DataManager for account ${accountId}:`, error);
       throw error;
     }
@@ -101,12 +110,27 @@ class PlatformBase {
   }
 
   /**
-   * 获取账户的 DataManager
+   * 获取账户的 DataManager（懒加载，自动创建）
    * @param {string} accountId - 账户 ID
-   * @returns {AccountDataManager|null}
+   * @returns {Promise<AccountDataManager>}
    */
-  getDataManager(accountId) {
-    return this.dataManagers.get(accountId) || null;
+  async getDataManager(accountId) {
+    // 如果已存在，直接返回
+    if (this.dataManagers.has(accountId)) {
+      return this.dataManagers.get(accountId);
+    }
+
+    // 自动创建 DataManager
+    console.log(`[DEBUG] Auto-creating DataManager for account ${accountId}...`);
+    logger.info(`Auto-creating DataManager for account ${accountId}`);
+
+    try {
+      await this.initializeDataManager(accountId);
+      return this.dataManagers.get(accountId);
+    } catch (error) {
+      logger.error(`Failed to auto-create DataManager for account ${accountId}:`, error);
+      return null;
+    }
   }
 
   /**

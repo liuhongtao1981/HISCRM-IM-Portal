@@ -198,6 +198,9 @@ async function start() {
     const successCount = initResults.filter(r => r.success).length;
     logger.info(`✓ Browsers initialized: ${successCount}/${assignedAccounts.length} succeeded`);
 
+    // 注意：DataManager 现在使用懒加载模式，会在第一次调用 getDataManager() 时自动创建
+    // 不需要在启动时显式初始化平台
+
     // 9. 初始化账号状态上报器（在 TaskRunner 之前创建）
     accountStatusReporter = new AccountStatusReporter(socketClient.socket, WORKER_ID);
 

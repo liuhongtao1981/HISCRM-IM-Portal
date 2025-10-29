@@ -21,8 +21,15 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { DataSource } = require('../base/data-models');
 
 const logger = createLogger('douyin-crawl-comments');
+
+// ==================== 全局上下文（用于 API 回调）====================
+const globalContext = {
+  dataManager: null,
+  accountId: null,
+};
 
 // ==================== API 数据存储（模块级闭包）====================
 const apiData = {
@@ -45,6 +52,16 @@ async function onCommentsListAPI(body, route) {
   const itemId = extractItemId(url);
   const cursor = extractCursor(url);
 
+  // ✅ 使用 DataManager（新架构）
+  if (globalContext.dataManager && body.comment_info_list.length > 0) {
+    const comments = globalContext.dataManager.batchUpsertComments(
+      body.comment_info_list,
+      DataSource.API
+    );
+    logger.info(`✅ [API] 评论列表 -> DataManager: ${comments.length} 条评论`);
+  }
+
+  // 保留旧逻辑（向后兼容）
   apiData.comments.push({
     timestamp: Date.now(),
     url: url,
@@ -69,6 +86,17 @@ async function onDiscussionsListAPI(body, route) {
   const commentId = extractCommentId(url);
   const cursor = extractCursor(url);
 
+  // ✅ 使用 DataManager（新架构）
+  // 注意：讨论也作为评论存储，只是有 parent_comment_id 字段
+  if (globalContext.dataManager && body.comment_info_list.length > 0) {
+    const discussions = globalContext.dataManager.batchUpsertComments(
+      body.comment_info_list,
+      DataSource.API
+    );
+    logger.info(`✅ [API] 讨论列表 -> DataManager: ${discussions.length} 条讨论`);
+  }
+
+  // 保留旧逻辑（向后兼容）
   apiData.discussions.push({
     timestamp: Date.now(),
     url: url,
@@ -87,11 +115,19 @@ async function onDiscussionsListAPI(body, route) {
  * @param {Object} options - 爬取选项
  * @param {number} [options.maxVideos] - 最多爬取的作品数量（默认全部）
  * @param {boolean} [options.includeDiscussions=true] - 是否同时爬取讨论（二级/三级回复）
+ * @param {Object} dataManager - DataManager 实例（可选，用于新架构）
  * @returns {Promise<Object>} { comments: Array, discussions: Array, contents: Array, stats: Object }
  */
-async function crawlComments(page, account, options = {}) {
+async function crawlComments(page, account, options = {}, dataManager = null) {
   const { includeDiscussions = true } = options;
   const { maxVideos = null } = options;
+
+  // 设置全局上下文
+  if (dataManager) {
+    globalContext.dataManager = dataManager;
+    globalContext.accountId = account.id;
+    logger.info(`✅ [DataManager] 已启用统一数据管理架构`);
+  }
 
   try {
     logger.info(`Crawling comments for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
@@ -587,6 +623,13 @@ async function crawlComments(page, account, options = {}) {
       crawl_time: Math.floor(Date.now() / 1000),
     };
 
+    // 添加 DataManager 统计
+    if (dataManager) {
+      const dmStats = dataManager.getStats();
+      stats.dataManager = dmStats;
+      logger.info(`✅ [DataManager] 统计:`, JSON.stringify(dmStats));
+    }
+
     return {
       comments: allComments,
       discussions: allDiscussions,
@@ -596,6 +639,11 @@ async function crawlComments(page, account, options = {}) {
   } catch (error) {
     logger.error(`Failed to crawl comments for account ${account.id}:`, error);
     throw error;
+  } finally {
+    // 清理全局上下文
+    globalContext.dataManager = null;
+    globalContext.accountId = null;
+    logger.debug('已清理全局 DataManager 上下文');
   }
 }
 
