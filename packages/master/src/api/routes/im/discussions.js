@@ -8,13 +8,28 @@ const DiscussionsDAO = require('../../../dao/DiscussionsDAO');
 const DiscussionTransformer = require('../../transformers/discussion-transformer');
 const ResponseWrapper = require('../../transformers/response-wrapper');
 
-function createIMDiscussionsRouter(db) {
+/**
+ * 创建 IM 讨论路由
+ * @param {Database} db - SQLite数据库实例
+ * @param {DataStore} dataStore - 内存数据存储（可选，用于高性能查询）
+ * @returns {Router}
+ */
+function createIMDiscussionsRouter(db, dataStore = null) {
   const router = express.Router();
   const discussionsDAO = new DiscussionsDAO(db);
 
   /**
    * GET /api/im/discussions
-   * 获取讨论列表
+   * 获取讨论列表（评论）
+   * Query Parameters:
+   * - account_id: 账户ID（必需）
+   * - cursor: 分页游标
+   * - count: 每页数量
+   * - platform: 平台
+   * - is_read: 是否已读
+   * - is_new: 是否新评论
+   * - parent_comment_id: 父评论ID（二级评论）
+   * - content_id: 作品ID
    */
   router.get('/', (req, res) => {
     try {
@@ -29,38 +44,74 @@ function createIMDiscussionsRouter(db) {
         content_id,
       } = req.query;
 
+      if (!account_id) {
+        return res.status(400).json(ResponseWrapper.error(400, 'account_id is required'));
+      }
+
       const offset = parseInt(cursor);
       const limit = parseInt(count);
 
-      // 查询条件
-      const options = {
-        offset,
-        limit: limit + 1, // 多查询一条用于判断 has_more
-        platform,
-        is_read: is_read !== undefined ? is_read === 'true' : undefined,
-        is_new: is_new !== undefined ? is_new === 'true' : undefined,
-      };
-
-      // 查询讨论
       let discussions;
-      if (parent_comment_id) {
-        discussions = discussionsDAO.findByParentCommentId(parent_comment_id, options);
-      } else if (content_id) {
-        discussions = discussionsDAO.findByWorkId(content_id, options);
-      } else if (account_id) {
-        discussions = discussionsDAO.findByAccountId(account_id, options);
-      } else {
-        discussions = discussionsDAO.findAll(options);
-      }
 
-      // 判断是否有更多
-      const hasMore = discussions.length > limit;
-      if (hasMore) {
-        discussions = discussions.slice(0, limit);
+      // ✅ 优先从 DataStore 读取（内存，高性能）
+      if (dataStore) {
+        const filters = {
+          offset,
+          limit,
+        };
+
+        // 状态过滤
+        if (is_new !== undefined) {
+          filters.status = is_new === 'true' ? 'new' : 'read';
+        }
+
+        // 从 DataStore 获取评论（按 content_id 过滤）
+        discussions = dataStore.getComments(account_id, content_id, filters);
+
+        // 客户端过滤（DataStore 不支持的条件）
+        if (platform) {
+          discussions = discussions.filter((d) => d.platform === platform);
+        }
+        if (is_read !== undefined) {
+          discussions = discussions.filter((d) => d.is_read === (is_read === 'true'));
+        }
+        if (parent_comment_id) {
+          discussions = discussions.filter((d) => d.parent_comment_id === parent_comment_id);
+        }
+
+        console.log(`[IM Discussions API] Fetched ${discussions.length} discussions from DataStore for ${account_id}`);
+      } else {
+        // ⚠️ 降级到数据库查询（兼容性保留）
+        const options = {
+          offset,
+          limit: limit + 1,
+          platform,
+          is_read: is_read !== undefined ? is_read === 'true' : undefined,
+          is_new: is_new !== undefined ? is_new === 'true' : undefined,
+        };
+
+        if (parent_comment_id) {
+          discussions = discussionsDAO.findByParentCommentId(parent_comment_id, options);
+        } else if (content_id) {
+          discussions = discussionsDAO.findByWorkId(content_id, options);
+        } else {
+          discussions = discussionsDAO.findByAccountId(account_id, options);
+        }
+
+        // 判断是否有更多
+        const hasMore = discussions.length > limit;
+        if (hasMore) {
+          discussions = discussions.slice(0, limit);
+        }
+
+        console.log(`[IM Discussions API] Fetched ${discussions.length} discussions from database for ${account_id}`);
       }
 
       // 转换为 IM 格式
       const imDiscussions = DiscussionTransformer.toIMDiscussions(discussions);
+
+      // 计算分页信息
+      const hasMore = discussions.length >= limit;
 
       // 返回响应
       res.json(ResponseWrapper.success(
@@ -79,12 +130,30 @@ function createIMDiscussionsRouter(db) {
   /**
    * GET /api/im/discussions/:discussionId
    * 获取单个讨论
+   * Query Parameters:
+   * - account_id: 账户ID（如果提供，优先从 DataStore 查询）
    */
   router.get('/:discussionId', (req, res) => {
     try {
       const { discussionId } = req.params;
+      const { account_id } = req.query;
 
-      const discussion = discussionsDAO.findById(discussionId);
+      let discussion;
+
+      // ✅ 如果提供了 account_id，尝试从 DataStore 查询
+      if (dataStore && account_id) {
+        const accountData = dataStore.accounts.get(account_id);
+        if (accountData) {
+          discussion = accountData.data.comments.get(discussionId);
+          console.log(`[IM Discussions API] Fetched discussion ${discussionId} from DataStore`);
+        }
+      }
+
+      // ⚠️ 降级到数据库查询
+      if (!discussion) {
+        discussion = discussionsDAO.findById(discussionId);
+        console.log(`[IM Discussions API] Fetched discussion ${discussionId} from database`);
+      }
 
       if (!discussion) {
         return res.status(404).json(ResponseWrapper.error(404, '讨论不存在'));

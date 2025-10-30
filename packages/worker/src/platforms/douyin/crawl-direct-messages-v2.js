@@ -1178,9 +1178,16 @@ function validateAndSortMessages(messages) {
 /**
  * 生成会话 ID
  */
-function generateConversationId(accountId, userName) {
+function generateConversationId(accountId, userIdOrName) {
+  // ✅ 如果传入的是 Base64 格式的 userId（如 MS4wLjABAAAA...），直接使用
+  // 这样可以与会话列表中的 user_id 匹配
+  if (typeof userIdOrName === 'string' && userIdOrName.startsWith('MS4wLjABAAAA')) {
+    return userIdOrName;
+  }
+
+  // ⚠️  兼容旧代码：如果是用户名，生成基于哈希的ID
   const timestamp = Math.floor(Date.now() / 1000);
-  const hash = userName.split('').reduce((acc, char) => {
+  const hash = userIdOrName.split('').reduce((acc, char) => {
     return ((acc << 5) - acc) + char.charCodeAt(0);
   }, 0);
   return `conv_${accountId}_${Math.abs(hash)}_${timestamp}`;

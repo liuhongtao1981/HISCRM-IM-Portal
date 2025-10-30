@@ -134,9 +134,9 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
  * 由 platform.js 注册到 APIInterceptorManager
  * API 返回格式: { item_info_list: [...], cursor, has_more, total_count, status_code }
  */
-async function onWorksListAPI(body, route) {
+async function onWorksListAPI(body, response) {
   const timestamp = new Date().toISOString();
-  const url = route.request().url();
+  const url = response.url();
 
   // 🔍 调试日志：记录 API 被触发
   console.log(`[DEBUG] ${timestamp} - onWorksListAPI 被调用！`);

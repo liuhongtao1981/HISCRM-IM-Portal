@@ -19,9 +19,10 @@ const logger = createLogger('im-api');
 /**
  * 创建 IM 兼容层主路由
  * @param {Database} db - SQLite数据库实例
+ * @param {DataStore} dataStore - 内存数据存储（可选，用于高性能查询）
  * @returns {Router}
  */
-function createIMRouter(db) {
+function createIMRouter(db, dataStore = null) {
   const router = express.Router();
 
   // 日志中间件
@@ -33,13 +34,13 @@ function createIMRouter(db) {
     next();
   });
 
-  // 挂载子路由
-  router.use('/accounts', createIMAccountsRouter(db));
-  router.use('/conversations', createIMConversationsRouter(db));
-  router.use('/messages', createIMMessagesRouter(db));
-  router.use('/contents', createIMWorksRouter(db));
-  router.use('/discussions', createIMDiscussionsRouter(db));
-  router.use('/unified-messages', createIMUnifiedMessagesRouter(db));
+  // 挂载子路由（传递 dataStore）
+  router.use('/accounts', createIMAccountsRouter(db, dataStore));
+  router.use('/conversations', createIMConversationsRouter(db, dataStore));
+  router.use('/messages', createIMMessagesRouter(db, dataStore));
+  router.use('/contents', createIMWorksRouter(db, dataStore));
+  router.use('/discussions', createIMDiscussionsRouter(db, dataStore));
+  router.use('/unified-messages', createIMUnifiedMessagesRouter(db, dataStore));
 
   // 健康检查
   router.get('/health', (req, res) => {

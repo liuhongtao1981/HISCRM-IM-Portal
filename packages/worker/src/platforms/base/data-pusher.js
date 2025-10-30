@@ -285,6 +285,40 @@ class DataPusher {
   }
 
   /**
+   * ✨ 新增：推送完整数据快照到 Master
+   * 用于 DataStore 内存同步
+   * @param {Object} syncData - 同步数据
+   * @param {string} syncData.accountId - 账户 ID
+   * @param {string} syncData.platform - 平台名称
+   * @param {Object} syncData.snapshot - 完整数据快照
+   * @param {number} syncData.timestamp - 时间戳
+   * @returns {Promise<void>}
+   */
+  async pushDataSync(syncData) {
+    try {
+      const { accountId, platform, snapshot, timestamp } = syncData;
+
+      logger.debug(`[${accountId}] Pushing data sync to Master`);
+
+      // 创建 WORKER_DATA_SYNC 消息
+      const message = createMessage(MessageTypes.WORKER_DATA_SYNC, {
+        accountId,
+        platform,
+        snapshot,
+        timestamp,
+      });
+
+      // 发送到 Master
+      await this.workerBridge.sendToMaster(message);
+
+      logger.info(`[${accountId}] Data sync pushed successfully`);
+    } catch (error) {
+      logger.error(`Failed to push data sync:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 添加到推送队列（用于批量推送）
    */
   queuePush(accountId, data) {

@@ -13,9 +13,10 @@ const logger = createLogger('im-messages-api');
 /**
  * 创建 IM 消息路由
  * @param {Database} db - SQLite数据库实例
+ * @param {DataStore} dataStore - 内存数据存储（可选，用于高性能查询）
  * @returns {Router}
  */
-function createIMMessagesRouter(db) {
+function createIMMessagesRouter(db, dataStore = null) {
   const router = express.Router();
   const messagesDAO = new MessagesDAO(db);
 
@@ -23,6 +24,7 @@ function createIMMessagesRouter(db) {
    * GET /api/im/messages - 获取消息列表（IM 格式）
    * 支持按会话、用户等过滤
    * Query Parameters:
+   * - account_id: 账户ID（必需）
    * - conversation_id: 会话ID
    * - sender_id: 发送者ID
    * - receiver_id: 接收者ID
@@ -39,6 +41,7 @@ function createIMMessagesRouter(db) {
       const {
         cursor = 0,
         count = 20,
+        account_id,
         conversation_id,
         sender_id,
         receiver_id,
@@ -49,34 +52,85 @@ function createIMMessagesRouter(db) {
         since_time,
       } = req.query;
 
-      const filters = {};
-      if (conversation_id) filters.conversation_id = conversation_id;
-      if (sender_id) filters.sender_id = sender_id;
-      if (receiver_id) filters.receiver_id = receiver_id;
-      if (status) filters.status = status;
-      if (message_type) filters.message_type = message_type;
-      if (is_deleted !== undefined) filters.is_deleted = is_deleted === 'true';
-      if (is_recalled !== undefined) filters.is_recalled = is_recalled === 'true';
-      if (since_time) {
-        // 时间戳转换：毫秒 → 秒
-        filters.since_timestamp = Math.floor(parseInt(since_time) / 1000);
+      if (!account_id) {
+        return res.status(400).json(
+          ResponseWrapper.error('account_id is required', 400)
+        );
       }
 
-      // 查询 Master 消息
-      const masterMessages = messagesDAO.findAll(filters);
+      let masterMessages;
+
+      // ✅ 优先从 DataStore 读取（内存，高性能）
+      if (dataStore) {
+        const filters = {
+          offset: parseInt(cursor) || 0,
+          limit: parseInt(count) || 20,
+        };
+
+        // 时间过滤
+        if (since_time) {
+          filters.after = parseInt(since_time); // DataStore 使用毫秒时间戳
+        }
+
+        // 从 DataStore 获取消息（支持按 conversation_id 过滤）
+        masterMessages = dataStore.getMessages(account_id, conversation_id, filters);
+
+        // 客户端过滤（DataStore 不支持的过滤条件）
+        if (sender_id) {
+          masterMessages = masterMessages.filter((m) => m.senderId === sender_id);
+        }
+        if (receiver_id) {
+          masterMessages = masterMessages.filter((m) => m.receiverId === receiver_id);
+        }
+        if (status) {
+          masterMessages = masterMessages.filter((m) => m.status === status);
+        }
+        if (message_type) {
+          masterMessages = masterMessages.filter((m) => m.type === message_type);
+        }
+        if (is_deleted !== undefined) {
+          masterMessages = masterMessages.filter((m) => m.is_deleted === (is_deleted === 'true'));
+        }
+        if (is_recalled !== undefined) {
+          masterMessages = masterMessages.filter((m) => m.is_recalled === (is_recalled === 'true'));
+        }
+
+        logger.debug(`Fetched ${masterMessages.length} messages from DataStore for ${account_id}`);
+      } else {
+        // ⚠️ 降级到数据库查询（兼容性保留）
+        const filters = {};
+        if (conversation_id) filters.conversation_id = conversation_id;
+        if (sender_id) filters.sender_id = sender_id;
+        if (receiver_id) filters.receiver_id = receiver_id;
+        if (status) filters.status = status;
+        if (message_type) filters.message_type = message_type;
+        if (is_deleted !== undefined) filters.is_deleted = is_deleted === 'true';
+        if (is_recalled !== undefined) filters.is_recalled = is_recalled === 'true';
+        if (since_time) {
+          filters.since_timestamp = Math.floor(parseInt(since_time) / 1000);
+        }
+
+        masterMessages = messagesDAO.findAll(filters);
+
+        // 分页处理
+        const start = parseInt(cursor) || 0;
+        const limit = parseInt(count) || 20;
+        masterMessages = masterMessages.slice(start, start + limit);
+
+        logger.debug(`Fetched ${masterMessages.length} messages from database`);
+      }
 
       // 转换为 IM 消息格式
       const imMessages = MessageTransformer.toIMMessageList(masterMessages);
 
-      // 分页处理
+      // 计算分页信息
       const start = parseInt(cursor) || 0;
       const limit = parseInt(count) || 20;
-      const paginatedMessages = imMessages.slice(start, start + limit);
-      const hasMore = start + limit < imMessages.length;
+      const hasMore = imMessages.length >= limit;
 
       // 返回 IM 格式响应
-      res.json(ResponseWrapper.list(paginatedMessages, 'messages', {
-        cursor: start + paginatedMessages.length,
+      res.json(ResponseWrapper.list(imMessages, 'messages', {
+        cursor: start + imMessages.length,
         has_more: hasMore,
       }));
 
@@ -90,13 +144,30 @@ function createIMMessagesRouter(db) {
 
   /**
    * GET /api/im/messages/:messageId - 获取单条消息（IM 格式）
+   * Query Parameters:
+   * - account_id: 账户ID（如果提供，优先从 DataStore 查询）
    */
   router.get('/:messageId', (req, res) => {
     try {
       const { messageId } = req.params;
+      const { account_id } = req.query;
 
-      // 查询 Master 消息
-      const masterMessage = messagesDAO.findById(messageId);
+      let masterMessage;
+
+      // ✅ 如果提供了 account_id，尝试从 DataStore 查询
+      if (dataStore && account_id) {
+        const accountData = dataStore.accounts.get(account_id);
+        if (accountData) {
+          masterMessage = accountData.data.messages.get(messageId);
+          logger.debug(`Fetched message ${messageId} from DataStore`);
+        }
+      }
+
+      // ⚠️ 降级到数据库查询
+      if (!masterMessage) {
+        masterMessage = messagesDAO.findById(messageId);
+        logger.debug(`Fetched message ${messageId} from database`);
+      }
 
       if (!masterMessage) {
         return res.status(404).json(

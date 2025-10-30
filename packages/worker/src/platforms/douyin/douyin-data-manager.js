@@ -9,8 +9,15 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 
 class DouyinDataManager extends AccountDataManager {
   constructor(accountId, dataPusher) {
+    console.log('[DouyinDataManager] 🏗️ 构造函数被调用');
+    console.log('[DouyinDataManager] accountId:', accountId);
+    console.log('[DouyinDataManager] dataPusher 存在:', !!dataPusher);
+    console.log('[DouyinDataManager] dataPusher 类型:', dataPusher ? dataPusher.constructor.name : 'null');
+
     super(accountId, 'douyin', dataPusher);
     this.logger = createLogger(`douyin-data:${accountId}`);
+
+    console.log('[DouyinDataManager] ✅ 构造函数完成');
   }
 
   // ==================== 会话数据映射 ====================
@@ -117,9 +124,44 @@ class DouyinDataManager extends AccountDataManager {
    * API: /creator/item/list 返回 { item_info_list: [...] }
    */
   mapContentData(douyinData) {
+    // 🔍 优先使用 aweme_id，如果没有则从分享链接提取
+    let awemeId = douyinData.aweme_id || douyinData.item_id_plain;
+    const secItemId = douyinData.sec_item_id || douyinData.item_id;
+
+    // 如果没有 aweme_id，尝试从 share_url 提取
+    if (!awemeId && douyinData.share_url) {
+      const match = douyinData.share_url.match(/\/video\/(\d+)/);
+      if (match) {
+        awemeId = match[1];
+        this.logger.info(`✅ [mapContentData] 从 share_url 提取 aweme_id: ${awemeId}`);
+      } else {
+        this.logger.warn(`⚠️  [mapContentData] 无法从 share_url 提取 aweme_id: ${douyinData.share_url}`);
+      }
+    }
+
+    // 🔍 强制输出日志用于调试
+    console.log(`[DEBUG mapContentData] awemeId=${awemeId}, secItemId=${secItemId?.substring(0, 30)}..., share_url=${douyinData.share_url || 'N/A'}`);
+    this.logger.info(`[mapContentData] 最终 awemeId=${awemeId}, secItemId=${secItemId?.substring(0, 30)}...`);
+
+    // 如果还是没有，尝试从生成的 URL 提取（使用 item_id 作为 aweme_id）
+    if (!awemeId && secItemId) {
+      // item_id 本身就是 Base64 编码的，不能直接用
+      // 但我们可以尝试从其他字段获取
+      this.logger.warn(`⚠️  [mapContentData] 作品只有 sec_item_id，无 aweme_id: ${secItemId.substring(0, 40)}...`);
+    }
+
+    this.logger.debug(`📝 [mapContentData] ID 字段:`, {
+      aweme_id: awemeId,
+      sec_item_id: secItemId ? secItemId.substring(0, 40) + '...' : null,
+      share_url: douyinData.share_url
+    });
+
+    // 优先使用纯数字 ID（与评论匹配）
+    const contentId = String(awemeId || secItemId);
+
     return {
       // 基础信息
-      contentId: String(douyinData.aweme_id || douyinData.item_id),
+      contentId,
       type: this.mapContentType(douyinData),
       title: douyinData.desc || douyinData.title || '',
       description: douyinData.desc || '',
@@ -187,10 +229,20 @@ class DouyinDataManager extends AccountDataManager {
    * API: /comment/list 返回 { comment_info_list: [...] }
    */
   mapCommentData(douyinData) {
+    // 🔍 调试：记录所有 ID 相关字段
+    const awemeId = douyinData.aweme_id || douyinData.item_id;
+    const secAwemeId = douyinData.sec_aweme_id;
+
+    this.logger.debug(`💬 [mapCommentData] ID 字段:`, {
+      aweme_id: awemeId,
+      sec_aweme_id: secAwemeId ? secAwemeId.substring(0, 40) + '...' : null,
+      cid: douyinData.cid
+    });
+
     return {
       // 关联信息
       commentId: String(douyinData.cid || douyinData.comment_id),
-      contentId: String(douyinData.aweme_id || douyinData.item_id),
+      contentId: String(awemeId),
       parentCommentId: douyinData.reply_id ? String(douyinData.reply_id) : null,
 
       // 作者信息

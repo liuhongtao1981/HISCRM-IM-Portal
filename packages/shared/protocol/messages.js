@@ -36,6 +36,9 @@ const WORKER_CONTENTS_UPDATE = 'worker:contents:update';  // Worker更新作品�
 const WORKER_COMMENTS_UPDATE = 'worker:comments:update';  // Worker更新评论数据
 const WORKER_NOTIFICATIONS_UPDATE = 'worker:notifications:update';  // Worker更新通知数据
 
+// ✨ 新增: Worker 完整数据同步（批量推送完整快照）
+const WORKER_DATA_SYNC = 'worker:data:sync';  // Worker推送完整数据快照到Master
+
 // ============================================
 // Master → Worker 消息类型
 // ============================================
@@ -138,6 +141,7 @@ module.exports = {
   WORKER_CONTENTS_UPDATE,
   WORKER_COMMENTS_UPDATE,
   WORKER_NOTIFICATIONS_UPDATE,
+  WORKER_DATA_SYNC,
 
   // Master → Worker
   MASTER_TASK_ASSIGN,
@@ -169,3 +173,4 @@ module.exports = {
 
 // 便捷访问所有消息类型
 const MessageTypes = module.exports;
+module.exports.MessageTypes = MessageTypes;

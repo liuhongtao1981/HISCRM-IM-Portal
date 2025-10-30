@@ -13,9 +13,10 @@ const logger = createLogger('im-conversations-api');
 /**
  * 创建 IM 会话路由
  * @param {Database} db - SQLite数据库实例
+ * @param {DataStore} dataStore - 内存数据存储（可选，用于高性能查询）
  * @returns {Router}
  */
-function createIMConversationsRouter(db) {
+function createIMConversationsRouter(db, dataStore = null) {
   const router = express.Router();
   const conversationsDAO = new ConversationsDAO(db);
 
@@ -46,30 +47,54 @@ function createIMConversationsRouter(db) {
         );
       }
 
-      const options = {
-        limit: parseInt(count) + parseInt(cursor), // 查询到当前页为止的所有数据
-      };
+      let masterConversations;
 
-      // 添加过滤条件
-      if (status) options.status = status;
-      if (is_pinned !== undefined) options.is_pinned = is_pinned === 'true';
-      if (is_muted !== undefined) options.is_muted = is_muted === 'true';
+      // ✅ 优先从 DataStore 读取（内存，高性能）
+      if (dataStore) {
+        const filters = {
+          offset: parseInt(cursor) || 0,
+          limit: parseInt(count) || 20,
+        };
 
-      // 查询 Master 会话（默认按置顶排序）
-      const masterConversations = conversationsDAO.findByAccount(account_id, options);
+        // 添加过滤条件
+        if (status) filters.status = status;
+        if (is_pinned !== undefined) filters.is_pinned = is_pinned === 'true';
+        if (is_muted !== undefined) filters.is_muted = is_muted === 'true';
+
+        masterConversations = dataStore.getConversations(account_id, filters);
+
+        logger.debug(`Fetched ${masterConversations.length} conversations from DataStore for ${account_id}`);
+      } else {
+        // ⚠️ 降级到数据库查询（兼容性保留）
+        const options = {
+          limit: parseInt(count) + parseInt(cursor),
+        };
+
+        if (status) options.status = status;
+        if (is_pinned !== undefined) options.is_pinned = is_pinned === 'true';
+        if (is_muted !== undefined) options.is_muted = is_muted === 'true';
+
+        masterConversations = conversationsDAO.findByAccount(account_id, options);
+
+        // 分页处理
+        const start = parseInt(cursor) || 0;
+        const limit = parseInt(count) || 20;
+        masterConversations = masterConversations.slice(start, start + limit);
+
+        logger.debug(`Fetched ${masterConversations.length} conversations from database for ${account_id}`);
+      }
 
       // 转换为 IM 会话格式
       const imConversations = ConversationTransformer.toIMConversationList(masterConversations);
 
-      // 分页处理
+      // 计算分页信息
       const start = parseInt(cursor) || 0;
       const limit = parseInt(count) || 20;
-      const paginatedConversations = imConversations.slice(start, start + limit);
-      const hasMore = start + limit < imConversations.length;
+      const hasMore = imConversations.length >= limit;
 
       // 返回 IM 格式响应
-      res.json(ResponseWrapper.list(paginatedConversations, 'conversations', {
-        cursor: start + paginatedConversations.length,
+      res.json(ResponseWrapper.list(imConversations, 'conversations', {
+        cursor: start + imConversations.length,
         has_more: hasMore,
       }));
 
@@ -83,13 +108,31 @@ function createIMConversationsRouter(db) {
 
   /**
    * GET /api/im/conversations/:conversationId - 获取单个会话（IM 格式）
+   * Query Parameters:
+   * - account_id: 账户ID（必需）
    */
   router.get('/:conversationId', (req, res) => {
     try {
       const { conversationId } = req.params;
+      const { account_id } = req.query;
 
-      // 查询 Master 会话
-      const masterConversation = conversationsDAO.findById(conversationId);
+      if (!account_id) {
+        return res.status(400).json(
+          ResponseWrapper.error('account_id is required', 400)
+        );
+      }
+
+      let masterConversation;
+
+      // ✅ 优先从 DataStore 读取（内存，高性能）
+      if (dataStore) {
+        masterConversation = dataStore.getConversation(account_id, conversationId);
+        logger.debug(`Fetched conversation ${conversationId} from DataStore`);
+      } else {
+        // ⚠️ 降级到数据库查询（兼容性保留）
+        masterConversation = conversationsDAO.findById(conversationId);
+        logger.debug(`Fetched conversation ${conversationId} from database`);
+      }
 
       if (!masterConversation) {
         return res.status(404).json(

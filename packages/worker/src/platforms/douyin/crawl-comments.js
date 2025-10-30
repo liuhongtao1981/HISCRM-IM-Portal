@@ -42,20 +42,25 @@ const apiData = {
 /**
  * API 回调：评论列表
  * 由 platform.js 注册到 APIInterceptorManager
+ * 注意：真实 API 返回 comments 字段，不是 comment_info_list
  */
-async function onCommentsListAPI(body, route) {
-  if (!body || !body.comment_info_list || !Array.isArray(body.comment_info_list)) {
+async function onCommentsListAPI(body, response) {
+  // ✅ 修正：检查 comments 字段（真实 API 数据结构）
+  if (!body || !body.comments || !Array.isArray(body.comments)) {
+    logger.warn(`⚠️  [API] 评论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
   }
 
-  const url = route.request().url();
+  const url = response.url();
   const itemId = extractItemId(url);
   const cursor = extractCursor(url);
 
+  logger.info(`🎯 [API] 评论列表 API 触发：${body.comments.length} 条评论`);
+
   // ✅ 使用 DataManager（新架构）
-  if (globalContext.dataManager && body.comment_info_list.length > 0) {
+  if (globalContext.dataManager && body.comments.length > 0) {
     const comments = globalContext.dataManager.batchUpsertComments(
-      body.comment_info_list,
+      body.comments,
       DataSource.API
     );
     logger.info(`✅ [API] 评论列表 -> DataManager: ${comments.length} 条评论`);
@@ -70,27 +75,32 @@ async function onCommentsListAPI(body, route) {
     data: body,
   });
 
-  logger.debug(`收集到评论: cursor=${cursor}, count=${body.comment_info_list.length}, has_more=${body.has_more}`);
+  logger.debug(`收集到评论: cursor=${cursor}, count=${body.comments.length}, has_more=${body.has_more}`);
 }
 
 /**
  * API 回调：回复列表（讨论）
  * 由 platform.js 注册到 APIInterceptorManager
+ * 注意：真实 API 返回 comments 字段，不是 comment_info_list
  */
-async function onDiscussionsListAPI(body, route) {
-  if (!body || !body.comment_info_list || !Array.isArray(body.comment_info_list)) {
+async function onDiscussionsListAPI(body, response) {
+  // ✅ 修正：检查 comments 字段（真实 API 数据结构）
+  if (!body || !body.comments || !Array.isArray(body.comments)) {
+    logger.warn(`⚠️  [API] 讨论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
   }
 
-  const url = route.request().url();
+  const url = response.url();
   const commentId = extractCommentId(url);
   const cursor = extractCursor(url);
 
+  logger.info(`🎯 [API] 讨论列表 API 触发：${body.comments.length} 条讨论`);
+
   // ✅ 使用 DataManager（新架构）
   // 注意：讨论也作为评论存储，只是有 parent_comment_id 字段
-  if (globalContext.dataManager && body.comment_info_list.length > 0) {
+  if (globalContext.dataManager && body.comments.length > 0) {
     const discussions = globalContext.dataManager.batchUpsertComments(
-      body.comment_info_list,
+      body.comments,
       DataSource.API
     );
     logger.info(`✅ [API] 讨论列表 -> DataManager: ${discussions.length} 条讨论`);
@@ -105,7 +115,7 @@ async function onDiscussionsListAPI(body, route) {
     data: body,
   });
 
-  logger.debug(`收集到讨论: comment_id=${commentId}, count=${body.comment_info_list.length}, has_more=${body.has_more}`);
+  logger.debug(`收集到讨论: comment_id=${commentId}, count=${body.comments.length}, has_more=${body.has_more}`);
 }
 
 /**
@@ -312,7 +322,11 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
       const latestResponse = responses[responses.length - 1];
       if (latestResponse.data.has_more) {
         const totalCount = latestResponse.data.total_count || 0;
-        const loadedCount = responses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
+        // ✅ 修正：使用 comments 字段而不是 comment_info_list
+        const loadedCount = responses.reduce((sum, r) => {
+          const commentList = r.data.comments || r.data.comment_info_list || [];
+          return sum + commentList.length;
+        }, 0);
         videosNeedMore.push({
           itemId,
           totalCount,
@@ -402,7 +416,11 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
 
             // 检查当前视频是否已加载完成
             const updatedResponses = groupResponsesByItemId(apiData.comments)[videoInfo.itemId] || [];
-            const currentLoaded = updatedResponses.reduce((sum, r) => sum + r.data.comment_info_list.length, 0);
+            // ✅ 修正：使用 comments 字段而不是 comment_info_list
+            const currentLoaded = updatedResponses.reduce((sum, r) => {
+              const commentList = r.data.comments || r.data.comment_info_list || [];
+              return sum + commentList.length;
+            }, 0);
 
             // 检查最新响应是否 has_more = false
             const latestResp = updatedResponses[updatedResponses.length - 1];
@@ -438,7 +456,9 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
 
       // 合并所有分页的评论
       responses.forEach((resp, respIdx) => {
-        resp.data.comment_info_list.forEach((c, cIdx) => {
+        // ✅ 修正：使用 comments 字段而不是 comment_info_list
+        const commentList = resp.data.comments || resp.data.comment_info_list || [];
+        commentList.forEach((c, cIdx) => {
           // DEBUG: 记录第一条评论的完整对象结构，找到真实的时间字段
           if (respIdx === 0 && cIdx === 0) {
             logger.info('\n╔════════════════════════════════════════════════════════════╗');
@@ -592,8 +612,8 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
 
         // 合并所有分页的讨论
         responses.forEach((resp) => {
-          // 修正: API返回的是 comment_info_list, 不是 reply_list
-          const replies = resp.data.comment_info_list || [];
+          // ✅ 修正：使用 comments 字段而不是 comment_info_list
+          const replies = resp.data.comments || resp.data.comment_info_list || [];
 
           replies.forEach((reply) => {
             // 检查是否为毫秒级时间戳并转换

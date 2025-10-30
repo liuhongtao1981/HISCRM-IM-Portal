@@ -49,7 +49,9 @@ const NotificationBroadcaster = require('./communication/notification-broadcaste
 const NotificationQueue = require('./communication/notification-queue');
 const NotificationHandler = require('./notification/notification-handler');
 const LoginHandler = require('./login/login-handler');
-const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, WORKER_ACCOUNT_STATUS, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
+const DataStore = require('./data/data-store');
+const DataSyncReceiver = require('./communication/data-sync-receiver');
+const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, WORKER_ACCOUNT_STATUS, WORKER_DATA_SYNC, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
 
 // 初始化logger
 const logger = createLogger('master', './logs');
@@ -147,6 +149,8 @@ let loginHandler;
 let workerLifecycleManager;
 let workerConfigDAO;
 let workerRuntimeDAO;
+let dataStore;
+let dataSyncReceiver;
 
 // API路由
 app.get('/api/v1/status', (req, res) => {
@@ -155,6 +159,8 @@ app.get('/api/v1/status', (req, res) => {
   const sessionStats = sessionManager ? sessionManager.getStats() : {};
   const queueStats = notificationQueue ? notificationQueue.getStats() : {};
   const broadcasterStats = notificationBroadcaster ? notificationBroadcaster.getStats() : {};
+  const dataStoreStats = dataStore ? dataStore.getStats() : {};
+  const dataSyncStats = dataSyncReceiver ? dataSyncReceiver.getStats() : {};
 
   res.json({
     success: true,
@@ -168,6 +174,8 @@ app.get('/api/v1/status', (req, res) => {
         queue: queueStats,
         broadcaster: broadcasterStats,
       },
+      dataStore: dataStoreStats,
+      dataSync: dataSyncStats,
     },
   });
 });
@@ -455,6 +463,14 @@ async function start() {
     db = initDatabase(DB_PATH);
     logger.info('Database initialized');
 
+    // 1.5 初始化 DataStore (内存数据存储)
+    dataStore = new DataStore();
+    logger.info('DataStore initialized');
+
+    // 1.6 初始化 DataSyncReceiver
+    dataSyncReceiver = new DataSyncReceiver(dataStore);
+    logger.info('DataSyncReceiver initialized');
+
     // 2. 初始化Worker注册表
     workerRegistry = new WorkerRegistry(db);
     logger.info('Worker registry initialized');
@@ -464,7 +480,7 @@ async function start() {
     logger.info('Session manager initialized');
 
     // 4. 创建 masterServer 对象
-    const masterServer = { db };
+    const masterServer = { db, dataStore };
 
     // 4.1 初始化 Socket.IO 服务器（第一次调用，不含登录处理器）
     let tempHandlers = {
@@ -472,6 +488,7 @@ async function start() {
       [WORKER_HEARTBEAT]: (socket, msg) => heartbeatMonitor.handleHeartbeat(socket, msg),
       [WORKER_MESSAGE_DETECTED]: (socket, msg) => messageReceiver.handleMessageDetected(socket, msg),
       [WORKER_ACCOUNT_STATUS]: (socket, msg) => handleAccountStatus(socket, msg),
+      [WORKER_DATA_SYNC]: (socket, msg) => dataSyncReceiver.handleWorkerDataSync(socket, msg),
       [CLIENT_SYNC_REQUEST]: (socket, msg) => handleClientSync(socket, msg),
       onWorkerDisconnect: (socket) => workerRegistry.handleDisconnect(socket),
       onClientConnect: (socket) => handleClientConnect(socket),
@@ -1252,7 +1269,7 @@ async function start() {
 
     // IM 兼容层路由 (用于 crm-pc-im 客户端)
     const createIMRouter = require('./api/routes/im');
-    app.use('/api/im', createIMRouter(db));
+    app.use('/api/im', createIMRouter(db, dataStore));
     logger.info('IM compatibility layer routes mounted at /api/im');
 
     // DEBUG API 路由 (仅在 DEBUG 模式启用)

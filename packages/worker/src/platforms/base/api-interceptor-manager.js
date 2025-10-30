@@ -1,5 +1,10 @@
 /**
- * API 拦截器管理器 - 简化版
+ * API 拦截器管理器 - 增强版
+ *
+ * 改进：
+ * 1. 使用 page.on('response') 监听所有响应（包括 301 重定向后的响应）
+ * 2. 使用 minimatch 进行 glob 模式匹配
+ * 3. 记录重定向链路以便调试
  *
  * 使用方式：
  * const manager = new APIInterceptorManager(page);
@@ -9,13 +14,15 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const minimatch = require('minimatch');
 const logger = createLogger('api-interceptor');
 
 class APIInterceptorManager {
   constructor(page) {
     this.page = page;
     this.handlers = new Map(); // pattern -> [handler functions]
-    this.routes = new Map();   // pattern -> route function
+    this.responseListener = null;
+    this.redirectTracker = new Map(); // url -> redirect count
   }
 
   /**
@@ -34,33 +41,44 @@ class APIInterceptorManager {
    * 启用所有拦截器
    */
   async enable() {
-    for (const [pattern, handlers] of this.handlers.entries()) {
-      const routeHandler = async (route) => {
-        try {
-          const response = await route.fetch();
-          const body = await this.parseJSON(response);
+    // 使用 response 事件监听（能捕获重定向后的响应）
+    this.responseListener = async (response) => {
+      try {
+        const url = response.url();
+        const status = response.status();
 
-          // 调用所有注册的处理器
-          for (const handler of handlers) {
-            try {
-              await handler(body, route, response);
-            } catch (error) {
-              logger.error(`Handler failed:`, error);
+        // 记录重定向
+        if (status === 301 || status === 302) {
+          const location = response.headers()['location'];
+          this.redirectTracker.set(url, (this.redirectTracker.get(url) || 0) + 1);
+          logger.info(`🔄 [301/302] ${url} -> ${location}`);
+          return; // 不处理重定向本身，只处理最终响应
+        }
+
+        // 检查是否匹配任何注册的模式
+        for (const [pattern, handlers] of this.handlers.entries()) {
+          if (minimatch(url, pattern)) {
+            logger.info(`✅ [MATCH] ${pattern} -> ${url.substring(0, 100)}...`);
+
+            const body = await this.parseJSON(response);
+
+            // 调用所有注册的处理器
+            for (const handler of handlers) {
+              try {
+                await handler(body, response);
+              } catch (error) {
+                logger.error(`Handler failed for ${pattern}:`, error);
+              }
             }
           }
-
-          await route.fulfill({ response });
-        } catch (error) {
-          logger.error(`Route error:`, error);
-          await route.continue();
         }
-      };
+      } catch (error) {
+        logger.error(`Response listener error:`, error);
+      }
+    };
 
-      await this.page.route(pattern, routeHandler);
-      this.routes.set(pattern, routeHandler);
-    }
-
-    logger.info(`Enabled ${this.handlers.size} API patterns`);
+    this.page.on('response', this.responseListener);
+    logger.info(`Enabled ${this.handlers.size} API patterns (using response event)`);
   }
 
   /**
@@ -83,11 +101,20 @@ class APIInterceptorManager {
    * 清理拦截器
    */
   async cleanup() {
-    for (const [pattern, handler] of this.routes.entries()) {
-      await this.page.unroute(pattern, handler);
+    if (this.responseListener) {
+      this.page.off('response', this.responseListener);
+      this.responseListener = null;
     }
     this.handlers.clear();
-    this.routes.clear();
+    this.redirectTracker.clear();
+
+    // 输出重定向统计
+    if (this.redirectTracker.size > 0) {
+      logger.info(`📊 Redirect statistics:`);
+      for (const [url, count] of this.redirectTracker.entries()) {
+        logger.info(`  ${url}: ${count} redirects`);
+      }
+    }
   }
 }
 
