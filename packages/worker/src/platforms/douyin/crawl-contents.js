@@ -16,6 +16,7 @@ const { DataSource } = require('../base/data-models');
 const logger = createLogger('crawl-contents', './logs');
 
 // ==================== 全局状态（用于 API 回调）====================
+// 由 platform.js initialize() 时设置
 const globalContext = {
   dataManager: null,  // 当前活动的 DataManager
   accountId: null,    // 当前账户 ID
@@ -134,13 +135,37 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
  * API 返回格式: { item_info_list: [...], cursor, has_more, total_count, status_code }
  */
 async function onWorksListAPI(body, route) {
-  // ✅ 修正：检查 item_info_list 而不是 aweme_list
-  if (!body || !body.item_info_list) return;
-
+  const timestamp = new Date().toISOString();
   const url = route.request().url();
+
+  // 🔍 调试日志：记录 API 被触发
+  console.log(`[DEBUG] ${timestamp} - onWorksListAPI 被调用！`);
+  console.log(`[DEBUG] URL: ${url}`);
+  logger.info(`🎯 [API] 作品列表 API 被触发！URL: ${url}`);
+
+  // ✅ 修正：检查 item_info_list 而不是 aweme_list
+  if (!body || !body.item_info_list) {
+    logger.warn(`⚠️  [API] 作品列表响应无效（无 item_info_list），跳过处理`);
+    console.log(`[DEBUG] Body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
+    return;
+  }
+
+  console.log(`[DEBUG] 作品数量: ${body.item_info_list.length}`);
+  logger.info(`📦 [API] 作品列表包含 ${body.item_info_list.length} 个作品`);
+
+  // 🔍 调试：输出第一个作品的字段
+  if (body.item_info_list.length > 0) {
+    const firstItem = body.item_info_list[0];
+    console.log(`[DEBUG] 第一个作品的字段: ${Object.keys(firstItem).join(', ')}`);
+    console.log(`[DEBUG] 第一个作品 item_id: ${firstItem.item_id}`);
+    console.log(`[DEBUG] 第一个作品 item_id_plain: ${firstItem.item_id_plain}`);
+    console.log(`[DEBUG] 第一个作品 aweme_id: ${firstItem.aweme_id}`);
+    logger.info(`🔍 第一个作品字段: ${Object.keys(firstItem).slice(0, 10).join(', ')}`);
+  }
 
   // URL 去重
   if (apiData.cache.has(url)) {
+    console.log(`[DEBUG] URL 已存在于缓存，跳过处理`);
     return;
   }
 
@@ -149,13 +174,23 @@ async function onWorksListAPI(body, route) {
   // ✅ 使用 DataManager（如果可用）
   if (globalContext.dataManager && body.item_info_list.length > 0) {
     try {
+      console.log(`[DEBUG] 调用 DataManager.batchUpsertContents，数据源: API`);
       const contents = globalContext.dataManager.batchUpsertContents(
         body.item_info_list,
         DataSource.API
       );
+      console.log(`[DEBUG] DataManager 返回: ${contents.length} 个作品`);
       logger.info(`✅ [API] 作品列表 -> DataManager: ${contents.length} 个作品`);
     } catch (error) {
+      console.error(`[ERROR] DataManager 处理失败:`, error);
       logger.error(`[API] 作品列表处理失败:`, error);
+    }
+  } else {
+    if (!globalContext.dataManager) {
+      console.log(`[DEBUG] globalContext.dataManager 不存在`);
+    }
+    if (body.item_info_list.length === 0) {
+      console.log(`[DEBUG] item_info_list 长度为 0`);
     }
   }
 
@@ -609,6 +644,9 @@ module.exports = {
 
   // 爬取函数
   crawlContents,
+
+  // 全局上下文（供 platform.js 初始化时访问）
+  globalContext,
 
   // 工具函数（保留用于测试）
   extractWorksFromPage,

@@ -123,6 +123,8 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
   const { maxVideos = null } = options;
 
   // 设置全局上下文
+  // 注意：globalContext 已在 platform.initialize() 中统一设置
+  // 这里再次设置是为了向后兼容（如果直接调用此函数而不通过 platform）
   if (dataManager) {
     globalContext.dataManager = dataManager;
     globalContext.accountId = account.id;
@@ -145,6 +147,25 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     // API 拦截器已由 platform.js 在 initialize() 时统一注册
     // 不再需要在此处设置 page.on('response') 监听器
     logger.info('API 拦截器已全局启用（由 platform.js 管理）');
+
+    // 🔍 临时诊断：监控所有网络请求（查找 item/list 或 work 相关请求）
+    page.on('request', request => {
+      const url = request.url();
+      if (url.includes('item/list') || url.includes('work_list') || url.includes('/work')) {
+        logger.info(`📡 [Network Request] ${request.method()} ${url}`);
+        console.log(`[DEBUG Network] Request: ${url}`);
+      }
+    });
+
+    page.on('response', async response => {
+      const url = response.url();
+      if (url.includes('item/list') || url.includes('work_list') || url.includes('/work')) {
+        logger.info(`📥 [Network Response] ${response.status()} ${url}`);
+        console.log(`[DEBUG Network] Response: ${response.status()} ${url}`);
+      }
+    });
+
+    logger.info('🔍 网络请求监控已启用（监控 item/list 和 work 相关请求）');
 
     // 导航到评论管理页面
     await navigateToCommentManage(page);
@@ -907,6 +928,9 @@ module.exports = {
 
   // 爬取函数
   crawlComments,
+
+  // 全局上下文（供 platform.js 初始化时访问）
+  globalContext,
 
   // 工具函数（保留用于测试）
   navigateToCommentManage,

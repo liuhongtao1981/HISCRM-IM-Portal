@@ -180,6 +180,28 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
 
         logger.info(`[Phase 8] Conversation ${conversation.platform_user_name}: ${messages.length} messages`);
 
+        // ✅ 将 DOM 提取的消息发送到 DataManager
+        if (dataManager && messages.length > 0) {
+          try {
+            // 转换 DOM 格式到 DataManager 期望的格式
+            const formattedMessages = messages.map(msg => ({
+              message_id: msg.platform_message_id,
+              conversation_id: msg.conversation_id,
+              sender_id: msg.platform_sender_id || 'unknown',
+              sender_name: 'Unknown', // DOM 不包含发送者名称
+              content: msg.content,
+              type: msg.message_type || 'text',
+              direction: msg.direction || 'incoming',
+              created_at: msg.timestamp,
+            }));
+
+            const upsertedMessages = dataManager.batchUpsertMessages(formattedMessages, DataSource.DOM);
+            logger.info(`✅ [DOM] 会话消息 -> DataManager: ${upsertedMessages.length} 条 (会话: ${conversation.platform_user_name})`);
+          } catch (error) {
+            logger.error(`[DOM] 消息入库失败 (会话: ${conversation.platform_user_name}):`, error);
+          }
+        }
+
         // 返回会话列表 - 改进的返回逻辑
         await returnToConversationList(page);
 
@@ -1172,6 +1194,9 @@ module.exports = {
 
   // 爬取函数
   crawlDirectMessagesV2,
+
+  // 全局上下文（供 platform.js 初始化时访问）
+  globalContext,
 
   // 工具函数（保留用于测试）
   extractConversationsList,

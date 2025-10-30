@@ -44,6 +44,29 @@ class DouyinPlatform extends PlatformBase {
     // 调用基类初始化（初始化 DataManager）
     await super.initialize(account);
 
+    // ✅ 设置全局 DataManager 上下文（供所有爬虫模块的 API 拦截器使用）
+    const dataManager = this.dataManagers.get(account.id);
+    if (dataManager) {
+      // 导入各个爬虫模块的 globalContext 并设置
+      const { globalContext: contentsContext } = require('./crawl-contents');
+      const { globalContext: commentsContext } = require('./crawl-comments');
+      const { globalContext: dmContext } = require('./crawl-direct-messages-v2');
+
+      // 设置到所有爬虫模块的 globalContext（账户级别全局）
+      contentsContext.dataManager = dataManager;
+      contentsContext.accountId = account.id;
+
+      commentsContext.dataManager = dataManager;
+      commentsContext.accountId = account.id;
+
+      dmContext.dataManager = dataManager;
+      dmContext.accountId = account.id;
+
+      logger.info(`✅ DataManager 已设置到所有爬虫模块的 globalContext (账户: ${account.id})`);
+    } else {
+      logger.warn(`⚠️  DataManager 未初始化 (账户: ${account.id})`);
+    }
+
     // 页面和 API 拦截器会在爬虫函数中按需创建
     // 不需要在初始化时创建页面
 
@@ -58,12 +81,12 @@ class DouyinPlatform extends PlatformBase {
     logger.info(`Registering API handlers for account ${accountId}`);
 
     // 作品相关 API
-    manager.register('**/creator/item/list?**', onWorksListAPI);  // ✅ 修正：匹配带查询参数的 API
+    manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // ✅ 只匹配 /aweme/v1/creator/item/list
     manager.register('**/aweme/v1/web/aweme/detail/**', onWorkDetailAPI);
 
     // 评论相关 API
-    manager.register('**/comment/list?**', onCommentsListAPI);  // ✅ 正确
-    manager.register('**/comment/reply/list?**', onDiscussionsListAPI);  // ✅ 正确
+    manager.register('**/comment/list/select/**', onCommentsListAPI);  // 修正：匹配 /comment/list/select/
+    manager.register('**/comment/reply/list/**', onDiscussionsListAPI);  // 修正：更宽松的模式
 
     // 私信相关 API
     manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
@@ -696,6 +719,7 @@ class DouyinPlatform extends PlatformBase {
       const dataManager = await this.getDataManager(account.id);
       if (dataManager) {
         logger.info(`✅ [crawlComments] DataManager 可用，使用统一数据管理架构`);
+        // Note: crawl-contents.js 的 globalContext 已在 initialize() 时设置
       } else {
         logger.warn(`⚠️  [crawlComments] DataManager 创建失败，使用旧数据收集逻辑`);
       }

@@ -76,10 +76,25 @@ class AccountInitializer {
       // 6. 加载平台首页
       await this.loadPlatformHomepage(context, account);
 
-      // 7. 标记为已初始化
+      // 7. 初始化平台（设置 DataManager 等）
+      try {
+        const platformInstance = this.platformManager.getPlatform(account.platform);
+        if (platformInstance && typeof platformInstance.initialize === 'function') {
+          logger.info(`Initializing platform ${account.platform} for account ${account.id}...`);
+          await platformInstance.initialize(account);
+          logger.info(`Platform ${account.platform} initialized for account ${account.id}`);
+        } else {
+          logger.warn(`Platform ${account.platform} does not have initialize() method`);
+        }
+      } catch (error) {
+        logger.error(`Failed to initialize platform ${account.platform} for account ${account.id}:`, error);
+        // 平台初始化失败不影响浏览器启动，继续执行
+      }
+
+      // 8. 标记为已初始化
       this.initializedAccounts.add(account.id);
 
-      // 8. 在 DEBUG 模式下通知 MCP 浏览器已就绪
+      // 9. 在 DEBUG 模式下通知 MCP 浏览器已就绪
       if (debugConfig.enabled && this.chromeDevToolsMCP) {
         this.notifyMCPBrowserReady(account.id);
       }
