@@ -54,3 +54,4 @@ packages/mobile-client/.expo/
 .cache/
 nul
 .claude/settings.local.json
+*.har
