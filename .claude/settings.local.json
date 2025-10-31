@@ -69,7 +69,9 @@
       "Bash(git restore:*)",
       "Bash(find:*)",
       "Bash(for file in 手动触发评论抓取.js 检查所有爬虫数据.js 清理测试数据.js 清理评论讨论数据表.js 清空测试数据表.js 简单清理数据.js 验证discussions入库.js)",
-      "Bash(do)"
+      "Bash(do)",
+      "Bash(git rev-list:*)",
+      "Bash(git filter-branch:*)"
     ],
     "deny": [],
     "ask": [],
