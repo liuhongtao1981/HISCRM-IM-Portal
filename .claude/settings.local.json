@@ -72,7 +72,8 @@
       "Bash(do)",
       "Bash(git rev-list:*)",
       "Bash(git filter-branch:*)",
-      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)"
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(npm run dev:*)"
     ],
     "deny": [],
     "ask": [],
