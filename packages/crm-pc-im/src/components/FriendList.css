@@ -22,6 +22,7 @@
 .friend-list-content {
   flex: 1;
   overflow-y: auto;
+  min-height: 0; /* 关键：防止flex子元素内容溢出 */
 }
 
 .friend-item-wrapper {

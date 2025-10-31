@@ -188,7 +188,7 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
               message_id: msg.platform_message_id,
               conversation_id: msg.conversation_id,
               sender_id: msg.platform_sender_id || 'unknown',
-              sender_name: 'Unknown', // DOM 不包含发送者名称
+              sender_name: msg.platform_sender_name || msg.sender_nickname || 'Unknown', // ✅ 使用 React Fiber 提取的名称
               content: msg.content,
               type: msg.message_type || 'text',
               direction: msg.direction || 'incoming',
@@ -752,7 +752,14 @@ async function crawlCompleteMessageHistory(page, conversation, account, apiData)
           logger.info(`✅ Reached convergence at attempt ${attempts}. Total messages: ${currentCount}`);
           // 为每条消息添加会话信息
           currentMessages.forEach(msg => {
-            msg.conversation_id = conversation.id;
+            // 使用 senderId 作为 conversationId (for inbound)
+            const originalConvId = msg.conversation_id;
+            if (msg.direction === 'inbound' && msg.platform_sender_id) {
+              msg.conversation_id = msg.platform_sender_id;
+            } else {
+              msg.conversation_id = conversation.platform_user_id || conversation.id;
+            }
+            logger.warn(`[Line 755] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${msg.conversation_id} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id})`);
             msg.account_id = account.id;
           });
           return currentMessages;
@@ -773,7 +780,14 @@ async function crawlCompleteMessageHistory(page, conversation, account, apiData)
       if (!hasMoreFlag) {
         logger.info(`✅ Platform "has_more" flag indicates no more messages. Total: ${currentCount}`);
         currentMessages.forEach(msg => {
-          msg.conversation_id = conversation.id;
+          // 使用 senderId 作为 conversationId (for inbound)
+          const originalConvId = msg.conversation_id;
+          if (msg.direction === 'inbound' && msg.platform_sender_id) {
+            msg.conversation_id = msg.platform_sender_id;
+          } else {
+            msg.conversation_id = conversation.platform_user_id || conversation.id;
+          }
+          logger.warn(`[Line 783] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${msg.conversation_id} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id})`);
           msg.account_id = account.id;
         });
         return currentMessages;
@@ -798,7 +812,20 @@ async function crawlCompleteMessageHistory(page, conversation, account, apiData)
   // 获取最后的消息列表
   const finalMessages = await extractMessagesFromVirtualList(page);
   finalMessages.forEach(msg => {
-    msg.conversation_id = conversation.id;
+    // ✅ 最终修复方案：根据消息方向使用不同的逻辑
+    // - inbound 消息：对方是发送者，使用 platform_sender_id 作为会话ID
+    // - outbound 消息：需要使用 conversation.platform_user_id 或其他方式获取对方ID
+    const originalConvId = msg.conversation_id;
+    let conversationId;
+    if (msg.direction === 'inbound' && msg.platform_sender_id) {
+      // inbound 消息：发送者就是对方，这是纯数字 ID
+      conversationId = msg.platform_sender_id;
+    } else {
+      // outbound 消息：使用外层的 conversation.platform_user_id
+      conversationId = conversation.platform_user_id || conversation.id;
+    }
+    logger.warn(`[Line 814] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${conversationId} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id}, platform_user_id: ${conversation.platform_user_id})`);
+    msg.conversation_id = conversationId;
     msg.account_id = account.id;
   });
 
@@ -856,12 +883,31 @@ async function extractMessagesFromVirtualList(page) {
 
               // 只有当有实际内容时才添加
               if (textContent || props.messageId || props.serverId) {
-                // 解析 conversationId: 格式通常是 "0:1:userId:realConversationId"
-                // 提取最后一部分作为真实的会话ID
-                let realConversationId = props.conversationId;
-                if (props.conversationId && props.conversationId.includes(':')) {
-                  const parts = props.conversationId.split(':');
-                  realConversationId = parts[parts.length - 1]; // 获取最后一部分
+                // ✅ 关键修复：会话 ID 应该是**对方用户的 ID**，而不是抖音的 props.conversationId
+                // props.conversationId 是会话级别的ID，同一会话中所有消息都相同
+                // 我们需要根据消息方向来确定对方是谁
+                let realConversationId;
+                let recipientId = null;
+
+                if (!props.isFromMe) {
+                  // inbound 消息：对方是发送者
+                  const senderId = props.sender || props.senderId;
+                  realConversationId = senderId;  // 会话ID = 对方用户ID
+                  recipientId = props.receiver || props.receiverId || null;
+                } else {
+                  // outbound 消息：对方的 ID 需要从 conversationId 中提取
+                  // conversationId 格式可能是 "0:1:ourId:otherUserId"
+                  if (props.conversationId && props.conversationId.includes(':')) {
+                    const parts = props.conversationId.split(':');
+                    // 最后一部分通常是对方的用户 ID
+                    const otherUserId = parts[parts.length - 1];
+                    realConversationId = otherUserId;  // 会话ID = 对方用户ID
+                    recipientId = otherUserId;
+                  } else {
+                    // 如果 conversationId 不是 ":" 分隔格式，直接使用
+                    realConversationId = props.conversationId;
+                    recipientId = props.conversationId;
+                  }
                 }
 
                 const message = {
@@ -872,14 +918,18 @@ async function extractMessagesFromVirtualList(page) {
                   content: textContent.substring(0, 500) || (props.text || '').substring(0, 500),
                   timestamp: props.timestamp || props.createdAt || new Date().toISOString(),
                   message_type: props.type || 'text',
-                  // ✅ 新增：使用 props.sender 作为发送者ID（这是实际的用户ID）
+                  // ✅ 发送者ID
                   platform_sender_id: props.sender || props.senderId || (props.isFromMe ? 'self' : 'other'),
-                  // ✅ 新增：使用 props.nickname 作为发送者昵称
+                  // ✅ 发送者昵称
                   platform_sender_name: props.nickname || props.senderName || (props.isFromMe ? 'Me' : 'Other'),
-                  // ✅ 新增：发送者头像URL（仅对方消息有此字段）
+                  // ✅ 发送者头像URL（仅对方消息有此字段）
                   sender_avatar: props.avatar || null,
-                  // ✅ 新增：发送者昵称（仅对方消息有此字段）
+                  // ✅ 发送者昵称（仅对方消息有此字段）
                   sender_nickname: props.nickname || null,
+                  // ✅ 新增：接收者ID
+                  recipient_id: recipientId,
+                  // ✅ 新增：接收者昵称（如果有）
+                  recipient_name: props.receiverName || null,
                   direction: props.isFromMe ? 'outbound' : 'inbound',
                   created_at: Math.floor(new Date(props.timestamp || props.createdAt).getTime() / 1000),
                   is_read: props.isRead || false,
@@ -1069,7 +1119,7 @@ function extractCompleteMessageObjects(messages, apiData) {
         is_read: msg.is_read || false,
         created_at: msg.created_at || Math.floor(Date.now() / 1000),
         detected_at: Math.floor(Date.now() / 1000),
-        is_new: (Date.now() - msg.created_at * 1000) < 24 * 60 * 60 * 1000,
+        is_new: true,  // ✅ 修改: 首次抓取的消息 is_new = true（时效性由 Master 判断）
         push_count: 0
       };
 

@@ -42,8 +42,10 @@
 /* 账户列表滚动区域 */
 .wechat-account-scroll {
   flex: 1;
-  overflow-y: auto;
+  overflow-y: scroll; /* 强制显示滚动条 */
   overflow-x: hidden;
+  min-height: 0; /* 关键：让flex子元素可以滚动 */
+  max-height: 100%; /* 限制最大高度 */
 }
 
 .wechat-account-scroll .ant-list {
@@ -57,6 +59,7 @@
 .wechat-account-scroll .ant-spin-nested-loading,
 .wechat-account-scroll .ant-spin-container {
   height: auto !important;
+  max-height: none !important;
 }
 
 /* 账户列表项 */
@@ -490,4 +493,15 @@
 
 .ant-dropdown-menu-item:hover {
   background-color: #f5f5f5;
+}
+
+/* ==================== 未读评论列表样式 ==================== */
+.wechat-unread-comment-list {
+  background: #f7f7f7;
+}
+
+.unread-comment-item:hover {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  border-color: #1890ff !important;
+  transform: translateY(-2px);
 }

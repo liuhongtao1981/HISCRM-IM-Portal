@@ -198,18 +198,46 @@ async function start() {
     const successCount = initResults.filter(r => r.success).length;
     logger.info(`✓ Browsers initialized: ${successCount}/${assignedAccounts.length} succeeded`);
 
-    // 注意：DataManager 现在使用懒加载模式，会在第一次调用 getDataManager() 时自动创建
-    // 不需要在启动时显式初始化平台
+    // 9. 初始化平台和 DataManager（为所有已分配账户）
+    logger.info('Initializing platforms and DataManagers for assigned accounts...');
+    for (const account of assignedAccounts) {
+      logger.info(`Processing account ${account.id}, initialized: ${accountInitializer.isInitialized(account.id)}`);
+      if (accountInitializer.isInitialized(account.id)) {
+        try {
+          logger.info(`Getting platform for ${account.platform}...`);
+          const platform = platformManager.getPlatform(account.platform);
+          logger.info(`Platform found: ${!!platform}, type: ${platform ? platform.constructor.name : 'null'}`);
 
-    // 9. 初始化账号状态上报器（在 TaskRunner 之前创建）
+          if (platform) {
+            logger.info(`Calling platform.initialize() for account ${account.id}...`);
+            logger.info(`platform.initialize is a function: ${typeof platform.initialize === 'function'}`);
+            logger.info(`platform.dataManagers before: ${platform.dataManagers ? platform.dataManagers.size : 'undefined'}`);
+
+            const result = await platform.initialize(account);
+
+            logger.info(`platform.initialize() returned: ${result}`);
+            logger.info(`platform.dataManagers after: ${platform.dataManagers ? platform.dataManagers.size : 'undefined'}`);
+            logger.info(`✓ Platform initialized for account ${account.id}`);
+          } else {
+            logger.warn(`Platform ${account.platform} not found for account ${account.id}`);
+          }
+        } catch (error) {
+          logger.error(`Failed to initialize platform for account ${account.id}:`, error);
+          logger.error(`Error stack:`, error.stack);
+        }
+      }
+    }
+    logger.info('✓ Platform initialization completed');
+
+    // 10. 初始化账号状态上报器（在 TaskRunner 之前创建）
     accountStatusReporter = new AccountStatusReporter(socketClient.socket, WORKER_ID);
 
-    // 10. 启动任务执行器（传入 platformManager、accountStatusReporter 和 browserManager）
+    // 11. 启动任务执行器（传入 platformManager、accountStatusReporter 和 browserManager）
     taskRunner = new TaskRunner(socketClient, heartbeatSender, platformManager, accountStatusReporter, browserManager);
     taskRunner.start();
     logger.info('✓ Task runner started');
 
-    // 11. 添加已成功初始化的账户到任务执行器
+    // 12. 添加已成功初始化的账户到任务执行器
     let addedTasksCount = 0;
     for (const account of assignedAccounts) {
       if (accountInitializer.isInitialized(account.id)) {
@@ -357,10 +385,20 @@ async function handleTaskAssign(msg) {
     logger.info(`Initializing browser for newly assigned account ${account.id}...`);
     await accountInitializer.initializeAccount(account);
 
-    // 2. 添加到注册表
+    // 2. 初始化平台和 DataManager
+    logger.info(`Initializing platform for account ${account.id}...`);
+    const platform = platformManager.getPlatform(account.platform);
+    if (platform) {
+      await platform.initialize(account);
+      logger.info(`✓ Platform initialized for account ${account.id}`);
+    } else {
+      logger.warn(`Platform ${account.platform} not found, skipping platform initialization`);
+    }
+
+    // 3. 添加到注册表
     workerRegistration.addAccount(account);
 
-    // 3. 添加到任务执行器
+    // 4. 添加到任务执行器
     taskRunner.addTask(account);
 
     logger.info(`✓ Successfully added monitoring task for account ${account.id}`);

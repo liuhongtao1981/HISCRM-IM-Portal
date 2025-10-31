@@ -273,6 +273,40 @@ class WorkerBridge {
   }
 
   /**
+   * 发送消息到 Master (通用方法)
+   * @param {Object} message - 标准消息对象 (通过 createMessage 创建)
+   * @returns {Promise<void>}
+   */
+  async sendToMaster(message) {
+    if (!this.socket) {
+      const error = new Error('Socket not connected');
+      logger.error('Failed to send message to Master:', error);
+      throw error;
+    }
+
+    if (!this.socket.connected) {
+      const error = new Error('Socket is not connected');
+      logger.error('Failed to send message to Master:', error);
+      throw error;
+    }
+
+    try {
+      logger.debug(`Sending ${message.type} message to Master`, {
+        type: message.type,
+        hasPayload: !!message.payload,
+      });
+
+      // 通过标准 'message' 事件发送
+      this.socket.emit('message', message);
+
+      logger.debug(`Message ${message.type} sent successfully`);
+    } catch (error) {
+      logger.error(`Failed to send ${message.type} message to Master:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 设置 Socket 实例
    * @param {Socket} socket - Socket.IO 客户端实例
    */

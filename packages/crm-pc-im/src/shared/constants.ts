@@ -36,14 +36,6 @@ export const APP_CONFIG = {
   MIN_HEIGHT: 600
 } as const
 
-// Master 服务器配置
-export const MASTER_CONFIG = {
-  HOST: 'localhost',
-  PORT: 3000,
-  API_BASE_URL: 'http://localhost:3000/api/im',
-  WS_URL: 'ws://localhost:3000'
-} as const
-
 // 动画配置
 export const ANIMATION_CONFIG = {
   FLASH_INTERVAL: 600,

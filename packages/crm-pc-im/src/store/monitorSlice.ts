@@ -25,7 +25,7 @@ const initialState: MonitorState = {
   selectedTopicId: null,
   isConnected: false,
   channelPageSize: 20,
-  channelDisplayCount: 20
+  channelDisplayCount: 999  // 显示所有账户
 }
 
 const monitorSlice = createSlice({
@@ -129,6 +129,7 @@ const monitorSlice = createSlice({
         fromId: channelMessage.fromId,
         content: channelMessage.content,
         type: channelMessage.type,
+        messageCategory: channelMessage.messageCategory, // 添加消息分类
         timestamp: channelMessage.timestamp,
         serverTimestamp: channelMessage.serverTimestamp,
         fileUrl: channelMessage.fileUrl,

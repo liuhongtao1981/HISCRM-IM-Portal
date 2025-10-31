@@ -31,6 +31,7 @@ export interface Topic {
   unreadCount: number  // 未读消息数
   lastMessage?: string // 最后一条消息内容
   isPinned: boolean    // 是否置顶
+  isPrivate?: boolean  // 是否为私信主题
 }
 
 // 消息 (属于某个作品)
@@ -41,13 +42,15 @@ export interface Message {
   fromName?: string    // 发送者名称
   fromId?: string      // 发送者ID
   content: string
-  type: 'text' | 'file' | 'image'
+  type: 'text' | 'file' | 'image' | 'comment' // 消息类型
+  messageCategory?: 'private' | 'comment' // 消息分类: 私信或评论
   timestamp: number
   serverTimestamp?: number
   fileUrl?: string
   fileName?: string
   replyToId?: string   // 回复的消息ID (如果是回复消息)
   replyToContent?: string // 被回复的消息内容
+  isHandled?: boolean  // 是否已处理
 }
 
 // 新媒体账户消息 (为了兼容旧的WebSocket事件)
@@ -58,10 +61,12 @@ export interface ChannelMessage {
   fromName?: string    // 发送者名称
   fromId?: string      // 发送者ID
   content: string
-  type: 'text' | 'file' | 'image'
+  type: 'text' | 'file' | 'image' | 'comment'
+  messageCategory?: 'private' | 'comment' // 消息分类: 私信或评论
   timestamp: number
   serverTimestamp?: number
   fileUrl?: string
   fileName?: string
   replyToId?: string   // 回复的消息ID
+  isHandled?: boolean  // 是否已处理
 }

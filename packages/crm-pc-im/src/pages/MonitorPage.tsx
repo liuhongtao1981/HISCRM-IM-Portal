@@ -4,10 +4,11 @@
  * 两列布局: 左侧账户列表 | 右侧消息对话框
  */
 
-import { useState, useEffect, useRef } from 'react'
-import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined } from '@ant-design/icons'
+import React, { useState, useEffect, useRef } from 'react'
+import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs } from 'antd'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
+import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
 import {
   receiveMessage,
@@ -39,8 +40,10 @@ const { TextArea } = Input
 
 export default function MonitorPage() {
   const dispatch = useDispatch()
+  const navigate = useNavigate()
   const channels = useSelector((state: RootState) => state.monitor.channels)
   const topics = useSelector((state: RootState) => state.monitor.topics)
+  const messages = useSelector((state: RootState) => state.monitor.messages)
   const selectedChannelId = useSelector((state: RootState) => state.monitor.selectedChannelId)
   const selectedTopicId = useSelector((state: RootState) => state.monitor.selectedTopicId)
   const isConnected = useSelector((state: RootState) => state.monitor.isConnected)
@@ -55,6 +58,9 @@ export default function MonitorPage() {
   const [searchText, setSearchText] = useState('') // 账户搜索
   const [replyContent, setReplyContent] = useState('')
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
+  const [activeTab, setActiveTab] = useState<'private' | 'comment'>('comment') // 当前活动标签页
+  const [showCommentList, setShowCommentList] = useState(true) // 评论Tab下是否显示列表(而不是对话)
+  const [showPrivateList, setShowPrivateList] = useState(true) // 私信Tab下是否显示列表(而不是对话)
   const textAreaRef = useRef<any>(null)
   const channelListRef = useRef<HTMLDivElement>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -62,6 +68,108 @@ export default function MonitorPage() {
   const selectedChannel = channels.find(ch => ch.id === selectedChannelId)
   const currentTopics = selectedChannelId ? topics[selectedChannelId] || [] : []
   const selectedTopic = currentTopics.find(tp => tp.id === selectedTopicId)
+
+  // 计算私信和评论的未处理数量
+  const privateUnhandledCount = currentMessages.filter(msg =>
+    msg.messageCategory === 'private' && !msg.isHandled
+  ).length
+  const commentUnhandledCount = currentMessages.filter(msg =>
+    (msg.messageCategory === 'comment' || !msg.messageCategory) && !msg.isHandled
+  ).length
+
+  // 根据当前标签页过滤消息
+  const filteredMessages = currentMessages.filter(msg => {
+    if (activeTab === 'private') {
+      return msg.messageCategory === 'private'
+    } else {
+      // 评论标签页:显示评论消息或没有分类的消息(兼容旧数据)
+      return msg.messageCategory === 'comment' || !msg.messageCategory
+    }
+  })
+
+  // 构建未读评论列表(按作品分组,显示每个作品的未读数量和最新消息)
+  const unreadCommentsByTopic = React.useMemo(() => {
+    if (!selectedChannelId) return []
+
+    const topicsWithUnread: Array<{
+      topic: Topic
+      unreadCount: number
+      lastUnreadMessage: Message
+    }> = []
+
+    // 遍历该账户的所有作品
+    currentTopics.forEach(topic => {
+      // 获取该作品的所有未读评论消息
+      const topicMessages = messages[topic.id] || []
+      const unreadMessages = topicMessages.filter(msg =>
+        (msg.messageCategory === 'comment' || !msg.messageCategory) &&
+        !msg.isHandled &&
+        msg.fromId !== 'monitor_client' // 排除客服自己发的消息
+      )
+
+      if (unreadMessages.length > 0) {
+        // 按时间降序排序,取最新的一条
+        const sortedUnread = [...unreadMessages].sort((a, b) => b.timestamp - a.timestamp)
+        topicsWithUnread.push({
+          topic,
+          unreadCount: unreadMessages.length,
+          lastUnreadMessage: sortedUnread[0]
+        })
+      }
+    })
+
+    // 按最新未读消息时间降序排列
+    return topicsWithUnread.sort((a, b) =>
+      b.lastUnreadMessage.timestamp - a.lastUnreadMessage.timestamp
+    )
+  }, [selectedChannelId, currentTopics, messages])
+
+  // 构建私信列表(按作品分组,按最新消息时间倒序排列)
+  const privateMessagesByTopic = React.useMemo(() => {
+    if (!selectedChannelId) return []
+
+    const topicsWithPrivate: Array<{
+      topic: Topic
+      messageCount: number
+      unreadCount: number
+      lastMessage: Message
+    }> = []
+
+    // 遍历该账户的所有主题(包括普通作品和私信主题)
+    currentTopics.forEach(topic => {
+      // 获取该主题的所有消息
+      const topicMessages = messages[topic.id] || []
+
+      // 如果主题标记为私信主题,或者包含私信消息,则添加到列表
+      const privateMessages = topicMessages.filter(msg =>
+        msg.messageCategory === 'private'
+      )
+
+      // 只有当有私信消息,或者主题被标记为私信主题时才添加
+      if (privateMessages.length > 0 || topic.isPrivate) {
+        // 按时间降序排序,取最新的一条
+        const sortedMessages = [...privateMessages].sort((a, b) => b.timestamp - a.timestamp)
+        const unreadMessages = privateMessages.filter(msg =>
+          !msg.isHandled && msg.fromId !== 'monitor_client'
+        )
+
+        // 如果有消息,则添加到列表
+        if (sortedMessages.length > 0) {
+          topicsWithPrivate.push({
+            topic,
+            messageCount: privateMessages.length,
+            unreadCount: unreadMessages.length,
+            lastMessage: sortedMessages[0]
+          })
+        }
+      }
+    })
+
+    // 按最新消息时间降序排列
+    return topicsWithPrivate.sort((a, b) =>
+      b.lastMessage.timestamp - a.lastMessage.timestamp
+    )
+  }, [selectedChannelId, currentTopics, messages])
 
   // 调试日志
   useEffect(() => {
@@ -79,9 +187,8 @@ export default function MonitorPage() {
     ch.name.toLowerCase().includes(searchText.toLowerCase())
   )
 
-  // 确保 channelDisplayCount 有默认值
-  const safeChannelDisplayCount = channelDisplayCount || 20
-  const displayedChannels = filteredChannels.slice(0, Math.min(safeChannelDisplayCount, filteredChannels.length))
+  // 显示所有账户（不限制数量）
+  const displayedChannels = filteredChannels
 
   // 连接服务器
   useEffect(() => {
@@ -93,7 +200,8 @@ export default function MonitorPage() {
           localStorage.setItem('crm-im-client-id', clientId)
         }
 
-        await websocketService.connect('ws://localhost:8080')
+        // 不传 URL 参数,使用 config.json 中的配置
+        await websocketService.connect()
         console.log('[监控] WebSocket 连接成功')
         dispatch(setConnected(true))
 
@@ -162,6 +270,13 @@ export default function MonitorPage() {
     dispatch(selectChannel(channelId))
     websocketService.emit('monitor:request_topics', { channelId })
 
+    // 如果当前在评论Tab,显示未读评论列表
+    if (activeTab === 'comment') {
+      setShowCommentList(true)
+    } else if (activeTab === 'private') {
+      setShowPrivateList(true)
+    }
+
     // 延迟选择作品（优先选择有未读消息的作品，否则选择最新消息的作品）
     setTimeout(() => {
       const topicsForChannel = topics[channelId] || []
@@ -198,15 +313,63 @@ export default function MonitorPage() {
     console.log('[请求消息] topicId:', topicId)
   }
 
+  // 从未读评论列表点击进入对话
+  const handleEnterTopicFromCommentList = (topicId: string) => {
+    console.log('[从未读列表进入] topicId:', topicId)
+    dispatch(selectTopic(topicId))
+    websocketService.emit('monitor:request_messages', { topicId })
+    setShowCommentList(false) // 切换到对话视图
+  }
+
+  // 返回未读评论列表
+  const handleBackToCommentList = () => {
+    setShowCommentList(true)
+    dispatch(selectTopic('')) // 清除选中的作品
+  }
+
+  // 从私信列表点击进入对话
+  const handleEnterTopicFromPrivateList = (topicId: string) => {
+    console.log('[从私信列表进入] topicId:', topicId)
+    dispatch(selectTopic(topicId))
+    websocketService.emit('monitor:request_messages', { topicId })
+    setShowPrivateList(false) // 切换到对话视图
+  }
+
+  // 返回私信列表
+  const handleBackToPrivateList = () => {
+    setShowPrivateList(true)
+    dispatch(selectTopic('')) // 清除选中的作品
+  }
+
   // 发送消息
   const handleSendMessage = () => {
     if (!replyContent.trim() || !selectedChannelId || !selectedTopicId) {
       return
     }
 
+    // 立即在本地添加消息(乐观更新)
+    const tempMessage: ChannelMessage = {
+      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+      topicId: selectedTopicId,
+      channelId: selectedChannelId,
+      fromName: '客服',
+      fromId: 'monitor_client',
+      content: replyContent.trim(),
+      type: 'comment',
+      timestamp: Date.now(),
+      serverTimestamp: Date.now(),
+      replyToId: replyToMessage?.id,
+      replyToContent: replyToMessage?.content
+    }
+
+    // 立即更新本地状态
+    dispatch(receiveMessage(tempMessage))
+
+    // 发送到服务器
     websocketService.emit('monitor:reply', {
       channelId: selectedChannelId,
       topicId: selectedTopicId,
+      type: 'comment',  // 指定消息类型为评论
       replyToId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
       content: replyContent.trim()
@@ -225,6 +388,17 @@ export default function MonitorPage() {
   const handleReplyToMessage = (message: Message) => {
     setReplyToMessage(message)
     textAreaRef.current?.focus()
+  }
+
+  // 退出登录
+  const handleLogout = () => {
+    // 清除登录状态
+    localStorage.removeItem('isLoggedIn')
+    localStorage.removeItem('username')
+    // 断开 WebSocket 连接
+    websocketService.disconnect()
+    // 跳转到登录页
+    navigate('/login')
   }
 
   // 处理键盘事件
@@ -355,7 +529,7 @@ export default function MonitorPage() {
 
       {/* 右侧消息对话框 */}
       <Content className="wechat-chat-content">
-        {selectedChannel && selectedTopic ? (
+        {selectedChannel && (selectedTopic || (activeTab === 'comment' && showCommentList)) ? (
           <>
             {/* 对话框头部 */}
             <div className="wechat-chat-header">
@@ -363,33 +537,249 @@ export default function MonitorPage() {
                 <Text strong style={{ fontSize: 16 }}>
                   {selectedChannel.name}
                 </Text>
-                {currentTopics.length > 1 && (
-                  <Dropdown overlay={topicsMenu} trigger={['click']}>
-                    <Button type="text" size="small" style={{ marginLeft: 8 }}>
-                      {selectedTopic.title} ({currentTopics.length})
-                    </Button>
-                  </Dropdown>
-                )}
               </div>
               <div className="wechat-chat-actions">
-                <Text type="secondary" style={{ fontSize: 12 }}>
+                <Text type="secondary" style={{ fontSize: 12, marginRight: 12 }}>
                   {isConnected ? '● 在线' : '○ 离线'}
                 </Text>
+                <Button
+                  type="text"
+                  icon={<LogoutOutlined />}
+                  onClick={handleLogout}
+                  danger
+                >
+                  退出登录
+                </Button>
               </div>
             </div>
 
-            {/* 消息列表 */}
-            <div ref={messageListRef} className="wechat-message-list">
-              {currentMessages.length > 0 ? (
+            {/* 标签页切换 */}
+            <Tabs
+              activeKey={activeTab}
+              onChange={(key) => setActiveTab(key as 'private' | 'comment')}
+              style={{ padding: '0 20px', backgroundColor: '#f7f7f7' }}
+              items={[
+                {
+                  key: 'comment',
+                  label: (
+                    <span>
+                      <CommentOutlined />
+                      作品评论
+                      {commentUnhandledCount > 0 && (
+                        <Badge
+                          count={commentUnhandledCount}
+                          style={{ marginLeft: 8 }}
+                        />
+                      )}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'private',
+                  label: (
+                    <span>
+                      <MessageOutlined />
+                      私信
+                      {privateUnhandledCount > 0 && (
+                        <Badge
+                          count={privateUnhandledCount}
+                          style={{ marginLeft: 8 }}
+                        />
+                      )}
+                    </span>
+                  ),
+                },
+              ]}
+            />
+
+            {/* 评论Tab下的未读评论列表 */}
+            {activeTab === 'comment' && showCommentList ? (
+              <div className="wechat-unread-comment-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+                {unreadCommentsByTopic.length > 0 ? (
+                  <List
+                    dataSource={unreadCommentsByTopic}
+                    renderItem={(item) => (
+                      <List.Item
+                        key={item.topic.id}
+                        onClick={() => handleEnterTopicFromCommentList(item.topic.id)}
+                        style={{
+                          cursor: 'pointer',
+                          padding: '16px',
+                          marginBottom: '12px',
+                          backgroundColor: '#fff',
+                          borderRadius: '8px',
+                          border: '1px solid #e8e8e8',
+                          transition: 'all 0.3s'
+                        }}
+                        className="unread-comment-item"
+                      >
+                        <List.Item.Meta
+                          avatar={
+                            <Badge count={item.unreadCount} offset={[-5, 5]}>
+                              <Avatar
+                                size={48}
+                                icon={<CommentOutlined />}
+                                style={{ backgroundColor: '#1890ff' }}
+                              />
+                            </Badge>
+                          }
+                          title={
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text strong style={{ fontSize: 15 }}>
+                                {item.topic.title}
+                              </Text>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {formatTime(item.lastUnreadMessage.timestamp)}
+                              </Text>
+                            </div>
+                          }
+                          description={
+                            <div>
+                              <Text type="secondary" style={{ fontSize: 13 }}>
+                                {item.lastUnreadMessage.fromName}: {truncateText(item.lastUnreadMessage.content, 50)}
+                              </Text>
+                            </div>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty
+                    description="暂无未读评论"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    style={{ marginTop: '100px' }}
+                  />
+                )}
+              </div>
+            ) : activeTab === 'private' && showPrivateList ? (
+              /* 私信Tab下的私信列表 */
+              <div className="wechat-private-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+                {privateMessagesByTopic.length > 0 ? (
+                  <List
+                    dataSource={privateMessagesByTopic}
+                    renderItem={(item) => (
+                      <List.Item
+                        key={item.topic.id}
+                        onClick={() => handleEnterTopicFromPrivateList(item.topic.id)}
+                        style={{
+                          cursor: 'pointer',
+                          padding: '16px',
+                          marginBottom: '12px',
+                          backgroundColor: '#fff',
+                          borderRadius: '8px',
+                          border: '1px solid #e8e8e8',
+                          transition: 'all 0.3s'
+                        }}
+                        className="private-message-item"
+                      >
+                        <List.Item.Meta
+                          avatar={
+                            <Badge count={item.unreadCount} offset={[-5, 5]}>
+                              <Avatar
+                                size={48}
+                                icon={<MessageOutlined />}
+                                style={{ backgroundColor: '#52c41a' }}
+                              />
+                            </Badge>
+                          }
+                          title={
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <Text strong style={{ fontSize: 15 }}>
+                                {item.topic.title}
+                              </Text>
+                              <Text type="secondary" style={{ fontSize: 12 }}>
+                                {formatTime(item.lastMessage.timestamp)}
+                              </Text>
+                            </div>
+                          }
+                          description={
+                            <div>
+                              <Text type="secondary" style={{ fontSize: 13 }}>
+                                {item.lastMessage.fromName}: {truncateText(item.lastMessage.content, 50)}
+                              </Text>
+                            </div>
+                          }
+                        />
+                      </List.Item>
+                    )}
+                  />
+                ) : (
+                  <Empty
+                    description="暂无私信"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    style={{ marginTop: '100px' }}
+                  />
+                )}
+              </div>
+            ) : (
+              <>
+                {/* 对话视图 - 显示返回按钮 (评论Tab) */}
+                {activeTab === 'comment' && !showCommentList && selectedTopic && (
+                  <div style={{
+                    padding: '12px 20px',
+                    backgroundColor: '#f7f7f7',
+                    borderBottom: '1px solid #e8e8e8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <Button
+                      type="link"
+                      icon={<CloseOutlined />}
+                      onClick={handleBackToCommentList}
+                      style={{ padding: 0 }}
+                    >
+                      返回未读列表
+                    </Button>
+                    <Text strong style={{ fontSize: 14, color: '#191919' }}>
+                      {selectedTopic.title}
+                    </Text>
+                  </div>
+                )}
+
+                {/* 对话视图 - 显示返回按钮 (私信Tab) */}
+                {activeTab === 'private' && !showPrivateList && selectedTopic && (
+                  <div style={{
+                    padding: '12px 20px',
+                    backgroundColor: '#f7f7f7',
+                    borderBottom: '1px solid #e8e8e8',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between'
+                  }}>
+                    <Button
+                      type="link"
+                      icon={<CloseOutlined />}
+                      onClick={handleBackToPrivateList}
+                      style={{ padding: 0 }}
+                    >
+                      返回私信列表
+                    </Button>
+                    <Text strong style={{ fontSize: 14, color: '#191919' }}>
+                      {selectedTopic.title}
+                    </Text>
+                  </div>
+                )}
+
+                {/* 消息列表 */}
+                <div ref={messageListRef} className="wechat-message-list">
+              {filteredMessages.length > 0 ? (
                 (() => {
-                  // 分离主消息（评论）和讨论回复
-                  const mainMessages = currentMessages.filter(msg => !msg.replyToId)
-                  const discussions = currentMessages.filter(msg => msg.replyToId)
+                  // 私信Tab下显示所有消息(不区分主消息和讨论),评论Tab下区分主消息和讨论
+                  const mainMessages = activeTab === 'private'
+                    ? filteredMessages
+                    : filteredMessages.filter(msg => !msg.replyToId)
+                  const discussions = activeTab === 'private'
+                    ? []
+                    : filteredMessages.filter(msg => msg.replyToId)
 
                   // 渲染消息和其讨论
                   const renderMessageWithDiscussions = (mainMsg: Message) => {
                     const isReply = mainMsg.fromId === 'monitor_client' || mainMsg.fromName === '客服'
-                    const msgDiscussions = discussions.filter(d => d.replyToId === mainMsg.id)
+                    const msgDiscussions = activeTab === 'private'
+                      ? []
+                      : discussions.filter(d => d.replyToId === mainMsg.id)
 
                     return (
                       <div key={mainMsg.id} className="wechat-message-group">
@@ -420,16 +810,19 @@ export default function MonitorPage() {
 
                             <div className="wechat-message-content">
                               <div className={`wechat-message-bubble ${isReply ? 'bubble-right' : 'bubble-left'}`}>
-                                {mainMsg.type === 'text' ? (
+                                {mainMsg.type === 'text' || mainMsg.type === 'comment' ? (
                                   <Text>{mainMsg.content}</Text>
                                 ) : mainMsg.type === 'file' ? (
                                   <Text>[文件] {mainMsg.fileName}</Text>
-                                ) : (
+                                ) : mainMsg.type === 'image' ? (
                                   <Text>[图片]</Text>
+                                ) : (
+                                  <Text>{mainMsg.content}</Text>
                                 )}
                               </div>
 
-                              {!isReply && (
+                              {/* 评论Tab下显示讨论按钮,私信Tab下不显示 */}
+                              {!isReply && activeTab === 'comment' && (
                                 <div className="wechat-message-actions">
                                   <Button
                                     type="link"
@@ -486,10 +879,10 @@ export default function MonitorPage() {
                   <Empty description="暂无消息" image={Empty.PRESENTED_IMAGE_SIMPLE} />
                 </div>
               )}
-            </div>
+                </div>
 
-            {/* 输入框区域 */}
-            <div className="wechat-input-area">
+                {/* 输入框区域 */}
+                <div className="wechat-input-area">
               {replyToMessage && (
                 <div className="wechat-reply-hint">
                   <Text type="secondary" style={{ fontSize: 12 }}>
@@ -524,7 +917,9 @@ export default function MonitorPage() {
                   发送
                 </Button>
               </div>
-            </div>
+                </div>
+              </>
+            )}
           </>
         ) : (
           <div className="wechat-empty-state">

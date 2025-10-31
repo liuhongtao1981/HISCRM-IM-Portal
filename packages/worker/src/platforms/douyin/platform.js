@@ -938,13 +938,8 @@ class DouyinPlatform extends PlatformBase {
       // 3. 处理直接消息数据 (添加 account_id 等字段)
       logger.debug(`[crawlDirectMessages] Step 3: Processing ${rawDirectMessages.length} direct messages`);
 
-      const createIsNewFlag = (createdAt) => {
-        const now = Math.floor(Date.now() / 1000);
-        const ageSeconds = now - createdAt;
-        const oneDaySeconds = 24 * 60 * 60;
-        return ageSeconds < oneDaySeconds;
-      };
-
+      // ✅ 优化: is_new 表示"首次抓取"，而不是基于时间判断
+      // Worker 只负责数据完整性，不关心业务逻辑（时效性由 Master 处理）
       const directMessages = rawDirectMessages.map((msg) => {
         let createdAt = msg.created_at || msg.create_time || Math.floor(Date.now() / 1000);
 
@@ -958,7 +953,7 @@ class DouyinPlatform extends PlatformBase {
           account_id: account.id,
           is_read: false,
           created_at: createdAt,
-          is_new: createIsNewFlag(createdAt),
+          is_new: true,  // ✅ 修改: 首次抓取的私信 is_new = true（时效性由 Master 判断）
           push_count: 0,
         };
       });
@@ -1165,20 +1160,14 @@ class DouyinPlatform extends PlatformBase {
         await this.sendWorksToMaster(account, videos);
       }
 
-      // 计算 is_new 标志的辅助函数
-      const createIsNewFlag = (createdAt) => {
-        const now = Math.floor(Date.now() / 1000);
-        const ageSeconds = now - createdAt;
-        const oneDaySeconds = 24 * 60 * 60;  // 86400
-        return ageSeconds < oneDaySeconds;
-      };
-
-      // 为评论添加必需的 id 和 account_id 字段，以及 is_new 和 push_count 字段
-      // 使用 platform_comment_id 作为唯一标识
+      // ✅ 优化: is_new 表示"首次抓取"，而不是基于时间判断
+      // Worker 只负责数据完整性，不关心业务逻辑（时效性由 Master 处理）
+      // 由于 newComments 已经是通过 cacheManager.filterNewComments() 过滤的首次抓取数据
+      // 所以这里的 is_new 应该全部为 true
       const commentsWithIds = newComments.map((comment) => ({
         id: comment.platform_comment_id,  // 使用 platform_comment_id 作为唯一ID
         account_id: account.id,  // 添加账户ID
-        is_new: createIsNewFlag(comment.create_time),  // 基于 create_time 计算 is_new
+        is_new: true,  // ✅ 修改: 首次抓取的评论 is_new = true
         push_count: 0,  // 初始推送计数为0
         ...comment,
       }));

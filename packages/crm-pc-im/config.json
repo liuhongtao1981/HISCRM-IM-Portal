@@ -1,0 +1,13 @@
+{
+  "websocket": {
+    "url": "http://localhost:3000",
+    "reconnection": true,
+    "reconnectionDelay": 1000,
+    "reconnectionDelayMax": 5000,
+    "reconnectionAttempts": 5
+  },
+  "app": {
+    "name": "CRM PC IM",
+    "version": "1.0.0"
+  }
+}

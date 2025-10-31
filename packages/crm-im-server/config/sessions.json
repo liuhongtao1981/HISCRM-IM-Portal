@@ -107,6 +107,102 @@
       "lastReplyTime": null,
       "replyCount": 0,
       "status": "active"
+    },
+    {
+      "id": "session_1761666351540_wrw9n85fx",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761666351540,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761667198809_dvvu58dq8",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761667198809,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761667241177_xsqyhfkfj",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761667241177,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761667272369_wyh4x8rgb",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761667272369,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761667284415_5gjzjwr71",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761667284415,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761669705577_xb9foih0x",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761669705577,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761669725503_6j3lf8962",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761669725503,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
+    },
+    {
+      "id": "session_1761686602554_w3rjc0ml0",
+      "userId": "10001",
+      "userName": "张三",
+      "channelId": "private_messages",
+      "topicId": "private_10001",
+      "firstMessage": "你好,我是张三,有事情想私下咨询",
+      "createdTime": 1761686602554,
+      "lastReplyTime": null,
+      "replyCount": 0,
+      "status": "active"
     }
   ]
 }

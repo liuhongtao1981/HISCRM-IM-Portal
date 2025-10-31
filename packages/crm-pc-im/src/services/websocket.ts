@@ -3,23 +3,27 @@
  */
 
 import { io, Socket } from 'socket.io-client'
-import { WS_EVENTS, MASTER_CONFIG } from '@shared/constants'
+import { WS_EVENTS } from '@shared/constants'
 import type { Message } from '@shared/types'
+// @ts-ignore - config.json 在构建时会被复制到输出目录
+import config from '../../config.json'
 
 class WebSocketService {
   private socket: Socket | null = null
-  private url: string = MASTER_CONFIG.WS_URL
+  private url: string = config.websocket?.url || 'http://localhost:3000'
   private isConnected: boolean = false
 
-  connect(url: string): Promise<void> {
+  connect(url?: string): Promise<void> {
     return new Promise((resolve, reject) => {
       try {
-        this.url = url
-        this.socket = io(url, {
-          reconnection: true,
-          reconnectionDelay: 1000,
-          reconnectionDelayMax: 5000,
-          reconnectionAttempts: 5,
+        // 如果提供了 url 参数,则使用参数;否则使用配置文件或默认值
+        const connectionUrl = url || this.url
+        this.url = connectionUrl
+        this.socket = io(connectionUrl, {
+          reconnection: config.websocket?.reconnection ?? true,
+          reconnectionDelay: config.websocket?.reconnectionDelay ?? 1000,
+          reconnectionDelayMax: config.websocket?.reconnectionDelayMax ?? 5000,
+          reconnectionAttempts: config.websocket?.reconnectionAttempts ?? 5,
           transports: ['websocket', 'polling']
         })
 

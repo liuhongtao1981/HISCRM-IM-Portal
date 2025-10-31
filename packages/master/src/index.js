@@ -512,7 +512,13 @@ async function start() {
     adminNamespace = socketNamespaces.adminNamespace;
     logger.info('Socket.IO server initialized');
 
-    // 4.2 初始化 NotificationHandler（在 Socket.IO 之后）
+    // 4.2 初始化 IM WebSocket 服务器 (CRM PC IM 客户端)
+    const IMWebSocketServer = require('./communication/im-websocket-server');
+    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore);
+    imWebSocketServer.setupHandlers();
+    logger.info('IM WebSocket Server initialized');
+
+    // 4.3 初始化 NotificationHandler（在 Socket.IO 之后）
     notificationHandler = new NotificationHandler(db, socketNamespaces);
     logger.info('Notification handler initialized');
 

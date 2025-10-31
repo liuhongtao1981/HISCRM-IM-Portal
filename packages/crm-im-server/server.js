@@ -391,7 +391,7 @@ app.get('/api/messages', (req, res) => {
 
 // HTTP 路由 - 向指定频道发送测试消息 (用于测试)
 app.post('/api/send-test-message', (req, res) => {
-  const { channelId, topicId, content, fromUserId, fromUserName, parentId } = req.body
+  const { channelId, topicId, content, fromUserId, fromUserName, parentId, messageType, messageCategory } = req.body
 
   if (!channelId || !topicId || !content) {
     return res.status(400).json({ error: '缺少必要参数(channelId, topicId, content)' })
@@ -407,6 +407,17 @@ app.post('/api/send-test-message', (req, res) => {
     type: 'text',
     timestamp: Date.now(),
     serverTimestamp: Date.now()
+  }
+
+  // 添加消息分类字段(用于区分私信和评论)
+  if (messageCategory) {
+    message.messageCategory = messageCategory
+  } else if (messageType === 'private') {
+    // 如果明确指定了messageType为private,则设置为私信
+    message.messageCategory = 'private'
+  } else {
+    // 默认为评论
+    message.messageCategory = 'comment'
   }
 
   // 如果提供了 parentId，则添加到消息对象中（用于评论的2级讨论）
@@ -636,7 +647,7 @@ io.on('connection', (socket) => {
 
   // 监控客户端发送回复
   socket.on('monitor:reply', (data) => {
-    const { channelId, topicId, content, replyToId, replyToContent } = data
+    const { channelId, topicId, content, replyToId, replyToContent, type } = data
     console.log(`[监控] 收到回复消息:`, data)
 
     // 创建回复消息
@@ -647,7 +658,7 @@ io.on('connection', (socket) => {
       fromName: '客服',
       fromId: 'monitor_client',
       content: content,
-      type: 'text',
+      type: type || 'comment',  // 使用客户端传来的type,默认为comment
       timestamp: Date.now(),
       serverTimestamp: Date.now(),
       replyToId: replyToId,

@@ -67,18 +67,46 @@ class DouyinDataManager extends AccountDataManager {
    * 来源：DOM 提取或 API
    */
   mapMessageData(douyinData) {
+    // 发送者和接收者 ID
+    // 爬虫v2提取的字段: platform_sender_id, recipient_id
+    // 老版本字段: sender_id, from_user_id, to_user_id
+    const senderId = String(
+      douyinData.platform_sender_id ||
+      douyinData.sender_id ||
+      douyinData.from_user_id ||
+      'unknown'
+    );
+
+    const recipientId = String(
+      douyinData.recipient_id ||
+      douyinData.to_user_id ||
+      'unknown'
+    );
+
+    // ✅ 关键修复：直接使用 conversation_id，不做任何推断
+    // conversation_id 来自 React Fiber props.conversationId，这是抖音前端提供的唯一会话标识
+    // 格式可能是复杂的字符串（如 "0:1:userId:otherUserId"），但这个完整字符串才能唯一标识会话
+    let conversationId = douyinData.conversation_id;
+
+    // 只有在完全缺失时才记录警告
+    if (!conversationId || conversationId === 'undefined') {
+      this.logger.warn(`[警告] 消息 ${douyinData.platform_message_id || douyinData.message_id} 缺少 conversation_id！这会导致无法正确分组消息。senderId: ${senderId}, recipientId: ${recipientId}, direction: ${douyinData.direction}`);
+      // 使用 senderId 或 recipientId 作为后备
+      conversationId = senderId !== 'unknown' ? senderId : recipientId;
+    }
+
     return {
       // 关联信息
-      messageId: String(douyinData.message_id || douyinData.msg_id || `msg_${Date.now()}`),
-      conversationId: String(douyinData.conversation_id),
+      messageId: String(douyinData.message_id || douyinData.msg_id || douyinData.platform_message_id || `msg_${Date.now()}`),
+      conversationId: String(conversationId),
 
       // 发送者信息
-      senderId: String(douyinData.sender_id || douyinData.from_user_id),
-      senderName: douyinData.sender_name || douyinData.from_nickname || 'Unknown',
+      senderId: senderId,
+      senderName: douyinData.platform_sender_name || douyinData.sender_name || douyinData.from_nickname || 'Unknown',
       senderAvatar: this.extractAvatarUrl(douyinData.sender_avatar || douyinData.from_avatar),
 
       // 接收者信息
-      recipientId: String(douyinData.recipient_id || douyinData.to_user_id),
+      recipientId: recipientId,
       recipientName: douyinData.recipient_name || douyinData.to_nickname,
 
       // 消息内容
