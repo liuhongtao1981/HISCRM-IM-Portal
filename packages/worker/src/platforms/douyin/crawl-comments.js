@@ -516,14 +516,26 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
             }
           }
 
+          // 🔧 时区修正: 抖音API返回的时间戳是UTC+8时区的
+          // 需要减去8小时（28800秒）转换为标准UTC时间戳
+          const TIMEZONE_OFFSET = 8 * 3600; // 8小时 = 28800秒
+          const utcTimestamp = createTimeSeconds - TIMEZONE_OFFSET;
+
+          if (respIdx === 0 && cIdx === 0) {
+            logger.info(`   🌐 Timezone correction:`);
+            logger.info(`      Original (UTC+8): ${new Date(createTimeSeconds * 1000).toUTCString()}`);
+            logger.info(`      Corrected (UTC): ${new Date(utcTimestamp * 1000).toUTCString()}`);
+            logger.info(`      Display (UTC+8): ${new Date(utcTimestamp * 1000).toLocaleString('zh-CN')}`);
+          }
+
           comments.push({
             platform_comment_id: c.comment_id,
             content: c.text,
             author_name: c.user_info?.screen_name || '匿名',
             author_id: c.user_info?.user_id || '',
             author_avatar: c.user_info?.avatar_url || '',
-            create_time: createTimeSeconds,
-            create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
+            create_time: utcTimestamp, // 使用修正后的UTC时间戳
+            create_time_formatted: new Date(utcTimestamp * 1000).toLocaleString('zh-CN'),
             stats_like_count: parseInt(c.digg_count) || 0,
             reply_count: parseInt(c.reply_count) || 0,
             detected_at: Math.floor(Date.now() / 1000),
@@ -622,6 +634,10 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
               createTimeSeconds = Math.floor(createTimeSeconds / 1000);
             }
 
+            // 🔧 时区修正: 抖音API返回的时间戳是UTC+8时区的
+            const TIMEZONE_OFFSET = 8 * 3600; // 8小时 = 28800秒
+            const utcTimestamp = createTimeSeconds - TIMEZONE_OFFSET;
+
             discussions.push({
               platform_discussion_id: reply.comment_id,  // 修正: 使用 comment_id
               parent_comment_id: parentCommentId,  // 父评论 ID
@@ -630,8 +646,8 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
               author_name: reply.user_info?.screen_name || '匿名',
               author_id: reply.user_info?.user_id || '',
               author_avatar: reply.user_info?.avatar_url || '',
-              create_time: createTimeSeconds,
-              create_time_formatted: new Date(createTimeSeconds * 1000).toLocaleString('zh-CN'),
+              create_time: utcTimestamp, // 使用修正后的UTC时间戳
+              create_time_formatted: new Date(utcTimestamp * 1000).toLocaleString('zh-CN'),
               stats_like_count: parseInt(reply.digg_count) || 0,
               reply_count: parseInt(reply.reply_count) || 0,  // 三级回复数量
               detected_at: Math.floor(Date.now() / 1000),

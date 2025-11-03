@@ -251,6 +251,15 @@ class IMWebSocketServer {
       // 查找最新消息
       const lastMessage = this.findLastMessage(dataObj);
 
+      // 🔍 DEBUG: 打印 lastMessage 的内容
+      if (lastMessage) {
+        logger.info(`[DEBUG] lastMessage 对象:`);
+        logger.info(`  content: ${lastMessage.content}`);
+        logger.info(`  timestamp: ${lastMessage.timestamp}`);
+        logger.info(`  typeof timestamp: ${typeof lastMessage.timestamp}`);
+        logger.info(`  转换为日期: ${new Date(lastMessage.timestamp).toLocaleString('zh-CN')}`);
+      }
+
       const channel = {
         id: accountId,
         name: accountData.accountName || accountId,
@@ -263,6 +272,13 @@ class IMWebSocketServer {
         isPinned: false,
         enabled: true
       };
+
+      // 🔍 DEBUG: 打印 channel 对象
+      logger.info(`[DEBUG] Channel 对象:`);
+      logger.info(`  id: ${channel.id}`);
+      logger.info(`  lastMessageTime: ${channel.lastMessageTime}`);
+      logger.info(`  typeof lastMessageTime: ${typeof channel.lastMessageTime}`);
+      logger.info(`  转换为日期: ${new Date(channel.lastMessageTime).toLocaleString('zh-CN')}`);
 
       channels.push(channel);
     }
@@ -278,6 +294,47 @@ class IMWebSocketServer {
    * 主题 = 作品/会话
    */
   getTopicsFromDataStore(channelId) {
+    // ✅ 辅助函数: 归一化时间戳到毫秒级 (13位)
+    const normalizeTimestamp = (timestamp) => {
+      if (!timestamp) return Date.now();
+
+      // 🔧 处理字符串类型的时间戳
+      if (typeof timestamp === 'string') {
+        // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
+        const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
+        if (match) {
+          const [, year, month, day, hour, minute] = match;
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,  // 月份从 0 开始
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute)
+          );
+          logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
+          return date.getTime();  // 返回毫秒级时间戳
+        }
+
+        // 如果是纯数字字符串，转换为数字
+        const numericTimestamp = parseInt(timestamp);
+        if (!isNaN(numericTimestamp)) {
+          timestamp = numericTimestamp;
+        } else {
+          // 无法解析，返回当前时间
+          logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
+          return Date.now();
+        }
+      }
+
+      // 处理数字类型的时间戳
+      // 如果是秒级 (10位),转换为毫秒
+      if (timestamp < 10000000000) {
+        return timestamp * 1000;
+      }
+      // 如果已经是毫秒级 (13位),直接返回
+      return timestamp;
+    };
+
     const accountData = this.dataStore.accounts.get(channelId);
 
     // 详细的调试日志
@@ -340,12 +397,21 @@ class IMWebSocketServer {
           channelId: channelId,
           title: content.title || '无标题作品',
           description: content.description || '',
-          createdTime: content.publishTime || Date.now(),
-          lastMessageTime: content.lastCrawlTime || Date.now(),
+          createdTime: normalizeTimestamp(content.publishTime),  // ✅ 修复: 归一化时间戳
+          lastMessageTime: normalizeTimestamp(content.lastCrawlTime),  // ✅ 修复: 归一化时间戳
           messageCount: contentComments.length,
           unreadCount: contentComments.filter(c => c.isHandled === undefined || !c.isHandled).length,  // 修改：使用 isHandled 而不是 isNew，默认未处理
           isPinned: false
         };
+
+        // 🔍 DEBUG: 打印前3个作品的时间戳原始值和转换结果
+        if (topics.length < 3) {
+          logger.info(`[DEBUG] 作品 #${topics.length + 1} 时间戳:`);
+          logger.info(`  content.publishTime (原始): ${content.publishTime}`);
+          logger.info(`  content.lastCrawlTime (原始): ${content.lastCrawlTime}`);
+          logger.info(`  topic.createdTime (归一化后): ${topic.createdTime} → ${new Date(topic.createdTime).toLocaleString('zh-CN')}`);
+          logger.info(`  topic.lastMessageTime (归一化后): ${topic.lastMessageTime} → ${new Date(topic.lastMessageTime).toLocaleString('zh-CN')}`);
+        }
 
         topics.push(topic);
       }
@@ -383,8 +449,8 @@ class IMWebSocketServer {
           channelId: channelId,
           title: conversation.userName || '未知用户',
           description: `私信会话`,
-          createdTime: conversation.createdAt || Date.now(),
-          lastMessageTime: conversation.lastMessageTime || Date.now(),  // ✅ 修复: 使用正确的时间戳字段
+          createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
+          lastMessageTime: normalizeTimestamp(conversation.lastMessageTime),  // ✅ 修复: 归一化时间戳
           messageCount: conversationMessages.length,
           unreadCount: conversation.unreadCount || 0,
           isPinned: false,
@@ -423,6 +489,47 @@ class IMWebSocketServer {
   getMessagesFromDataStore(topicId) {
     const messages = [];
 
+    // ✅ 辅助函数: 归一化时间戳到毫秒级 (13位)
+    const normalizeTimestamp = (timestamp) => {
+      if (!timestamp) return Date.now();
+
+      // 🔧 处理字符串类型的时间戳
+      if (typeof timestamp === 'string') {
+        // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
+        const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
+        if (match) {
+          const [, year, month, day, hour, minute] = match;
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,  // 月份从 0 开始
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute)
+          );
+          logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
+          return date.getTime();  // 返回毫秒级时间戳
+        }
+
+        // 如果是纯数字字符串，转换为数字
+        const numericTimestamp = parseInt(timestamp);
+        if (!isNaN(numericTimestamp)) {
+          timestamp = numericTimestamp;
+        } else {
+          // 无法解析，返回当前时间
+          logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
+          return Date.now();
+        }
+      }
+
+      // 处理数字类型的时间戳
+      // 如果是秒级 (10位),转换为毫秒
+      if (timestamp < 10000000000) {
+        return timestamp * 1000;
+      }
+      // 如果已经是毫秒级 (13位),直接返回
+      return timestamp;
+    };
+
     // 遍历所有账户查找该主题的消息
     for (const [accountId, accountData] of this.dataStore.accounts) {
       // DataStore 数据结构是 {accountId, platform, lastUpdate, data}
@@ -454,8 +561,8 @@ class IMWebSocketServer {
             content: comment.content || '',
             type: 'comment',  // ✅ 修改: 评论消息类型为 'comment'
             messageCategory: 'comment',  // ✅ 新增: 消息分类为 'comment'
-            timestamp: comment.createdAt || Date.now(),
-            serverTimestamp: comment.detectedAt || Date.now(),
+            timestamp: normalizeTimestamp(comment.createdAt),  // ✅ 修复: 归一化时间戳
+            serverTimestamp: normalizeTimestamp(comment.detectedAt),  // ✅ 修复: 归一化时间戳
             replyToId: replyToId,  // ✅ 修复: "0" 转换为 null
             replyToContent: null,
             direction: isAuthorReply ? 'outgoing' : 'incoming',  // 作者回复为outgoing，其他为incoming
@@ -481,8 +588,8 @@ class IMWebSocketServer {
             content: msg.content || '',
             type: msg.messageType || 'text',
             messageCategory: 'private',  // ✅ 新增: 消息分类为 'private'
-            timestamp: msg.createdAt || Date.now(),
-            serverTimestamp: msg.detectedAt || Date.now(),
+            timestamp: normalizeTimestamp(msg.createdAt),  // ✅ 修复: 归一化时间戳
+            serverTimestamp: normalizeTimestamp(msg.detectedAt),  // ✅ 修复: 归一化时间戳
             replyToId: null,
             replyToContent: null,
             direction: msg.direction || 'incoming',  // 消息方向：incoming/outgoing
@@ -534,16 +641,61 @@ class IMWebSocketServer {
     const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
     const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : (dataObj.messages || []);
 
+    // 辅助函数：统一时间戳为毫秒级 (13位)
+    const normalizeTimestamp = (timestamp) => {
+      if (!timestamp) return Date.now();
+
+      // 🔧 处理字符串类型的时间戳
+      if (typeof timestamp === 'string') {
+        // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
+        const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
+        if (match) {
+          const [, year, month, day, hour, minute] = match;
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,  // 月份从 0 开始
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute)
+          );
+          logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
+          return date.getTime();  // 返回毫秒级时间戳
+        }
+
+        // 如果是纯数字字符串，转换为数字
+        const numericTimestamp = parseInt(timestamp);
+        if (!isNaN(numericTimestamp)) {
+          timestamp = numericTimestamp;
+        } else {
+          // 无法解析，返回当前时间
+          logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
+          return Date.now();
+        }
+      }
+
+      // 处理数字类型的时间戳
+      // 如果是秒级 (10位)，转换为毫秒级
+      if (timestamp < 10000000000) {
+        return timestamp * 1000;
+      }
+      // 如果已经是毫秒级 (13位)，直接返回
+      return timestamp;
+    };
+
     // 检查评论（使用 camelCase: createdAt）
     if (commentsList.length > 0) {
       const latestComment = commentsList.reduce((latest, current) => {
-        return (current.createdAt > latest.createdAt) ? current : latest;
+        // ✅ 修复: 使用归一化后的时间戳进行比较
+        const currentTime = normalizeTimestamp(current.createdAt);
+        const latestTime = normalizeTimestamp(latest.createdAt);
+        return (currentTime > latestTime) ? current : latest;
       });
-      if (latestComment.createdAt > latestTime) {
-        latestTime = latestComment.createdAt;
+      const normalizedTime = normalizeTimestamp(latestComment.createdAt);
+      if (normalizedTime > latestTime) {
+        latestTime = normalizedTime;
         lastMessage = {
           content: latestComment.content,
-          timestamp: latestComment.createdAt
+          timestamp: normalizedTime  // ✅ 使用标准化后的毫秒级时间戳
         };
       }
     }
@@ -551,13 +703,17 @@ class IMWebSocketServer {
     // 检查私信（使用 camelCase: createdAt）
     if (messagesList.length > 0) {
       const latestMsg = messagesList.reduce((latest, current) => {
-        return (current.createdAt > latest.createdAt) ? current : latest;
+        // ✅ 修复: 使用归一化后的时间戳进行比较
+        const currentTime = normalizeTimestamp(current.createdAt);
+        const latestTime = normalizeTimestamp(latest.createdAt);
+        return (currentTime > latestTime) ? current : latest;
       });
-      if (latestMsg.createdAt > latestTime) {
-        latestTime = latestMsg.createdAt;
+      const normalizedTime = normalizeTimestamp(latestMsg.createdAt);
+      if (normalizedTime > latestTime) {
+        latestTime = normalizedTime;
         lastMessage = {
           content: latestMsg.content,
-          timestamp: latestMsg.createdAt
+          timestamp: normalizedTime  // ✅ 使用标准化后的毫秒级时间戳
         };
       }
     }

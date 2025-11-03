@@ -60,12 +60,19 @@ function normalizeTimestamp(timestamp) {
   // 处理数字
   if (typeof timestamp === 'number') {
     // 判断是秒级 (10位) 还是毫秒级 (13位)
+    let timestampInMs;
     if (timestamp < 10000000000) {
       // 秒级时间戳，转换为毫秒
-      return timestamp * 1000;
+      timestampInMs = timestamp * 1000;
+    } else {
+      // 毫秒级时间戳，直接使用
+      timestampInMs = Math.floor(timestamp);
     }
-    // 毫秒级时间戳，直接返回
-    return Math.floor(timestamp);
+
+    // 🔧 时区修正: 抖音API返回的时间戳是UTC+8时区的
+    // 需要减去8小时（28800000毫秒）转换为标准UTC时间戳
+    const TIMEZONE_OFFSET_MS = 8 * 3600 * 1000; // 8小时 = 28800000毫秒
+    return timestampInMs - TIMEZONE_OFFSET_MS;
   }
 
   // 处理字符串

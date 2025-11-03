@@ -213,6 +213,13 @@ export default function MonitorPage() {
 
         // 监听新媒体账户列表
         websocketService.on('monitor:channels', (data: any) => {
+          console.log('[DEBUG] 接收到的原始 channels 数据:', JSON.stringify(data.channels.slice(0, 2), null, 2))
+          if (data.channels.length > 0) {
+            const firstChannel = data.channels[0]
+            console.log('[DEBUG] 第一个 channel 的 lastMessageTime:', firstChannel.lastMessageTime)
+            console.log('[DEBUG] 转换为日期:', new Date(firstChannel.lastMessageTime))
+            console.log('[DEBUG] typeof lastMessageTime:', typeof firstChannel.lastMessageTime)
+          }
           dispatch(setChannels(data.channels))
           data.channels.forEach((channel: any) => {
             websocketService.emit('monitor:request_topics', { channelId: channel.id })

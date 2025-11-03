@@ -948,6 +948,11 @@ class DouyinPlatform extends PlatformBase {
           createdAt = Math.floor(createdAt / 1000);
         }
 
+        // 🔧 时区修正: 抖音API返回的时间戳是UTC+8时区的
+        // 需要减去8小时（28800秒）转换为标准UTC时间戳
+        const TIMEZONE_OFFSET = 8 * 3600; // 8小时 = 28800秒
+        createdAt = createdAt - TIMEZONE_OFFSET;
+
         return {
           ...msg,
           account_id: account.id,
