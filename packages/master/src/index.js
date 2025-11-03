@@ -626,6 +626,10 @@ async function start() {
     // app.use('/api/v1/comments', commentsRouter);
     // app.use('/api/v1/direct-messages', directMessagesRouter);
 
+    // ✅ 新增: Cache Data API（使用 cache_* 表，供 Admin-Web 访问）
+    const createCacheDataRouter = require('./api/routes/cache-data');
+    app.use('/api/v1/cache', createCacheDataRouter(db, cacheDAO));
+
     const createStatisticsRouter = require('./api/routes/statistics');
     app.use('/api/v1/statistics', createStatisticsRouter(db));
 

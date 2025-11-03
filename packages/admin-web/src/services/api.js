@@ -113,18 +113,33 @@ export const statisticsAPI = {
 };
 
 // =========================
-// 消息相关 API
+// 消息相关 API（旧接口 - 已废弃）
+// =========================
+
+// export const messagesAPI = {
+//   // 获取评论列表
+//   getComments: (params) => api.get('/comments', { params }),
+//
+//   // 获取私信列表
+//   getDirectMessages: (params) => api.get('/direct-messages', { params }),
+//
+//   // 获取消息统计
+//   getMessageStats: () => api.get('/messages/stats'),
+// };
+
+// =========================
+// 缓存数据 API（新接口 - 使用 cache_* 表）
 // =========================
 
 export const messagesAPI = {
-  // 获取评论列表
-  getComments: (params) => api.get('/comments', { params }),
+  // 获取缓存评论列表
+  getComments: (params) => api.get('/cache/comments', { params }),
 
-  // 获取私信列表
-  getDirectMessages: (params) => api.get('/direct-messages', { params }),
+  // 获取缓存私信列表
+  getDirectMessages: (params) => api.get('/cache/messages', { params }),
 
-  // 获取消息统计
-  getMessageStats: () => api.get('/messages/stats'),
+  // 获取缓存数据统计
+  getMessageStats: () => api.get('/cache/stats'),
 };
 
 // =========================
