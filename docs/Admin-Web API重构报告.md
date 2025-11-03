@@ -2,9 +2,9 @@
 
 **项目**: HisCRM-IM Admin-Web API 调用优化
 **日期**: 2025-11-03
-**阶段**: Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5
+**阶段**: Phase 3.2 ~ Phase 3.6
 **状态**: ✅ 100% 完成 + 修复完成
-**Git 提交**: 1e81546 (Phase 3.2), cf0cb23 (Phase 3.3), 8c6393f (Phase 3.4), 7b9cff2 (Phase 3.5)
+**Git 提交**: 1e81546 (Phase 3.2), cf0cb23 (Phase 3.3), 8c6393f (Phase 3.4), 7b9cff2 (Phase 3.5), 454e546 (Phase 3.6)
 
 ---
 
@@ -35,11 +35,17 @@
 - ✅ JavaScript 层面解析 JSON 并映射字段
 - ✅ API 端点测试通过（9 条评论 + 44 条私信）
 
-### Phase 3.5 - NotificationQueue 纯内存队列重构 ✨ NEW
+### Phase 3.5 - NotificationQueue 纯内存队列重构
 - ✅ 移除对已删除 `notifications` 表的依赖
 - ✅ 重构为纯内存队列（不持久化）
 - ✅ 修复 "no such table: notifications" 错误
 - ✅ Master 服务器启动完全正常
+
+### Phase 3.6 - API 响应格式统一 ✨ NEW
+- ✅ 统一 Worker Configs API 响应格式为 `{success, data}`
+- ✅ 更新前端 WorkersPage.js 适配新格式
+- ✅ 新增完整的 API 端点测试脚本（9 个端点）
+- ✅ 所有 API 响应格式完全统一
 
 ---
 
@@ -509,7 +515,106 @@ export const platformsAPI = {
 };
 ```
 
-### 4. 测试覆盖
+### 4. Phase 3.6 - API 响应格式统一修复
+
+**提交**: 454e546
+
+#### 4.1 问题发现
+
+在运行 API 端点测试时，发现 Worker Configs API 返回格式与其他 API 不一致：
+
+```javascript
+// Worker Configs API (不一致)
+GET /api/v1/worker-configs
+返回: [{worker_config_1}, {worker_config_2}]  // 直接返回数组
+
+// 其他 API (标准格式)
+GET /api/v1/cache/comments
+返回: {success: true, data: [{...}]}  // 标准包装格式
+```
+
+#### 4.2 修复方案
+
+**后端修改** ([worker-configs.js:16-30](../packages/master/src/api/routes/worker-configs.js#L16-L30)):
+
+```javascript
+// 修复前
+router.get('/', (req, res) => {
+  try {
+    const configs = workerConfigDAO.findAll();
+    res.json(configs);  // ❌ 直接返回数组
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get worker configs',
+      message: error.message
+    });
+  }
+});
+
+// 修复后
+router.get('/', (req, res) => {
+  try {
+    const configs = workerConfigDAO.findAll();
+    res.json({
+      success: true,
+      data: configs  // ✅ 标准格式
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message  // ✅ 统一错误格式
+    });
+  }
+});
+```
+
+**前端修改** ([WorkersPage.js:66-68](../packages/admin-web/src/pages/WorkersPage.js#L66-L68)):
+
+```javascript
+// 修复前
+const response = await workersAPI.getWorkerConfigs();
+const configList = response || [];  // ❌ 期望直接是数组
+
+// 修复后
+const response = await workersAPI.getWorkerConfigs();
+const configList = response.data || [];  // ✅ 提取 data 字段
+```
+
+#### 4.3 新增测试脚本
+
+创建 [tests/test-api-endpoints.js](../tests/test-api-endpoints.js) 完整测试所有 Admin-Web API 端点：
+
+```javascript
+const tests = [
+  { name: 'Cache Comments API', path: '/api/v1/cache/comments?limit=10' },
+  { name: 'Cache Messages API', path: '/api/v1/cache/messages?limit=10' },
+  { name: 'Cache Stats API', path: '/api/v1/cache/stats' },
+  { name: 'Platforms List API', path: '/api/v1/platforms' },
+  { name: 'Accounts List API', path: '/api/v1/accounts' },
+  { name: 'Workers List API', path: '/api/v1/workers' },
+  { name: 'Worker Configs API', path: '/api/v1/worker-configs' },  // ✅ 已修复
+  { name: 'Statistics API', path: '/api/v1/statistics' },
+  { name: 'Proxies List API', path: '/api/v1/proxies' },
+];
+```
+
+**测试结果**:
+```
+总计: 9 个测试
+通过: 9 个 ✅
+失败: 0 个
+```
+
+#### 4.4 优势
+
+1. **格式统一**: 所有 API 响应格式完全一致
+2. **错误处理规范**: 使用 `{success: false, error: "..."}` 格式
+3. **前端代码简化**: Axios 拦截器可以统一处理所有 API
+4. **可测试性**: 新增测试脚本覆盖所有端点
+
+---
+
+### 5. 测试覆盖
 
 为新增的 `platformsAPI` 添加单元测试：
 
@@ -556,8 +661,9 @@ describe('platformsAPI', () => {
 | **Phase 3.3** | **Cache Data API 实现** | **✅** | **cf0cb23** |
 | **Phase 3.4** | **Cache Data API JSON 解析修复** | **✅** | **8c6393f** |
 | **Phase 3.5** | **NotificationQueue 纯内存队列重构** | **✅** | **7b9cff2** |
+| **Phase 3.6** | **API 响应格式统一** | **✅** | **454e546** |
 
-**总计**: 9 个阶段，全部完成 ✅
+**总计**: 10 个阶段，全部完成 ✅
 
 ---
 
@@ -571,6 +677,6 @@ describe('platformsAPI', () => {
 ---
 
 **报告生成时间**: 2025-11-03
-**最后更新**: 2025-11-03 (添加 Phase 3.4 和 3.5)
+**最后更新**: 2025-11-03 (添加 Phase 3.6 - API 响应格式统一)
 **执行人**: Claude Code
 **审核状态**: ✅ 待审核
