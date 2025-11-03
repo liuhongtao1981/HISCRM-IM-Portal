@@ -1,11 +1,14 @@
 /**
  * 通知队列管理器
  * 负责通知的入队、批处理和发送调度
+ *
+ * 注意: 通知队列使用纯内存存储，不再依赖数据库持久化
+ * - 通知是临时的，广播后即销毁
+ * - 如需持久化通知数据，应使用 cache_notifications 表（由 CacheDAO 管理）
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const Notification = require('@hiscrm-im/shared/models/Notification');
-const NotificationsDAO = require('../database/notifications-dao');
 
 const logger = createLogger('notification-queue');
 
@@ -13,7 +16,8 @@ class NotificationQueue {
   constructor(db, broadcaster) {
     this.db = db;
     this.broadcaster = broadcaster;
-    this.notificationsDAO = new NotificationsDAO(db);
+    // NotificationsDAO 不再使用 - 通知队列改为纯内存实现
+    // this.notificationsDAO = new NotificationsDAO(db);
 
     // 内存队列（待发送的通知）
     this.pendingQueue = [];
@@ -36,13 +40,13 @@ class NotificationQueue {
       return;
     }
 
-    logger.info('Starting notification queue processor');
+    logger.info('Starting notification queue processor (memory-only mode)');
     this.processTimer = setInterval(() => {
       this.processBatch();
     }, this.batchInterval);
 
-    // 启动时立即加载未发送的通知
-    this.loadPendingNotifications();
+    // 纯内存队列 - 不再从数据库加载
+    // this.loadPendingNotifications();
   }
 
   /**
@@ -61,15 +65,18 @@ class NotificationQueue {
    */
   enqueue(notification) {
     try {
-      // 保存到数据库（返回完整的通知对象）
-      const savedNotification = this.notificationsDAO.create(notification);
+      // 纯内存队列 - 不再保存到数据库
+      // 确保通知有 ID
+      if (!notification.id) {
+        notification.id = `notif_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      }
 
-      // 添加到内存队列（使用数据库返回的对象）
-      this.pendingQueue.push(savedNotification);
+      // 添加到内存队列
+      this.pendingQueue.push(notification);
 
-      logger.info(`✅ Notification enqueued: ${savedNotification.id} (${savedNotification.type}), queue size: ${this.pendingQueue.length}`);
+      logger.info(`✅ Notification enqueued: ${notification.id} (${notification.type}), queue size: ${this.pendingQueue.length}`);
 
-      return savedNotification;
+      return notification;
     } catch (error) {
       logger.error('Failed to enqueue notification:', error);
       throw error;
@@ -95,19 +102,11 @@ class NotificationQueue {
   }
 
   /**
-   * 加载未发送的通知
+   * 加载未发送的通知 (已废弃 - 纯内存队列模式)
    */
   loadPendingNotifications() {
-    try {
-      const unsent = this.notificationsDAO.findAll({ is_sent: false });
-
-      if (unsent.length > 0) {
-        this.pendingQueue.push(...unsent);
-        logger.info(`Loaded ${unsent.length} pending notifications from database`);
-      }
-    } catch (error) {
-      logger.error('Failed to load pending notifications:', error);
-    }
+    // 纯内存队列 - 不再从数据库加载
+    logger.debug('Skipping notification loading - memory-only queue mode');
   }
 
   /**
@@ -143,14 +142,14 @@ class NotificationQueue {
       }
 
       // 广播每个账户的通知
-      const sentIds = [];
+      let successCount = 0;
       for (const [accountId, notifications] of byAccount.entries()) {
         try {
           const success = await this.broadcaster.broadcastNotifications(accountId, notifications);
 
           if (success) {
-            // 记录已发送的通知ID
-            sentIds.push(...notifications.map((n) => n.id));
+            // 成功发送 - 不做任何操作（通知已从队列中移除）
+            successCount += notifications.length;
           } else {
             // 广播失败，重新入队
             this.pendingQueue.push(...notifications);
@@ -162,10 +161,9 @@ class NotificationQueue {
         }
       }
 
-      // 标记已发送
-      if (sentIds.length > 0) {
-        this.notificationsDAO.markAsSent(sentIds);
-        logger.info(`Successfully sent ${sentIds.length} notifications`);
+      // 纯内存队列 - 不再更新数据库
+      if (successCount > 0) {
+        logger.info(`Successfully sent ${successCount} notifications (memory-only queue)`);
       }
     } catch (error) {
       logger.error('Error processing notification batch:', error);
