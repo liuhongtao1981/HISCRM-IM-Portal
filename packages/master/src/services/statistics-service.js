@@ -1,6 +1,8 @@
 /**
  * Statistics Service
  * T083: 统计数据计算服务
+ *
+ * 注意: 使用 cache_* 表进行统计查询
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -10,6 +12,7 @@ const logger = createLogger('statistics-service');
 class StatisticsService {
   constructor(db) {
     this.db = db;
+    logger.info('Statistics service initialized with cache_* tables');
   }
 
   /**
@@ -34,38 +37,38 @@ class StatisticsService {
       }
 
       if (start_time) {
-        conditions.push('detected_at >= ?');
+        conditions.push('created_at >= ?');
         params.push(start_time);
       }
 
       if (end_time) {
-        conditions.push('detected_at <= ?');
+        conditions.push('created_at <= ?');
         params.push(end_time);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-      // 统计评论数量
+      // 统计评论数量（从 cache_comments）
       const commentStats = this.db
         .prepare(
           `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread
-        FROM comments
+        FROM cache_comments
         ${whereClause}
       `
         )
         .get(...params);
 
-      // 统计私信数量
+      // 统计私信数量（从 cache_messages）
       const dmStats = this.db
         .prepare(
           `
         SELECT
           COUNT(*) as total,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread
-        FROM direct_messages
+        FROM cache_messages
         ${whereClause}
       `
         )
@@ -105,18 +108,18 @@ class StatisticsService {
       }
 
       if (start_time) {
-        conditions.push('detected_at >= ?');
+        conditions.push('created_at >= ?');
         params.push(start_time);
       }
 
       if (end_time) {
-        conditions.push('detected_at <= ?');
+        conditions.push('created_at <= ?');
         params.push(end_time);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-      // 按账户统计评论
+      // 按账户统计评论（从 cache_comments）
       const commentsByAccount = this.db
         .prepare(
           `
@@ -124,14 +127,14 @@ class StatisticsService {
           account_id,
           COUNT(*) as comment_count,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_comments
-        FROM comments
+        FROM cache_comments
         ${whereClause}
         GROUP BY account_id
       `
         )
         .all(...params);
 
-      // 按账户统计私信
+      // 按账户统计私信（从 cache_messages）
       const dmsByAccount = this.db
         .prepare(
           `
@@ -139,7 +142,7 @@ class StatisticsService {
           account_id,
           COUNT(*) as dm_count,
           SUM(CASE WHEN is_read = 0 THEN 1 ELSE 0 END) as unread_dms
-        FROM direct_messages
+        FROM cache_messages
         ${whereClause}
         GROUP BY account_id
       `
@@ -195,8 +198,8 @@ class StatisticsService {
       const now = Math.floor(Date.now() / 1000);
       const startTime = now - days * 86400;
 
-      const conditions = ['detected_at >= ?'];
-      const params = [startTime];
+      const conditions = ['created_at >= ?'];
+      const params = [startTime * 1000]; // cache_* 表使用毫秒
 
       if (account_id) {
         conditions.push('account_id = ?');
@@ -205,31 +208,31 @@ class StatisticsService {
 
       const whereClause = `WHERE ${conditions.join(' AND ')}`;
 
-      // 按日统计评论
+      // 按日统计评论（从 cache_comments）
       const commentsByDay = this.db
         .prepare(
           `
         SELECT
-          DATE(detected_at, 'unixepoch') as date,
+          DATE(created_at / 1000, 'unixepoch') as date,
           COUNT(*) as count
-        FROM comments
+        FROM cache_comments
         ${whereClause}
-        GROUP BY DATE(detected_at, 'unixepoch')
+        GROUP BY DATE(created_at / 1000, 'unixepoch')
         ORDER BY date DESC
       `
         )
         .all(...params);
 
-      // 按日统计私信
+      // 按日统计私信（从 cache_messages）
       const dmsByDay = this.db
         .prepare(
           `
         SELECT
-          DATE(detected_at, 'unixepoch') as date,
+          DATE(created_at / 1000, 'unixepoch') as date,
           COUNT(*) as count
-        FROM direct_messages
+        FROM cache_messages
         ${whereClause}
-        GROUP BY DATE(detected_at, 'unixepoch')
+        GROUP BY DATE(created_at / 1000, 'unixepoch')
         ORDER BY date DESC
       `
         )
@@ -286,28 +289,28 @@ class StatisticsService {
       }
 
       if (start_time) {
-        conditions.push('detected_at >= ?');
+        conditions.push('created_at >= ?');
         params.push(start_time);
       }
 
       if (end_time) {
-        conditions.push('detected_at <= ?');
+        conditions.push('created_at <= ?');
         params.push(end_time);
       }
 
       const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
-      // 按小时统计
+      // 按小时统计（从 cache_* 表）
       const hourlyStats = this.db
         .prepare(
           `
         SELECT
-          CAST(strftime('%H', datetime(detected_at, 'unixepoch')) AS INTEGER) as hour,
+          CAST(strftime('%H', datetime(created_at / 1000, 'unixepoch')) AS INTEGER) as hour,
           COUNT(*) as count
         FROM (
-          SELECT detected_at FROM comments ${whereClause}
+          SELECT created_at FROM cache_comments ${whereClause}
           UNION ALL
-          SELECT detected_at FROM direct_messages ${whereClause}
+          SELECT created_at FROM cache_messages ${whereClause}
         )
         GROUP BY hour
         ORDER BY hour
@@ -328,27 +331,27 @@ class StatisticsService {
    */
   getSummary() {
     try {
-      const now = Math.floor(Date.now() / 1000);
-      const today = now - (now % 86400);
+      const now = Date.now();
+      const today = now - (now % (86400 * 1000));
 
-      // 总消息数
+      // 总消息数（从 cache_* 表）
       const totalMessages =
-        this.db.prepare('SELECT COUNT(*) as count FROM comments').get().count +
-        this.db.prepare('SELECT COUNT(*) as count FROM direct_messages').get().count;
+        this.db.prepare('SELECT COUNT(*) as count FROM cache_comments').get().count +
+        this.db.prepare('SELECT COUNT(*) as count FROM cache_messages').get().count;
 
       // 未读数量
       const unreadCount =
-        this.db.prepare('SELECT COUNT(*) as count FROM comments WHERE is_read = 0').get().count +
-        this.db.prepare('SELECT COUNT(*) as count FROM direct_messages WHERE is_read = 0').get()
+        this.db.prepare('SELECT COUNT(*) as count FROM cache_comments WHERE is_read = 0').get().count +
+        this.db.prepare('SELECT COUNT(*) as count FROM cache_messages WHERE is_read = 0').get()
           .count;
 
       // 今天的消息数
       const todayCount =
         this.db
-          .prepare('SELECT COUNT(*) as count FROM comments WHERE detected_at >= ?')
+          .prepare('SELECT COUNT(*) as count FROM cache_comments WHERE created_at >= ?')
           .get(today).count +
         this.db
-          .prepare('SELECT COUNT(*) as count FROM direct_messages WHERE detected_at >= ?')
+          .prepare('SELECT COUNT(*) as count FROM cache_messages WHERE created_at >= ?')
           .get(today).count;
 
       return {

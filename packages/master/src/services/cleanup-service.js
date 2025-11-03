@@ -3,13 +3,13 @@
  * T088: 定期清理过期数据(30天保留策略)
  *
  * Purpose: 自动清理超过30天的历史消息和通知,防止数据库无限增长
+ *
+ * 注意: 使用 CacheDAO 清理 cache_* 表数据
  */
 
 const cron = require('node-cron');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
-const CommentsDAO = require('../database/comments-dao');
-const DirectMessagesDAO = require('../database/messages-dao');
-const NotificationsDAO = require('../database/notifications-dao');
+const CacheDAO = require('../persistence/cache-dao');
 
 const logger = createLogger('cleanup-service');
 
@@ -28,11 +28,9 @@ class CleanupService {
     this.isRunning = false;
     this.task = null;
 
-    this.commentsDAO = new CommentsDAO(db);
-    this.messagesDAO = new DirectMessagesDAO(db);
-    this.notificationsDAO = new NotificationsDAO(db);
+    this.cacheDAO = new CacheDAO(db);
 
-    logger.info(`Cleanup service initialized (retention: ${this.retentionDays} days, schedule: ${this.schedule})`);
+    logger.info(`Cleanup service initialized with CacheDAO (retention: ${this.retentionDays} days, schedule: ${this.schedule})`);
   }
 
   /**
@@ -112,64 +110,64 @@ class CleanupService {
   }
 
   /**
-   * 清理过期评论
+   * 清理过期评论（从 cache_comments 表）
    * @param {number} cutoffTimestamp - 截止时间戳
    * @returns {number} 删除的记录数
    */
   cleanupComments(cutoffTimestamp) {
     try {
       const stmt = this.db.prepare(`
-        DELETE FROM comments
-        WHERE detected_at < ?
+        DELETE FROM cache_comments
+        WHERE created_at < ?
       `);
 
       const result = stmt.run(cutoffTimestamp);
-      logger.info(`Deleted ${result.changes} expired comments (before ${new Date(cutoffTimestamp).toISOString()})`);
+      logger.info(`Deleted ${result.changes} expired comments from cache_comments (before ${new Date(cutoffTimestamp).toISOString()})`);
       return result.changes;
     } catch (error) {
-      logger.error('Failed to cleanup comments:', error);
+      logger.error('Failed to cleanup cache comments:', error);
       return 0;
     }
   }
 
   /**
-   * 清理过期私信
+   * 清理过期私信（从 cache_messages 表）
    * @param {number} cutoffTimestamp - 截止时间戳
    * @returns {number} 删除的记录数
    */
   cleanupDirectMessages(cutoffTimestamp) {
     try {
       const stmt = this.db.prepare(`
-        DELETE FROM direct_messages
-        WHERE detected_at < ?
+        DELETE FROM cache_messages
+        WHERE created_at < ?
       `);
 
       const result = stmt.run(cutoffTimestamp);
-      logger.info(`Deleted ${result.changes} expired direct messages (before ${new Date(cutoffTimestamp).toISOString()})`);
+      logger.info(`Deleted ${result.changes} expired messages from cache_messages (before ${new Date(cutoffTimestamp).toISOString()})`);
       return result.changes;
     } catch (error) {
-      logger.error('Failed to cleanup direct messages:', error);
+      logger.error('Failed to cleanup cache messages:', error);
       return 0;
     }
   }
 
   /**
-   * 清理过期通知
+   * 清理过期通知（从 cache_notifications 表）
    * @param {number} cutoffTimestamp - 截止时间戳
    * @returns {number} 删除的记录数
    */
   cleanupNotifications(cutoffTimestamp) {
     try {
       const stmt = this.db.prepare(`
-        DELETE FROM notifications
+        DELETE FROM cache_notifications
         WHERE created_at < ?
       `);
 
       const result = stmt.run(cutoffTimestamp);
-      logger.info(`Deleted ${result.changes} expired notifications (before ${new Date(cutoffTimestamp).toISOString()})`);
+      logger.info(`Deleted ${result.changes} expired notifications from cache_notifications (before ${new Date(cutoffTimestamp).toISOString()})`);
       return result.changes;
     } catch (error) {
-      logger.error('Failed to cleanup notifications:', error);
+      logger.error('Failed to cleanup cache notifications:', error);
       return 0;
     }
   }
@@ -201,15 +199,17 @@ class CleanupService {
   }
 
   /**
-   * 获取数据库大小统计
+   * 获取数据库大小统计（从 cache_* 表）
    * @returns {Object} 数据库统计信息
    */
   getDatabaseStats() {
     try {
       const stats = {
-        comments: this.db.prepare('SELECT COUNT(*) as count FROM comments').get().count,
-        directMessages: this.db.prepare('SELECT COUNT(*) as count FROM direct_messages').get().count,
-        notifications: this.db.prepare('SELECT COUNT(*) as count FROM notifications').get().count,
+        comments: this.db.prepare('SELECT COUNT(*) as count FROM cache_comments').get().count,
+        directMessages: this.db.prepare('SELECT COUNT(*) as count FROM cache_messages').get().count,
+        notifications: this.db.prepare('SELECT COUNT(*) as count FROM cache_notifications').get().count,
+        contents: this.db.prepare('SELECT COUNT(*) as count FROM cache_contents').get().count,
+        conversations: this.db.prepare('SELECT COUNT(*) as count FROM cache_conversations').get().count,
         accounts: this.db.prepare('SELECT COUNT(*) as count FROM accounts').get().count,
       };
 
@@ -219,9 +219,9 @@ class CleanupService {
       stats.databaseSizeBytes = dbSize.size;
       stats.databaseSizeMB = (dbSize.size / (1024 * 1024)).toFixed(2);
 
-      // 获取最老的记录时间
-      const oldestComment = this.db.prepare('SELECT MIN(detected_at) as oldest FROM comments').get();
-      const oldestMessage = this.db.prepare('SELECT MIN(detected_at) as oldest FROM direct_messages').get();
+      // 获取最老的记录时间（从 cache_* 表）
+      const oldestComment = this.db.prepare('SELECT MIN(created_at) as oldest FROM cache_comments').get();
+      const oldestMessage = this.db.prepare('SELECT MIN(created_at) as oldest FROM cache_messages').get();
 
       stats.oldestCommentTimestamp = oldestComment.oldest;
       stats.oldestMessageTimestamp = oldestMessage.oldest;
