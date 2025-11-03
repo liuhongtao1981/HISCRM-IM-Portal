@@ -32,6 +32,62 @@ const apiData = {
   }
 };
 
+// ==================== 时间戳标准化函数 ====================
+
+/**
+ * 将各种格式的时间戳标准化为毫秒级时间戳
+ *
+ * 支持的输入格式:
+ * - 毫秒级时间戳 (13位数字): 1730612345678
+ * - 秒级时间戳 (10位数字): 1730612345
+ * - ISO 8601 字符串: "2025-11-03T14:30:00.000Z"
+ * - Date 对象
+ *
+ * @param {number|string|Date} timestamp - 原始时间戳
+ * @returns {number} 毫秒级时间戳 (13位数字)
+ */
+function normalizeTimestamp(timestamp) {
+  // 处理 null/undefined
+  if (!timestamp) {
+    return Date.now();
+  }
+
+  // 处理 Date 对象
+  if (timestamp instanceof Date) {
+    return timestamp.getTime();
+  }
+
+  // 处理数字
+  if (typeof timestamp === 'number') {
+    // 判断是秒级 (10位) 还是毫秒级 (13位)
+    if (timestamp < 10000000000) {
+      // 秒级时间戳，转换为毫秒
+      return timestamp * 1000;
+    }
+    // 毫秒级时间戳，直接返回
+    return Math.floor(timestamp);
+  }
+
+  // 处理字符串
+  if (typeof timestamp === 'string') {
+    // 尝试解析为数字
+    const num = Number(timestamp);
+    if (!isNaN(num)) {
+      return normalizeTimestamp(num);
+    }
+
+    // 尝试解析为 ISO 8601 日期字符串
+    const date = new Date(timestamp);
+    if (!isNaN(date.getTime())) {
+      return date.getTime();
+    }
+  }
+
+  // 无法解析，返回当前时间
+  console.warn(`[normalizeTimestamp] Unable to parse timestamp: ${timestamp}, using current time`);
+  return Date.now();
+}
+
 // ==================== API 回调函数（使用 DataManager）====================
 
 /**
@@ -422,8 +478,8 @@ async function extractConversationsList(page, account, apiData = {}) {
                 unread_count: 0,  // API 不包含未读数
                 is_pinned: false,
                 is_muted: false,
-                created_at: Math.floor(Date.now() / 1000),
-                updated_at: Math.floor(Date.now() / 1000)
+                created_at: Date.now(),
+                updated_at: Date.now()
               };
 
               conversations.push(conversation);
@@ -587,8 +643,8 @@ async function extractConversationsList(page, account, apiData = {}) {
           platform_message_id: null,
           is_group: false,
           unread_count: 0,
-          created_at: Math.floor(Date.now() / 1000),
-          updated_at: Math.floor(Date.now() / 1000)
+          created_at: Date.now(),
+          updated_at: Date.now()
         };
 
         conversations.push(conversation);
@@ -1041,7 +1097,7 @@ async function extractMessagesFromVirtualList(page) {
                   // ✅ 新增：接收者昵称（如果有）
                   recipient_name: props.receiverName || null,
                   direction: props.isFromMe ? 'outbound' : 'inbound',
-                  created_at: Math.floor(new Date(props.timestamp || props.createdAt).getTime() / 1000),
+                  created_at: normalizeTimestamp(props.timestamp || props.createdAt),
                   is_read: props.isRead || false,
                   status: props.status || 'sent'
                 };
@@ -1227,8 +1283,8 @@ function extractCompleteMessageObjects(messages, apiData) {
         message_type: msg.message_type || 'text',
         direction: msg.direction || 'inbound',
         is_read: msg.is_read || false,
-        created_at: msg.created_at || Math.floor(Date.now() / 1000),
-        detected_at: Math.floor(Date.now() / 1000),
+        created_at: msg.created_at || Date.now(),
+        detected_at: Date.now(),
         is_new: true,  // ✅ 修改: 首次抓取的消息 is_new = true（时效性由 Master 判断）
         push_count: 0
       };
