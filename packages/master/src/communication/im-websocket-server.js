@@ -362,6 +362,18 @@ class IMWebSocketServer {
       const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : dataObj.conversations;
       const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : (dataObj.messages || []);
 
+      // 🔍 打印第一个 conversation 对象的完整结构
+      if (conversationsList.length > 0) {
+        const sampleConv = conversationsList[0];
+        logger.info(`[DEBUG] 第一个 conversation 对象:`);
+        logger.info(`  conversationId: ${sampleConv.conversationId}`);
+        logger.info(`  userName: ${sampleConv.userName}`);
+        logger.info(`  createdAt: ${sampleConv.createdAt} (${sampleConv.createdAt ? new Date(sampleConv.createdAt).toLocaleString('zh-CN') : 'N/A'})`);
+        logger.info(`  updatedAt: ${sampleConv.updatedAt} (${sampleConv.updatedAt ? new Date(sampleConv.updatedAt).toLocaleString('zh-CN') : 'N/A'})`);
+        logger.info(`  lastMessageTime: ${sampleConv.lastMessageTime} (${sampleConv.lastMessageTime ? new Date(sampleConv.lastMessageTime).toLocaleString('zh-CN') : 'N/A'})`);
+        logger.info(`  所有字段: ${Object.keys(sampleConv).join(', ')}`);
+      }
+
       for (const conversation of conversationsList) {
         // 计算该会话的消息数（使用 camelCase: conversationId）
         const conversationMessages = messagesList.filter(m => m.conversationId === conversation.conversationId);
@@ -372,7 +384,7 @@ class IMWebSocketServer {
           title: conversation.userName || '未知用户',
           description: `私信会话`,
           createdTime: conversation.createdAt || Date.now(),
-          lastMessageTime: conversation.updatedAt || Date.now(),
+          lastMessageTime: conversation.lastMessageTime || Date.now(),  // ✅ 修复: 使用正确的时间戳字段
           messageCount: conversationMessages.length,
           unreadCount: conversation.unreadCount || 0,
           isPinned: false,
@@ -381,6 +393,17 @@ class IMWebSocketServer {
 
         topics.push(topic);
       }
+
+      // 🔍 打印第一个 topic 对象
+      if (topics.length > beforeCount) {
+        const sampleTopic = topics[beforeCount];
+        logger.info(`[DEBUG] 第一个 topic 对象:`);
+        logger.info(`  id: ${sampleTopic.id}`);
+        logger.info(`  title: ${sampleTopic.title}`);
+        logger.info(`  createdTime: ${sampleTopic.createdTime} (${new Date(sampleTopic.createdTime).toLocaleString('zh-CN')})`);
+        logger.info(`  lastMessageTime: ${sampleTopic.lastMessageTime} (${new Date(sampleTopic.lastMessageTime).toLocaleString('zh-CN')})`);
+      }
+
       logger.info(`[DEBUG] Created ${topics.length - beforeCount} topics from conversations`);
     } else {
       logger.warn(`[DEBUG] No conversations found or conversations is empty`);
