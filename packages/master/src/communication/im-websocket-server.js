@@ -9,18 +9,17 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('im-websocket');
 
 class IMWebSocketServer {
-  constructor(io, dataStore, commentsDAO = null, messagesDAO = null) {
+  constructor(io, dataStore, cacheDAO = null) {
     this.io = io;
     this.dataStore = dataStore;
-    this.commentsDAO = commentsDAO;
-    this.messagesDAO = messagesDAO;
+    this.cacheDAO = cacheDAO;
 
     // 在线客户端管理
     this.monitorClients = new Map(); // clientId -> socketId
     this.adminClients = new Map();   // adminId -> socketId
     this.socketToClientId = new Map(); // socketId -> clientId
 
-    logger.info('IM WebSocket Server initialized');
+    logger.info('IM WebSocket Server initialized with CacheDAO support');
   }
 
   /**
@@ -601,18 +600,18 @@ class IMWebSocketServer {
         return;
       }
 
-      if (!this.commentsDAO && !this.messagesDAO) {
-        socket.emit('error', { message: '已读功能未启用（缺少 DAO）' });
+      if (!this.cacheDAO) {
+        socket.emit('error', { message: '已读功能未启用（缺少 CacheDAO）' });
         return;
       }
 
       let success = false;
       const readAt = Math.floor(Date.now() / 1000);
 
-      if (type === 'comment' && this.commentsDAO) {
-        success = this.commentsDAO.markAsRead(id, readAt);
-      } else if (type === 'message' && this.messagesDAO) {
-        success = this.messagesDAO.markAsRead(id, readAt);
+      if (type === 'comment') {
+        success = this.cacheDAO.markCommentAsRead(id, readAt);
+      } else if (type === 'message') {
+        success = this.cacheDAO.markMessageAsRead(id, readAt);
       } else {
         socket.emit('error', { message: `不支持的消息类型: ${type}` });
         return;
@@ -658,18 +657,18 @@ class IMWebSocketServer {
         return;
       }
 
-      if (!this.commentsDAO && !this.messagesDAO) {
-        socket.emit('error', { message: '已读功能未启用（缺少 DAO）' });
+      if (!this.cacheDAO) {
+        socket.emit('error', { message: '已读功能未启用（缺少 CacheDAO）' });
         return;
       }
 
       let count = 0;
       const readAt = Math.floor(Date.now() / 1000);
 
-      if (type === 'comment' && this.commentsDAO) {
-        count = this.commentsDAO.markBatchAsRead(ids, readAt);
-      } else if (type === 'message' && this.messagesDAO) {
-        count = this.messagesDAO.markBatchAsRead(ids, readAt);
+      if (type === 'comment') {
+        count = this.cacheDAO.markCommentsAsRead(ids, readAt);
+      } else if (type === 'message') {
+        count = this.cacheDAO.markMessagesAsRead(ids, readAt);
       } else {
         socket.emit('error', { message: `不支持的消息类型: ${type}` });
         return;
@@ -712,13 +711,13 @@ class IMWebSocketServer {
         return;
       }
 
-      if (!this.commentsDAO) {
-        socket.emit('error', { message: '评论已读功能未启用（缺少 CommentsDAO）' });
+      if (!this.cacheDAO) {
+        socket.emit('error', { message: '评论已读功能未启用（缺少 CacheDAO）' });
         return;
       }
 
       const readAt = Math.floor(Date.now() / 1000);
-      const count = this.commentsDAO.markTopicAsRead(topicId, channelId, readAt);
+      const count = this.cacheDAO.markTopicAsRead(topicId, channelId, readAt);
 
       // 响应客户端
       socket.emit('monitor:mark_topic_as_read_response', {
@@ -757,13 +756,13 @@ class IMWebSocketServer {
         return;
       }
 
-      if (!this.messagesDAO) {
-        socket.emit('error', { message: '私信已读功能未启用（缺少 MessagesDAO）' });
+      if (!this.cacheDAO) {
+        socket.emit('error', { message: '私信已读功能未启用（缺少 CacheDAO）' });
         return;
       }
 
       const readAt = Math.floor(Date.now() / 1000);
-      const count = this.messagesDAO.markConversationAsRead(conversationId, channelId, readAt);
+      const count = this.cacheDAO.markConversationAsRead(conversationId, channelId, readAt);
 
       // 响应客户端
       socket.emit('monitor:mark_conversation_as_read_response', {
@@ -797,8 +796,8 @@ class IMWebSocketServer {
     try {
       const { channelId } = data || {};
 
-      if (!this.commentsDAO && !this.messagesDAO) {
-        socket.emit('error', { message: '未读计数功能未启用（缺少 DAO）' });
+      if (!this.cacheDAO) {
+        socket.emit('error', { message: '未读计数功能未启用（缺少 CacheDAO）' });
         return;
       }
 
@@ -810,12 +809,8 @@ class IMWebSocketServer {
 
       if (channelId) {
         // 查询特定频道的未读数
-        if (this.commentsDAO) {
-          unreadCounts.comments = this.commentsDAO.countUnread(channelId);
-        }
-        if (this.messagesDAO) {
-          unreadCounts.messages = this.messagesDAO.countUnread(channelId);
-        }
+        unreadCounts.comments = this.cacheDAO.countUnreadComments(channelId);
+        unreadCounts.messages = this.cacheDAO.countUnreadMessages(channelId);
         unreadCounts.total = unreadCounts.comments + unreadCounts.messages;
 
         socket.emit('monitor:unread_count_response', {
@@ -827,28 +822,24 @@ class IMWebSocketServer {
         // 查询所有频道的未读数（按频道分组）
         const byChannel = {};
 
-        if (this.commentsDAO) {
-          const commentsByAccount = this.commentsDAO.countUnreadByAccount();
-          for (const [accountId, count] of Object.entries(commentsByAccount)) {
-            if (!byChannel[accountId]) {
-              byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
-            }
-            byChannel[accountId].comments = count;
-            byChannel[accountId].total += count;
-            unreadCounts.comments += count;
+        const commentsByAccount = this.cacheDAO.countUnreadCommentsByAccount();
+        for (const [accountId, count] of Object.entries(commentsByAccount)) {
+          if (!byChannel[accountId]) {
+            byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
           }
+          byChannel[accountId].comments = count;
+          byChannel[accountId].total += count;
+          unreadCounts.comments += count;
         }
 
-        if (this.messagesDAO) {
-          const messagesByAccount = this.messagesDAO.countUnreadByAccount();
-          for (const [accountId, count] of Object.entries(messagesByAccount)) {
-            if (!byChannel[accountId]) {
-              byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
-            }
-            byChannel[accountId].messages = count;
-            byChannel[accountId].total += count;
-            unreadCounts.messages += count;
+        const messagesByAccount = this.cacheDAO.countUnreadMessagesByAccount();
+        for (const [accountId, count] of Object.entries(messagesByAccount)) {
+          if (!byChannel[accountId]) {
+            byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
           }
+          byChannel[accountId].messages = count;
+          byChannel[accountId].total += count;
+          unreadCounts.messages += count;
         }
 
         unreadCounts.total = unreadCounts.comments + unreadCounts.messages;

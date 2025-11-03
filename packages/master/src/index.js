@@ -533,11 +533,11 @@ async function start() {
     const discussionsDAO = new DiscussionsDAO(db);
 
     // 4.3 初始化 IM WebSocket 服务器 (CRM PC IM 客户端)
-    // 传递 DAO 对象以支持已读状态处理功能
+    // 使用 CacheDAO 支持已读状态处理（从 cache_* 表读取）
     const IMWebSocketServer = require('./communication/im-websocket-server');
-    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore, commentsDAO, directMessagesDAO);
+    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore, cacheDAO);
     imWebSocketServer.setupHandlers();
-    logger.info('IM WebSocket Server initialized with read status support');
+    logger.info('IM WebSocket Server initialized with CacheDAO support');
 
     // 4.4 初始化 NotificationHandler（在 Socket.IO 之后）
     notificationHandler = new NotificationHandler(db, socketNamespaces);
