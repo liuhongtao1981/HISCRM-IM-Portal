@@ -257,6 +257,110 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
 }
 
 /**
+ * 滚动会话列表加载所有会话
+ * 针对抖音私信页面的虚拟列表进行滚动，确保加载所有会话
+ * @param {Page} page - Playwright页面对象
+ */
+async function scrollConversationListToLoadAll(page) {
+  logger.info('[scrollConversationListToLoadAll] 开始滚动会话列表加载所有会话');
+
+  try {
+    // 等待会话列表渲染
+    await page.waitForTimeout(1000);
+
+    let previousCount = 0;
+    let stableCount = 0;
+    const MAX_STABLE_COUNT = 3; // 连续 3 次数量不变则认为已加载完成
+    const MAX_ATTEMPTS = 20; // 最多尝试 20 次
+    let attempts = 0;
+
+    while (stableCount < MAX_STABLE_COUNT && attempts < MAX_ATTEMPTS) {
+      attempts++;
+
+      // 获取当前会话列表项数量
+      const currentCount = await page.evaluate(() => {
+        const items = document.querySelectorAll('[role="list-item"]');
+        return items.length;
+      });
+
+      logger.debug(`[scrollConversationListToLoadAll] Attempt ${attempts}: 当前会话数 = ${currentCount}`);
+
+      // 检查数量是否稳定
+      if (currentCount === previousCount) {
+        stableCount++;
+        logger.debug(`[scrollConversationListToLoadAll] 数量稳定 (${stableCount}/${MAX_STABLE_COUNT})`);
+      } else {
+        stableCount = 0; // 重置稳定计数器
+        previousCount = currentCount;
+      }
+
+      // 滚动到底部
+      const scrolled = await page.evaluate(() => {
+        try {
+          // 尝试多种选择器找到会话列表容器
+          const listContainer =
+            document.querySelector('[role="list"]') ||
+            document.querySelector('.conversation-list') ||
+            document.querySelector('[class*="conversationList"]') ||
+            document.querySelector('[class*="ChatList"]') ||
+            document.querySelector('[class*="list"]');
+
+          if (listContainer) {
+            const previousScrollTop = listContainer.scrollTop;
+            listContainer.scrollTop = listContainer.scrollHeight;
+            const newScrollTop = listContainer.scrollTop;
+            return {
+              success: true,
+              scrolled: newScrollTop > previousScrollTop,
+              scrollTop: newScrollTop,
+              scrollHeight: listContainer.scrollHeight
+            };
+          }
+
+          return { success: false, message: '未找到列表容器' };
+        } catch (error) {
+          return { success: false, message: error.message };
+        }
+      });
+
+      if (!scrolled.success) {
+        logger.warn(`[scrollConversationListToLoadAll] 滚动失败: ${scrolled.message}`);
+      } else if (!scrolled.scrolled) {
+        logger.debug(`[scrollConversationListToLoadAll] 已经在底部`);
+      } else {
+        logger.debug(`[scrollConversationListToLoadAll] 滚动: ${scrolled.scrollTop}/${scrolled.scrollHeight}`);
+      }
+
+      // 等待新会话加载
+      await page.waitForTimeout(500);
+    }
+
+    const finalCount = previousCount;
+    logger.info(`[scrollConversationListToLoadAll] ✅ 滚动完成，共加载 ${finalCount} 个会话 (尝试 ${attempts} 次)`);
+
+    // 滚动回顶部，方便后续操作
+    await page.evaluate(() => {
+      const listContainer =
+        document.querySelector('[role="list"]') ||
+        document.querySelector('.conversation-list') ||
+        document.querySelector('[class*="conversationList"]') ||
+        document.querySelector('[class*="ChatList"]') ||
+        document.querySelector('[class*="list"]');
+
+      if (listContainer) {
+        listContainer.scrollTop = 0;
+      }
+    });
+
+    await page.waitForTimeout(300);
+    logger.debug('[scrollConversationListToLoadAll] 已滚动回顶部');
+
+  } catch (error) {
+    logger.error('[scrollConversationListToLoadAll] 滚动失败:', error);
+  }
+}
+
+/**
  * 提取会话列表 - 改进版
  * 支持多种选择器和错误恢复
  * @param {Page} page - Playwright页面对象
@@ -268,6 +372,12 @@ async function extractConversationsList(page, account, apiData = {}) {
   const conversations = [];
 
   try {
+    // ========================================================================
+    // 第 0 步：滚动会话列表加载所有会话（修复虚拟列表问题）
+    // ========================================================================
+    logger.info('[extractConversationsList] Step 0: Scrolling conversation list to load all conversations');
+    await scrollConversationListToLoadAll(page);
+
     // ========================================================================
     // 优先方案：从 API 响应中提取会话数据（最可靠）
     // ========================================================================
