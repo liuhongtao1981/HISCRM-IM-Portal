@@ -201,15 +201,17 @@ class DirectMessagesDAO {
   }
 
   /**
-   * 标记私信为已读
+   * 标记私信为已读（单条）
    * @param {string} id - 私信ID
+   * @param {number} readAt - 已读时间戳（可选，默认当前时间）
    * @returns {boolean}
    */
-  markAsRead(id) {
+  markAsRead(id, readAt = null) {
     try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
       const result = this.db
-        .prepare('UPDATE direct_messages SET is_read = 1 WHERE id = ?')
-        .run(id);
+        .prepare('UPDATE direct_messages SET is_read = 1, read_at = ? WHERE id = ?')
+        .run(timestamp, id);
 
       if (result.changes === 0) {
         return false;
@@ -220,6 +222,107 @@ class DirectMessagesDAO {
     } catch (error) {
       logger.error(`Failed to mark direct message as read ${id}:`, error);
       throw error;
+    }
+  }
+
+  /**
+   * 批量标记私信为已读
+   * @param {Array<string>} ids - 私信ID数组
+   * @param {number} readAt - 已读时间戳（可选，默认当前时间）
+   * @returns {number} 成功标记的数量
+   */
+  markBatchAsRead(ids, readAt = null) {
+    if (!ids || ids.length === 0) return 0;
+
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      const placeholders = ids.map(() => '?').join(',');
+
+      const result = this.db.prepare(`
+        UPDATE direct_messages
+        SET is_read = 1, read_at = ?
+        WHERE id IN (${placeholders})
+      `).run(timestamp, ...ids);
+
+      logger.info(`${result.changes} direct messages marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error('Failed to mark direct messages as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 按会话ID标记所有私信为已读
+   * @param {string} conversationId - 会话ID
+   * @param {string} accountId - 账户ID（可选）
+   * @param {number} readAt - 已读时间戳（可选）
+   * @returns {number} 成功标记的数量
+   */
+  markConversationAsRead(conversationId, accountId = null, readAt = null) {
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      let sql = 'UPDATE direct_messages SET is_read = 1, read_at = ? WHERE conversation_id = ? AND is_read = 0';
+      const params = [timestamp, conversationId];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).run(...params);
+      logger.info(`${result.changes} messages in conversation ${conversationId} marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error(`Failed to mark conversation ${conversationId} as read:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取未读私信数量
+   * @param {string} accountId - 账户ID（可选）
+   * @returns {number} 未读数量
+   */
+  countUnread(accountId = null) {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM direct_messages WHERE is_read = 0';
+      const params = [];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).get(...params);
+      return result.count;
+    } catch (error) {
+      logger.error('Failed to count unread messages:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 按账户分组统计未读数量
+   * @returns {Object} { account_id: count, ... }
+   */
+  countUnreadByAccount() {
+    try {
+      const rows = this.db.prepare(`
+        SELECT account_id, COUNT(*) as count
+        FROM direct_messages
+        WHERE is_read = 0
+        GROUP BY account_id
+      `).all();
+
+      const result = {};
+      for (const row of rows) {
+        result[row.account_id] = row.count;
+      }
+      return result;
+    } catch (error) {
+      logger.error('Failed to count unread messages by account:', error);
+      return {};
     }
   }
 
