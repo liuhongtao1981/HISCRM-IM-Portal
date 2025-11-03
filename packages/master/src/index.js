@@ -51,6 +51,7 @@ const NotificationHandler = require('./notification/notification-handler');
 const LoginHandler = require('./login/login-handler');
 const DataStore = require('./data/data-store');
 const DataSyncReceiver = require('./communication/data-sync-receiver');
+const { PersistenceManager } = require('./persistence');
 const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, WORKER_ACCOUNT_STATUS, WORKER_DATA_SYNC, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
 
 // 初始化logger
@@ -151,6 +152,7 @@ let workerConfigDAO;
 let workerRuntimeDAO;
 let dataStore;
 let dataSyncReceiver;
+let persistenceManager;
 
 // API路由
 app.get('/api/v1/status', (req, res) => {
@@ -467,7 +469,12 @@ async function start() {
     dataStore = new DataStore();
     logger.info('DataStore initialized');
 
-    // 1.6 初始化 DataSyncReceiver
+    // 1.6 初始化 PersistenceManager (数据持久化管理器)
+    persistenceManager = new PersistenceManager(db, dataStore);
+    await persistenceManager.start();
+    logger.info('PersistenceManager initialized and started');
+
+    // 1.7 初始化 DataSyncReceiver
     dataSyncReceiver = new DataSyncReceiver(dataStore);
     logger.info('DataSyncReceiver initialized');
 
@@ -1279,7 +1286,7 @@ async function start() {
     // DEBUG API 路由 (仅在 DEBUG 模式启用)
     if (debugConfig.enabled) {
       const { router: debugRouter, initDebugAPI } = require('./api/routes/debug-api');
-      initDebugAPI(db);
+      initDebugAPI(db, persistenceManager);
       app.use('/api/debug', debugRouter);
       logger.info('DEBUG API routes mounted');
     }
@@ -1352,6 +1359,17 @@ async function start() {
           if (loginHandler) loginHandler.stopCleanupTimer();
         } catch (error) {
           logger.warn('Error stopping schedulers:', error.message);
+        }
+
+        // 停止持久化管理器（在退出前持久化数据）
+        logger.info('Stopping persistence manager...');
+        try {
+          if (persistenceManager) {
+            await persistenceManager.stop();
+            logger.info('Persistence manager stopped');
+          }
+        } catch (error) {
+          logger.warn('Error stopping persistence manager:', error.message);
         }
 
         // 停止所有由 Master 管理的 Worker 进程

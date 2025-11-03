@@ -18,12 +18,14 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('debug-api', './logs');
 
 let db = null;
+let persistenceManager = null;
 
 /**
  * 初始化 DEBUG API
  */
-function initDebugAPI(database) {
+function initDebugAPI(database, persistenceMgr = null) {
   db = database;
+  persistenceManager = persistenceMgr;
 }
 
 /**
@@ -242,6 +244,158 @@ router.get('/workers/:workerId', (req, res) => {
     res.json(workerDetail);
   } catch (error) {
     logger.error('获取Worker详情失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ============================================================================
+// 数据持久化 API
+// ============================================================================
+
+/**
+ * GET /api/debug/persistence/stats
+ * 获取持久化统计信息
+ */
+router.get('/persistence/stats', (req, res) => {
+  try {
+    if (!persistenceManager) {
+      return res.status(503).json({ error: '持久化管理器未初始化' });
+    }
+
+    const stats = persistenceManager.getStats();
+
+    logger.debug('获取持久化统计', stats);
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      stats,
+    });
+  } catch (error) {
+    logger.error('获取持久化统计失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/debug/persistence/persist
+ * 手动触发持久化
+ */
+router.post('/persistence/persist', async (req, res) => {
+  try {
+    if (!persistenceManager) {
+      return res.status(503).json({ error: '持久化管理器未初始化' });
+    }
+
+    logger.info('手动触发持久化');
+    const result = await persistenceManager.persistToDatabase();
+
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      result,
+    });
+  } catch (error) {
+    logger.error('手动持久化失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/debug/persistence/reload
+ * 从数据库重新加载数据
+ */
+router.post('/persistence/reload', async (req, res) => {
+  try {
+    if (!persistenceManager) {
+      return res.status(503).json({ error: '持久化管理器未初始化' });
+    }
+
+    logger.info('从数据库重新加载数据');
+    const result = await persistenceManager.loadFromDatabase();
+
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      result,
+    });
+  } catch (error) {
+    logger.error('重新加载数据失败', { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * POST /api/debug/persistence/cleanup/:dataType
+ * 清理指定类型的过期数据
+ */
+router.post('/persistence/cleanup/:dataType', async (req, res) => {
+  try {
+    if (!persistenceManager) {
+      return res.status(503).json({ error: '持久化管理器未初始化' });
+    }
+
+    const { dataType } = req.params;
+    const validTypes = ['comments', 'contents', 'conversations', 'messages', 'notifications'];
+
+    if (!validTypes.includes(dataType)) {
+      return res.status(400).json({
+        error: `无效的数据类型。有效类型: ${validTypes.join(', ')}`,
+      });
+    }
+
+    logger.info(`清理过期的 ${dataType}`);
+    const result = await persistenceManager.cleanExpiredData(dataType);
+
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      dataType,
+      result,
+    });
+  } catch (error) {
+    logger.error(`清理过期数据失败 (${req.params.dataType})`, { error: error.message });
+    res.status(500).json({ error: error.message });
+  }
+});
+
+/**
+ * GET /api/debug/persistence/cache-stats
+ * 获取缓存数据库统计
+ */
+router.get('/persistence/cache-stats', (req, res) => {
+  try {
+    if (!db) {
+      return res.status(503).json({ error: '数据库未初始化' });
+    }
+
+    // 获取各个缓存表的统计
+    const tables = ['comments', 'contents', 'conversations', 'messages', 'notifications', 'metadata'];
+    const stats = {};
+
+    for (const table of tables) {
+      const tableName = table === 'metadata' ? 'cache_metadata' : `cache_${table}`;
+      const result = db.prepare(`SELECT COUNT(*) as count FROM ${tableName}`).get();
+      stats[table] = result.count;
+    }
+
+    // 获取最近持久化的元数据
+    const recentMetadata = db.prepare(`
+      SELECT account_id, platform, last_update, last_persist,
+             comments_count, contents_count, conversations_count,
+             messages_count, notifications_count
+      FROM cache_metadata
+      ORDER BY last_persist DESC
+      LIMIT 10
+    `).all();
+
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      stats,
+      recentAccounts: recentMetadata,
+    });
+  } catch (error) {
+    logger.error('获取缓存统计失败', { error: error.message });
     res.status(500).json({ error: error.message });
   }
 });
