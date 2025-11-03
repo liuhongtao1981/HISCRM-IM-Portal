@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Table, Button, Space, Tag, Modal, Form, Input, Select, message } from 'antd';
 import { PlusOutlined, EditOutlined, DeleteOutlined, LoginOutlined } from '@ant-design/icons';
-import { accountsAPI, workersAPI } from '../services/api';
+import { accountsAPI, workersAPI, platformsAPI } from '../services/api';
 import { useSocketContext } from '../services/socketContext';
 import LoginModal from '../components/LoginModal';
 
@@ -23,11 +23,10 @@ const AccountsPage = () => {
   const loadPlatforms = async () => {
     setPlatformsLoading(true);
     try {
-      const response = await fetch('http://localhost:3000/api/v1/platforms');
-      const data = await response.json();
+      const response = await platformsAPI.getPlatforms();
 
-      if (data.success && Array.isArray(data.data)) {
-        setPlatforms(data.data);
+      if (response.success && Array.isArray(response.data)) {
+        setPlatforms(response.data);
       } else {
         // 降级方案：使用默认平台列表
         console.warn('Failed to load platforms from API, using defaults');

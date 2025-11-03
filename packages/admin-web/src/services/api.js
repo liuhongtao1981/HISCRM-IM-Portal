@@ -127,4 +127,19 @@ export const messagesAPI = {
   getMessageStats: () => api.get('/messages/stats'),
 };
 
+// =========================
+// 平台相关 API
+// =========================
+
+export const platformsAPI = {
+  // 获取系统支持的所有平台
+  getPlatforms: () => api.get('/platforms'),
+
+  // 获取特定平台的详细信息
+  getPlatform: (platform) => api.get(`/platforms/${platform}`),
+
+  // 获取所有平台的统计汇总
+  getPlatformsStats: () => api.get('/platforms/stats/summary'),
+};
+
 export default api;

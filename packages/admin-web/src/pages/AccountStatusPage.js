@@ -4,7 +4,7 @@ import { SyncOutlined, UserOutlined, CommentOutlined, FileTextOutlined, ClockCir
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import 'dayjs/locale/zh-cn';
-import api from '../services/api';
+import api, { platformsAPI } from '../services/api';
 import { useSocketContext } from '../services/socketContext';
 import LoginModal from '../components/LoginModal';
 
@@ -41,11 +41,10 @@ const AccountStatusPage = () => {
   const loadPlatforms = async () => {
     setPlatformsLoading(true);
     try {
-      const response = await fetch('http://localhost:3000/api/v1/platforms');
-      const data = await response.json();
+      const response = await platformsAPI.getPlatforms();
 
-      if (data.success && Array.isArray(data.data)) {
-        setPlatforms(data.data);
+      if (response.success && Array.isArray(response.data)) {
+        setPlatforms(response.data);
       } else {
         console.warn('Failed to load platforms from API, using defaults');
         setPlatforms([
