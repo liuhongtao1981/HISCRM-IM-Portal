@@ -83,25 +83,31 @@ function initDatabase(dbPath = './data/master.db', options = {}) {
  * 验证数据库schema完整性
  * @param {Database} db - 数据库实例
  * @throws {Error} 如果验证失败
+ *
+ * 更新 (2025-11-03): 移除已删除的旧表
+ * 已删除: comments, direct_messages, conversations, contents, discussions, notifications, notification_rules
+ * 使用 cache_* 表替代
  */
 function validateDatabaseSchema(db) {
   const requiredTables = [
+    // 核心表
     'accounts',
     'workers',
     'worker_configs',
     'worker_runtime',
-    'comments',
-    'direct_messages',
-    'conversations',
-    'login_sessions',
-    'replies',
-    'notifications',
-    'proxies',
-    'notification_rules',
-    'client_sessions',
     'worker_logs',
-    'contents',
-    'discussions'
+    'login_sessions',
+    'client_sessions',
+    'replies',
+    'proxies',
+
+    // Cache 表
+    'cache_comments',
+    'cache_messages',
+    'cache_conversations',
+    'cache_contents',
+    'cache_notifications',
+    'cache_metadata'
   ];
 
   // 获取现有表

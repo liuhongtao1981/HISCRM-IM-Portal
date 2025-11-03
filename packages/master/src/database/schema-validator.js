@@ -13,24 +13,30 @@ const logger = createLogger('schema-validator');
 /**
  * 必需的表列表
  * 所有表都在 schema.sql 中定义
+ *
+ * 更新 (2025-11-03): 移除已删除的旧表
+ * 已删除: comments, direct_messages, conversations, contents, discussions, notifications, notification_rules
+ * 使用 cache_* 表替代
  */
 const REQUIRED_TABLES = [
+  // 核心表
   'accounts',
   'workers',
   'worker_configs',
   'worker_runtime',
-  'comments',
-  'direct_messages',
-  'conversations',
-  'login_sessions',
-  'replies',
-  'notifications',
-  'proxies',
-  'notification_rules',
-  'client_sessions',
   'worker_logs',
-  'contents',
-  'discussions'
+  'login_sessions',
+  'client_sessions',
+  'replies',
+  'proxies',
+
+  // Cache 表
+  'cache_comments',
+  'cache_messages',
+  'cache_conversations',
+  'cache_contents',
+  'cache_notifications',
+  'cache_metadata'
 ];
 
 /**

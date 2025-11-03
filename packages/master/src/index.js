@@ -153,6 +153,7 @@ let workerRuntimeDAO;
 let dataStore;
 let dataSyncReceiver;
 let persistenceManager;
+let cacheDAO;
 
 // API路由
 app.get('/api/v1/status', (req, res) => {
@@ -473,6 +474,11 @@ async function start() {
     persistenceManager = new PersistenceManager(db, dataStore);
     await persistenceManager.start();
     logger.info('PersistenceManager initialized and started');
+
+    // 1.65 初始化 CacheDAO (cache_* 表数据访问层)
+    const CacheDAO = require('./persistence/cache-dao');
+    cacheDAO = new CacheDAO(db);
+    logger.info('CacheDAO initialized');
 
     // 1.7 初始化 DataSyncReceiver
     dataSyncReceiver = new DataSyncReceiver(dataStore);
