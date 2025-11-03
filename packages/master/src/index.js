@@ -1273,10 +1273,8 @@ async function start() {
       getWorkerRegistry: () => workerRegistry,
     }));
 
-    // IM 兼容层路由 (用于 crm-pc-im 客户端)
-    const createIMRouter = require('./api/routes/im');
-    app.use('/api/im', createIMRouter(db, dataStore));
-    logger.info('IM compatibility layer routes mounted at /api/im');
+    // IM 兼容层路由已移除 - PC IM 客户端已改用 WebSocket
+    // 参见: packages/master/src/communication/im-websocket-server.js
 
     // DEBUG API 路由 (仅在 DEBUG 模式启用)
     if (debugConfig.enabled) {

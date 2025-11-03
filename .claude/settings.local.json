@@ -77,7 +77,8 @@
       "Bash(mv:*)",
       "Bash(npx better-sqlite3:*)",
       "Bash(copy:*)",
-      "Bash(nul)"
+      "Bash(nul)",
+      "Bash(git push:*)"
     ],
     "deny": [],
     "ask": [],
