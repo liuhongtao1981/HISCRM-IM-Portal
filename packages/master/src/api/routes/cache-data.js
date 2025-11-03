@@ -118,9 +118,9 @@ function createCacheDataRouter(db, cacheDAO = null) {
           author_id: commentData.authorId || '',
           post_title: commentData.postTitle || commentData.contentTitle || '',
           post_id: commentData.contentId || commentData.postId || '',
-          created_at: Math.floor(row.created_at / 1000), // 毫秒 → 秒
+          created_at: row.created_at, // 数据库已存储秒级时间戳
           is_read: row.is_read,
-          read_at: row.read_at ? Math.floor(row.read_at / 1000) : null,
+          read_at: row.read_at || null,
         };
       });
 
@@ -243,6 +243,17 @@ function createCacheDataRouter(db, cacheDAO = null) {
           logger.warn('Failed to parse message data JSON', { id: row.id, error: e.message });
         }
 
+        // 转换时间戳：如果是 ISO 8601 字符串，转换为秒级时间戳
+        let createdAtTimestamp = row.created_at;
+        let readAtTimestamp = row.read_at;
+
+        if (typeof row.created_at === 'string') {
+          createdAtTimestamp = Math.floor(new Date(row.created_at).getTime() / 1000);
+        }
+        if (row.read_at && typeof row.read_at === 'string') {
+          readAtTimestamp = Math.floor(new Date(row.read_at).getTime() / 1000);
+        }
+
         return {
           id: row.id,
           account_id: row.account_id,
@@ -253,9 +264,9 @@ function createCacheDataRouter(db, cacheDAO = null) {
           sender_name: messageData.senderName || '',
           sender_id: messageData.senderId || '',
           direction: messageData.direction || 'inbound',
-          created_at: Math.floor(row.created_at / 1000), // 毫秒 → 秒
+          created_at: createdAtTimestamp, // 统一为秒级时间戳
           is_read: row.is_read,
-          read_at: row.read_at ? Math.floor(row.read_at / 1000) : null,
+          read_at: readAtTimestamp || null,
         };
       });
 

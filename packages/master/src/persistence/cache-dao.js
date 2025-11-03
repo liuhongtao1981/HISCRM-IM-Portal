@@ -387,12 +387,22 @@ class CacheDAO {
 
     const transaction = this.db.transaction((messages) => {
       for (const message of messages) {
+        // 统一时间戳格式：确保 created_at 是秒级时间戳（整数）
+        let createdAtTimestamp = message.createdAt || now;
+        if (typeof createdAtTimestamp === 'string') {
+          // ISO 8601 字符串 → 秒级时间戳
+          createdAtTimestamp = Math.floor(new Date(createdAtTimestamp).getTime() / 1000);
+        } else if (createdAtTimestamp > 100000000000) {
+          // 毫秒级时间戳 → 秒级时间戳
+          createdAtTimestamp = Math.floor(createdAtTimestamp / 1000);
+        }
+
         this.preparedStmts.upsertMessage.run(
           message.id,
           accountId,
           message.conversationId || '',
           JSON.stringify(message),
-          message.createdAt || now,
+          createdAtTimestamp,
           now,
           now
         );
