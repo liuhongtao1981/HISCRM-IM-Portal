@@ -579,6 +579,262 @@ class CacheDAO {
 
     return stats;
   }
+
+  // ============================================================================
+  // Read Status Operations
+  // ============================================================================
+
+  /**
+   * 标记评论为已读（单条）
+   * @param {string} id - 评论ID
+   * @param {number} readAt - 已读时间戳（可选，默认当前时间）
+   * @returns {boolean}
+   */
+  markCommentAsRead(id, readAt = null) {
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      const result = this.db
+        .prepare('UPDATE cache_comments SET is_read = 1, read_at = ? WHERE id = ?')
+        .run(timestamp, id);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`[CacheDAO] Comment marked as read: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`[CacheDAO] Failed to mark comment as read ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量标记评论为已读
+   * @param {Array<string>} ids - 评论ID数组
+   * @param {number} readAt - 已读时间戳（可选，默认当前时间）
+   * @returns {number} 成功标记的数量
+   */
+  markCommentsAsRead(ids, readAt = null) {
+    if (!ids || ids.length === 0) return 0;
+
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      const placeholders = ids.map(() => '?').join(',');
+
+      const result = this.db.prepare(`
+        UPDATE cache_comments
+        SET is_read = 1, read_at = ?
+        WHERE id IN (${placeholders})
+      `).run(timestamp, ...ids);
+
+      logger.info(`[CacheDAO] ${result.changes} comments marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to mark comments as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 按作品ID标记所有评论为已读
+   * @param {string} contentId - 作品ID
+   * @param {string} accountId - 账户ID（可选）
+   * @param {number} readAt - 已读时间戳（可选）
+   * @returns {number} 成功标记的数量
+   */
+  markTopicAsRead(contentId, accountId = null, readAt = null) {
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      let sql = 'UPDATE cache_comments SET is_read = 1, read_at = ? WHERE content_id = ? AND is_read = 0';
+      const params = [timestamp, contentId];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).run(...params);
+      logger.info(`[CacheDAO] ${result.changes} comments in topic ${contentId} marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error(`[CacheDAO] Failed to mark topic ${contentId} as read:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取未读评论数量
+   * @param {string} accountId - 账户ID（可选）
+   * @returns {number} 未读数量
+   */
+  countUnreadComments(accountId = null) {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM cache_comments WHERE is_read = 0';
+      const params = [];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).get(...params);
+      return result.count;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to count unread comments:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 按账户分组统计未读评论数量
+   * @returns {Object} { account_id: count, ... }
+   */
+  countUnreadCommentsByAccount() {
+    try {
+      const rows = this.db.prepare(`
+        SELECT account_id, COUNT(*) as count
+        FROM cache_comments
+        WHERE is_read = 0
+        GROUP BY account_id
+      `).all();
+
+      const result = {};
+      for (const row of rows) {
+        result[row.account_id] = row.count;
+      }
+      return result;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to count unread comments by account:', error);
+      return {};
+    }
+  }
+
+  /**
+   * 标记私信为已读（单条）
+   * @param {string} id - 私信ID
+   * @param {number} readAt - 已读时间戳（可选，默认当前时间）
+   * @returns {boolean}
+   */
+  markMessageAsRead(id, readAt = null) {
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      const result = this.db
+        .prepare('UPDATE cache_messages SET is_read = 1, read_at = ? WHERE id = ?')
+        .run(timestamp, id);
+
+      if (result.changes === 0) {
+        return false;
+      }
+
+      logger.info(`[CacheDAO] Message marked as read: ${id}`);
+      return true;
+    } catch (error) {
+      logger.error(`[CacheDAO] Failed to mark message as read ${id}:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 批量标记私信为已读
+   * @param {Array<string>} ids - 私信ID数组
+   * @param {number} readAt - 已读时间戳（可选）
+   * @returns {number} 成功标记的数量
+   */
+  markMessagesAsRead(ids, readAt = null) {
+    if (!ids || ids.length === 0) return 0;
+
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      const placeholders = ids.map(() => '?').join(',');
+
+      const result = this.db.prepare(`
+        UPDATE cache_messages
+        SET is_read = 1, read_at = ?
+        WHERE id IN (${placeholders})
+      `).run(timestamp, ...ids);
+
+      logger.info(`[CacheDAO] ${result.changes} messages marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to mark messages as read:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * 按会话ID标记所有私信为已读
+   * @param {string} conversationId - 会话ID
+   * @param {string} accountId - 账户ID（可选）
+   * @param {number} readAt - 已读时间戳（可选）
+   * @returns {number} 成功标记的数量
+   */
+  markConversationAsRead(conversationId, accountId = null, readAt = null) {
+    try {
+      const timestamp = readAt || Math.floor(Date.now() / 1000);
+      let sql = 'UPDATE cache_messages SET is_read = 1, read_at = ? WHERE conversation_id = ? AND is_read = 0';
+      const params = [timestamp, conversationId];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).run(...params);
+      logger.info(`[CacheDAO] ${result.changes} messages in conversation ${conversationId} marked as read`);
+      return result.changes;
+    } catch (error) {
+      logger.error(`[CacheDAO] Failed to mark conversation ${conversationId} as read:`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取未读私信数量
+   * @param {string} accountId - 账户ID（可选）
+   * @returns {number} 未读数量
+   */
+  countUnreadMessages(accountId = null) {
+    try {
+      let sql = 'SELECT COUNT(*) as count FROM cache_messages WHERE is_read = 0';
+      const params = [];
+
+      if (accountId) {
+        sql += ' AND account_id = ?';
+        params.push(accountId);
+      }
+
+      const result = this.db.prepare(sql).get(...params);
+      return result.count;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to count unread messages:', error);
+      return 0;
+    }
+  }
+
+  /**
+   * 按账户分组统计未读私信数量
+   * @returns {Object} { account_id: count, ... }
+   */
+  countUnreadMessagesByAccount() {
+    try {
+      const rows = this.db.prepare(`
+        SELECT account_id, COUNT(*) as count
+        FROM cache_messages
+        WHERE is_read = 0
+        GROUP BY account_id
+      `).all();
+
+      const result = {};
+      for (const row of rows) {
+        result[row.account_id] = row.count;
+      }
+      return result;
+    } catch (error) {
+      logger.error('[CacheDAO] Failed to count unread messages by account:', error);
+      return {};
+    }
+  }
 }
 
 module.exports = CacheDAO;
