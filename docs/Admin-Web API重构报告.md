@@ -2,15 +2,15 @@
 
 **项目**: HisCRM-IM Admin-Web API 调用优化
 **日期**: 2025-11-03
-**阶段**: Phase 3.2 + Phase 3.3
-**状态**: ✅ 100% 完成
-**Git 提交**: 1e81546 (Phase 3.2), cf0cb23 (Phase 3.3)
+**阶段**: Phase 3.2 + Phase 3.3 + Phase 3.4 + Phase 3.5
+**状态**: ✅ 100% 完成 + 修复完成
+**Git 提交**: 1e81546 (Phase 3.2), cf0cb23 (Phase 3.3), 8c6393f (Phase 3.4), 7b9cff2 (Phase 3.5)
 
 ---
 
 ## 📋 执行摘要
 
-在完成 Master 数据库清理（Phase 3）和协议废弃代码删除（Phase 3.1）后，本次工作对 Admin-Web 前端的 API 调用方式进行了重构，**消除了硬编码的 HTTP 调用**，**创建了新的 Cache Data API**，统一使用集中式 API 服务。
+在完成 Master 数据库清理（Phase 3）和协议废弃代码删除（Phase 3.1）后，本次工作对 Admin-Web 前端的 API 调用方式进行了重构，**消除了硬编码的 HTTP 调用**，**创建了新的 Cache Data API**，统一使用集中式 API 服务，并**修复了 JSON 数据格式适配问题**。
 
 **关键成果**：
 
@@ -28,6 +28,18 @@
 - ✅ 更新 `messagesAPI` 指向新端点
 - ✅ `MessageManagementPage.js` 无缝切换，无需修改
 - ✅ 支持完整的过滤、分页、排序功能
+
+### Phase 3.4 - Cache Data API JSON 解析修复 ✨ NEW
+- ✅ 修复 `/cache/comments` 和 `/cache/messages` 端点
+- ✅ 适配 JSON 数据存储格式（cache_* 表使用 `data` 列存储 JSON）
+- ✅ JavaScript 层面解析 JSON 并映射字段
+- ✅ API 端点测试通过（9 条评论 + 44 条私信）
+
+### Phase 3.5 - NotificationQueue 纯内存队列重构 ✨ NEW
+- ✅ 移除对已删除 `notifications` 表的依赖
+- ✅ 重构为纯内存队列（不持久化）
+- ✅ 修复 "no such table: notifications" 错误
+- ✅ Master 服务器启动完全正常
 
 ---
 
@@ -542,13 +554,16 @@ describe('platformsAPI', () => {
 | Phase 3.1 | 删除旧协议处理器 | ✅ | 38a0c85 |
 | **Phase 3.2** | **Admin-Web API 调用优化** | **✅** | **1e81546** |
 | **Phase 3.3** | **Cache Data API 实现** | **✅** | **cf0cb23** |
+| **Phase 3.4** | **Cache Data API JSON 解析修复** | **✅** | **8c6393f** |
+| **Phase 3.5** | **NotificationQueue 纯内存队列重构** | **✅** | **7b9cff2** |
 
-**总计**: 7 个阶段，全部完成 ✅
+**总计**: 9 个阶段，全部完成 ✅
 
 ---
 
 ## 📚 相关文档
 
+- [Cache-Data-API验证报告.md](./Cache-Data-API验证报告.md) - Phase 3.4 和 3.5 的完整验证报告
 - [Master数据库清理完成报告.md](./Master数据库清理完成报告.md) - Phase 1-3 的完整实施记录
 - [02-MASTER-系统文档.md](./02-MASTER-系统文档.md) - Master API 架构文档
 - [01-ADMIN-WEB-系统文档.md](./01-ADMIN-WEB-系统文档.md) - Admin-Web 前端架构文档
@@ -556,5 +571,6 @@ describe('platformsAPI', () => {
 ---
 
 **报告生成时间**: 2025-11-03
+**最后更新**: 2025-11-03 (添加 Phase 3.4 和 3.5)
 **执行人**: Claude Code
 **审核状态**: ✅ 待审核
