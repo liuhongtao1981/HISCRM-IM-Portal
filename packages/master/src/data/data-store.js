@@ -19,6 +19,9 @@ class DataStore {
     // 账户数据存储: accountId -> AccountData
     this.accounts = new Map();
 
+    // 脏数据标记: 标记哪些账户的数据已变更,需要持久化
+    this.dirtyAccounts = new Set();
+
     // 统计信息
     this.stats = {
       totalAccounts: 0,
@@ -110,6 +113,9 @@ class DataStore {
 
       // 更新统计
       this.updateStats();
+
+      // 标记为脏数据
+      this.dirtyAccounts.add(accountId);
 
       logger.info(`Account data updated: ${accountId}`, {
         comments: accountData.data.comments.size,
@@ -466,6 +472,114 @@ class DataStore {
     } catch (error) {
       logger.error('Failed to import snapshot:', error);
       return false;
+    }
+  }
+
+  /**
+   * 导出脏数据快照 (只导出变更的账户数据)
+   * @returns {object} 脏数据快照
+   */
+  exportDirtySnapshot() {
+    const snapshot = {
+      timestamp: Date.now(),
+      stats: this.getStats(),
+      accounts: {},
+    };
+
+    // 只导出标记为脏的账户
+    for (const accountId of this.dirtyAccounts) {
+      const accountData = this.accounts.get(accountId);
+      if (accountData) {
+        snapshot.accounts[accountId] = {
+          accountId: accountData.accountId,
+          platform: accountData.platform,
+          lastUpdate: accountData.lastUpdate,
+          data: {
+            comments: Array.from(accountData.data.comments.values()),
+            contents: Array.from(accountData.data.contents.values()),
+            conversations: Array.from(accountData.data.conversations.values()),
+            messages: Array.from(accountData.data.messages.values()),
+            notifications: Array.from(accountData.data.notifications.values()),
+          },
+        };
+      }
+    }
+
+    return snapshot;
+  }
+
+  /**
+   * 清空脏标记
+   */
+  clearDirtyFlags() {
+    this.dirtyAccounts.clear();
+    logger.debug('Dirty flags cleared');
+  }
+
+  /**
+   * 获取脏账户数量
+   */
+  getDirtyAccountsCount() {
+    return this.dirtyAccounts.size;
+  }
+
+  /**
+   * 清理过期数据
+   * @param {string} dataType - 数据类型 (comments, contents, conversations, messages, notifications)
+   * @param {number} expireTime - 过期时间戳 (毫秒)
+   * @returns {number} 删除的数据条数
+   */
+  cleanExpiredData(dataType, expireTime) {
+    let deletedCount = 0;
+
+    for (const [accountId, accountData] of this.accounts.entries()) {
+      const dataMap = accountData.data[dataType];
+      if (!dataMap) continue;
+
+      const beforeSize = dataMap.size;
+
+      for (const [id, item] of dataMap.entries()) {
+        // 根据数据类型获取时间字段
+        const itemTime = this.getItemTime(item, dataType);
+
+        if (itemTime && itemTime < expireTime) {
+          dataMap.delete(id);
+          deletedCount++;
+        }
+      }
+
+      // 如果有数据被删除,标记为脏数据
+      if (dataMap.size !== beforeSize) {
+        this.dirtyAccounts.add(accountId);
+      }
+    }
+
+    if (deletedCount > 0) {
+      this.updateStats();
+      logger.info(`Cleaned ${deletedCount} expired ${dataType} from memory`);
+    }
+
+    return deletedCount;
+  }
+
+  /**
+   * 获取数据项的时间戳
+   * @private
+   */
+  getItemTime(item, dataType) {
+    switch (dataType) {
+      case 'comments':
+        return item.createdAt;
+      case 'contents':
+        return item.publishTime;
+      case 'conversations':
+        return item.lastMessageTime;
+      case 'messages':
+        return item.createdAt;
+      case 'notifications':
+        return item.createdAt || item.created_at;
+      default:
+        return item.createdAt || item.created_at;
     }
   }
 }
