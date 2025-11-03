@@ -519,26 +519,7 @@ async function start() {
     adminNamespace = socketNamespaces.adminNamespace;
     logger.info('Socket.IO server initialized');
 
-    // 4.2 初始化 IM WebSocket 服务器 (CRM PC IM 客户端)
-    const IMWebSocketServer = require('./communication/im-websocket-server');
-    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore);
-    imWebSocketServer.setupHandlers();
-    logger.info('IM WebSocket Server initialized');
-
-    // 4.3 初始化 NotificationHandler（在 Socket.IO 之后）
-    notificationHandler = new NotificationHandler(db, socketNamespaces);
-    logger.info('Notification handler initialized');
-
-    // 4.3 添加通知推送处理器
-    tempHandlers.onNotificationPush = async (data, socket) => {
-      try {
-        await notificationHandler.handleWorkerNotification(data);
-      } catch (error) {
-        logger.error('Failed to handle notification push:', error);
-      }
-    };
-
-    // 4.4 添加爬虫相关处理器
+    // 4.2 初始化 DAO 层（先初始化，后面 IM WebSocket Server 需要使用）
     const CommentsDAO = require('./database/comments-dao');
     const DirectMessagesDAO = require('./database/messages-dao');
     const ConversationsDAO = require('./database/conversations-dao');
@@ -550,6 +531,26 @@ async function start() {
     const conversationsDAO = new ConversationsDAO(db);
     const contentsDAO = new ContentsDAO(db);
     const discussionsDAO = new DiscussionsDAO(db);
+
+    // 4.3 初始化 IM WebSocket 服务器 (CRM PC IM 客户端)
+    // 传递 DAO 对象以支持已读状态处理功能
+    const IMWebSocketServer = require('./communication/im-websocket-server');
+    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore, commentsDAO, directMessagesDAO);
+    imWebSocketServer.setupHandlers();
+    logger.info('IM WebSocket Server initialized with read status support');
+
+    // 4.4 初始化 NotificationHandler（在 Socket.IO 之后）
+    notificationHandler = new NotificationHandler(db, socketNamespaces);
+    logger.info('Notification handler initialized');
+
+    // 4.5 添加通知推送处理器
+    tempHandlers.onNotificationPush = async (data, socket) => {
+      try {
+        await notificationHandler.handleWorkerNotification(data);
+      } catch (error) {
+        logger.error('Failed to handle notification push:', error);
+      }
+    };
 
     // ============================================
     // 新数据推送处理器 (IsNewPushTask)

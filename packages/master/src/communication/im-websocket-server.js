@@ -9,9 +9,11 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('im-websocket');
 
 class IMWebSocketServer {
-  constructor(io, dataStore) {
+  constructor(io, dataStore, commentsDAO = null, messagesDAO = null) {
     this.io = io;
     this.dataStore = dataStore;
+    this.commentsDAO = commentsDAO;
+    this.messagesDAO = messagesDAO;
 
     // 在线客户端管理
     this.monitorClients = new Map(); // clientId -> socketId
@@ -52,6 +54,33 @@ class IMWebSocketServer {
       // 发送回复
       socket.on('monitor:reply', (data) => {
         this.handleMonitorReply(socket, data);
+      });
+
+      // ============ 已读状态处理事件 ============
+
+      // 标记单条消息已读
+      socket.on('monitor:mark_as_read', (data) => {
+        this.handleMarkAsRead(socket, data);
+      });
+
+      // 批量标记已读
+      socket.on('monitor:mark_batch_as_read', (data) => {
+        this.handleMarkBatchAsRead(socket, data);
+      });
+
+      // 按作品标记所有评论已读
+      socket.on('monitor:mark_topic_as_read', (data) => {
+        this.handleMarkTopicAsRead(socket, data);
+      });
+
+      // 按会话标记所有私信已读
+      socket.on('monitor:mark_conversation_as_read', (data) => {
+        this.handleMarkConversationAsRead(socket, data);
+      });
+
+      // 获取未读计数
+      socket.on('monitor:get_unread_count', (data) => {
+        this.handleGetUnreadCount(socket, data);
       });
 
       // 断开连接
@@ -554,6 +583,289 @@ class IMWebSocketServer {
       ...message,
       channelId: accountId
     });
+  }
+
+  // ============================================================================
+  // 已读状态处理方法
+  // ============================================================================
+
+  /**
+   * 处理单条消息标记已读
+   */
+  handleMarkAsRead(socket, data) {
+    try {
+      const { type, id, channelId } = data;
+
+      if (!type || !id) {
+        socket.emit('error', { message: '缺少必要参数: type 和 id' });
+        return;
+      }
+
+      if (!this.commentsDAO && !this.messagesDAO) {
+        socket.emit('error', { message: '已读功能未启用（缺少 DAO）' });
+        return;
+      }
+
+      let success = false;
+      const readAt = Math.floor(Date.now() / 1000);
+
+      if (type === 'comment' && this.commentsDAO) {
+        success = this.commentsDAO.markAsRead(id, readAt);
+      } else if (type === 'message' && this.messagesDAO) {
+        success = this.messagesDAO.markAsRead(id, readAt);
+      } else {
+        socket.emit('error', { message: `不支持的消息类型: ${type}` });
+        return;
+      }
+
+      if (success) {
+        // 响应客户端
+        socket.emit('monitor:mark_as_read_response', {
+          success: true,
+          id,
+          type,
+          read_at: readAt
+        });
+
+        // 广播给所有客户端
+        this.broadcastToMonitors('monitor:message_read', {
+          type,
+          id,
+          channelId,
+          read_at: readAt
+        });
+
+        logger.info(`[IM WS] Message marked as read: ${type}/${id}`);
+      } else {
+        socket.emit('error', { message: '标记失败：消息不存在' });
+      }
+
+    } catch (error) {
+      logger.error('[IM WS] Mark as read error:', error);
+      socket.emit('error', { message: '标记已读失败' });
+    }
+  }
+
+  /**
+   * 处理批量标记已读
+   */
+  handleMarkBatchAsRead(socket, data) {
+    try {
+      const { type, ids, channelId } = data;
+
+      if (!type || !ids || !Array.isArray(ids)) {
+        socket.emit('error', { message: '缺少必要参数: type 和 ids 数组' });
+        return;
+      }
+
+      if (!this.commentsDAO && !this.messagesDAO) {
+        socket.emit('error', { message: '已读功能未启用（缺少 DAO）' });
+        return;
+      }
+
+      let count = 0;
+      const readAt = Math.floor(Date.now() / 1000);
+
+      if (type === 'comment' && this.commentsDAO) {
+        count = this.commentsDAO.markBatchAsRead(ids, readAt);
+      } else if (type === 'message' && this.messagesDAO) {
+        count = this.messagesDAO.markBatchAsRead(ids, readAt);
+      } else {
+        socket.emit('error', { message: `不支持的消息类型: ${type}` });
+        return;
+      }
+
+      // 响应客户端
+      socket.emit('monitor:mark_batch_as_read_response', {
+        success: true,
+        count,
+        type,
+        read_at: readAt
+      });
+
+      // 广播给所有客户端
+      this.broadcastToMonitors('monitor:messages_read', {
+        type,
+        ids,
+        channelId,
+        count,
+        read_at: readAt
+      });
+
+      logger.info(`[IM WS] ${count} messages marked as read: ${type}`);
+
+    } catch (error) {
+      logger.error('[IM WS] Batch mark as read error:', error);
+      socket.emit('error', { message: '批量标记已读失败' });
+    }
+  }
+
+  /**
+   * 处理按作品标记所有评论已读
+   */
+  handleMarkTopicAsRead(socket, data) {
+    try {
+      const { channelId, topicId } = data;
+
+      if (!channelId || !topicId) {
+        socket.emit('error', { message: '缺少必要参数: channelId 和 topicId' });
+        return;
+      }
+
+      if (!this.commentsDAO) {
+        socket.emit('error', { message: '评论已读功能未启用（缺少 CommentsDAO）' });
+        return;
+      }
+
+      const readAt = Math.floor(Date.now() / 1000);
+      const count = this.commentsDAO.markTopicAsRead(topicId, channelId, readAt);
+
+      // 响应客户端
+      socket.emit('monitor:mark_topic_as_read_response', {
+        success: true,
+        count,
+        topicId,
+        channelId,
+        read_at: readAt
+      });
+
+      // 广播给所有客户端
+      this.broadcastToMonitors('monitor:topic_read', {
+        topicId,
+        channelId,
+        count,
+        read_at: readAt
+      });
+
+      logger.info(`[IM WS] ${count} comments in topic ${topicId} marked as read`);
+
+    } catch (error) {
+      logger.error('[IM WS] Mark topic as read error:', error);
+      socket.emit('error', { message: '按作品标记已读失败' });
+    }
+  }
+
+  /**
+   * 处理按会话标记所有私信已读
+   */
+  handleMarkConversationAsRead(socket, data) {
+    try {
+      const { channelId, conversationId } = data;
+
+      if (!channelId || !conversationId) {
+        socket.emit('error', { message: '缺少必要参数: channelId 和 conversationId' });
+        return;
+      }
+
+      if (!this.messagesDAO) {
+        socket.emit('error', { message: '私信已读功能未启用（缺少 MessagesDAO）' });
+        return;
+      }
+
+      const readAt = Math.floor(Date.now() / 1000);
+      const count = this.messagesDAO.markConversationAsRead(conversationId, channelId, readAt);
+
+      // 响应客户端
+      socket.emit('monitor:mark_conversation_as_read_response', {
+        success: true,
+        count,
+        conversationId,
+        channelId,
+        read_at: readAt
+      });
+
+      // 广播给所有客户端
+      this.broadcastToMonitors('monitor:conversation_read', {
+        conversationId,
+        channelId,
+        count,
+        read_at: readAt
+      });
+
+      logger.info(`[IM WS] ${count} messages in conversation ${conversationId} marked as read`);
+
+    } catch (error) {
+      logger.error('[IM WS] Mark conversation as read error:', error);
+      socket.emit('error', { message: '按会话标记已读失败' });
+    }
+  }
+
+  /**
+   * 处理获取未读计数
+   */
+  handleGetUnreadCount(socket, data) {
+    try {
+      const { channelId } = data || {};
+
+      if (!this.commentsDAO && !this.messagesDAO) {
+        socket.emit('error', { message: '未读计数功能未启用（缺少 DAO）' });
+        return;
+      }
+
+      let unreadCounts = {
+        comments: 0,
+        messages: 0,
+        total: 0
+      };
+
+      if (channelId) {
+        // 查询特定频道的未读数
+        if (this.commentsDAO) {
+          unreadCounts.comments = this.commentsDAO.countUnread(channelId);
+        }
+        if (this.messagesDAO) {
+          unreadCounts.messages = this.messagesDAO.countUnread(channelId);
+        }
+        unreadCounts.total = unreadCounts.comments + unreadCounts.messages;
+
+        socket.emit('monitor:unread_count_response', {
+          success: true,
+          channelId,
+          unread: unreadCounts
+        });
+      } else {
+        // 查询所有频道的未读数（按频道分组）
+        const byChannel = {};
+
+        if (this.commentsDAO) {
+          const commentsByAccount = this.commentsDAO.countUnreadByAccount();
+          for (const [accountId, count] of Object.entries(commentsByAccount)) {
+            if (!byChannel[accountId]) {
+              byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
+            }
+            byChannel[accountId].comments = count;
+            byChannel[accountId].total += count;
+            unreadCounts.comments += count;
+          }
+        }
+
+        if (this.messagesDAO) {
+          const messagesByAccount = this.messagesDAO.countUnreadByAccount();
+          for (const [accountId, count] of Object.entries(messagesByAccount)) {
+            if (!byChannel[accountId]) {
+              byChannel[accountId] = { comments: 0, messages: 0, total: 0 };
+            }
+            byChannel[accountId].messages = count;
+            byChannel[accountId].total += count;
+            unreadCounts.messages += count;
+          }
+        }
+
+        unreadCounts.total = unreadCounts.comments + unreadCounts.messages;
+
+        socket.emit('monitor:unread_count_response', {
+          success: true,
+          unread: unreadCounts,
+          byChannel
+        });
+      }
+
+      logger.debug(`[IM WS] Unread count: ${unreadCounts.total} (comments: ${unreadCounts.comments}, messages: ${unreadCounts.messages})`);
+
+    } catch (error) {
+      logger.error('[IM WS] Get unread count error:', error);
+      socket.emit('error', { message: '获取未读计数失败' });
+    }
   }
 }
 
