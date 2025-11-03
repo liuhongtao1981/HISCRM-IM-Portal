@@ -1,6 +1,6 @@
 -- HisCRM-IM Master Database Schema
 -- Generated from current master.db
--- Generated at: 2025-10-23T07:20:09.374Z
+-- Generated at: 2025-11-03T03:57:29.251Z
 -- Total tables: 18
 
 -- ============================================================================
@@ -56,6 +56,217 @@ CREATE INDEX idx_accounts_platform_account ON accounts(platform, account_id);
 CREATE INDEX idx_accounts_platform_user ON accounts(platform_user_id);
 
 -- ============================================================================
+-- Table: cache_comments
+-- ============================================================================
+CREATE TABLE cache_comments (
+  -- 主键 (与内存 Map key 一致)
+  id TEXT PRIMARY KEY,
+
+  -- 关联
+  account_id TEXT NOT NULL,
+  content_id TEXT,
+
+  -- 评论数据 (JSON - 与内存对象完全一致)
+  -- 结构: { id, contentId, accountId, platform, authorId, authorName,
+  --         authorAvatar, content, createdAt, isNew, status, ... }
+  data TEXT NOT NULL,
+
+  -- 元数据 (用于查询和过期清理)
+  created_at INTEGER NOT NULL,            -- 评论创建时间 (业务时间,毫秒)
+  updated_at INTEGER NOT NULL,            -- 记录更新时间 (毫秒)
+  persist_at INTEGER NOT NULL             -- 持久化时间 (毫秒)
+, read_at INTEGER DEFAULT NULL, is_read INTEGER DEFAULT 0);
+
+CREATE INDEX idx_cache_comments_account_id
+  ON cache_comments(account_id);
+CREATE INDEX idx_cache_comments_content_id
+  ON cache_comments(content_id);
+CREATE INDEX idx_cache_comments_created_at
+  ON cache_comments(created_at DESC);
+CREATE INDEX idx_cache_comments_persist_at
+  ON cache_comments(persist_at DESC);
+CREATE UNIQUE INDEX idx_cache_comments_unique
+  ON cache_comments(account_id, id);
+CREATE INDEX idx_cache_comments_account_created
+  ON cache_comments(account_id, created_at DESC);
+CREATE INDEX idx_cache_comments_unread ON cache_comments(account_id, is_read, created_at DESC);
+
+-- ============================================================================
+-- Table: cache_contents
+-- ============================================================================
+CREATE TABLE cache_contents (
+  -- 主键
+  id TEXT PRIMARY KEY,
+
+  -- 关联
+  account_id TEXT NOT NULL,
+
+  -- 作品数据 (JSON)
+  -- 结构: { id, accountId, platform, type, title, description, coverUrl,
+  --         videoUrl, publishTime, viewCount, likeCount, commentCount,
+  --         shareCount, status, ... }
+  data TEXT NOT NULL,
+
+  -- 元数据
+  publish_time INTEGER NOT NULL,          -- 发布时间 (业务时间,毫秒)
+  updated_at INTEGER NOT NULL,            -- 记录更新时间 (毫秒)
+  persist_at INTEGER NOT NULL             -- 持久化时间 (毫秒)
+);
+
+CREATE INDEX idx_cache_contents_account_id
+  ON cache_contents(account_id);
+CREATE INDEX idx_cache_contents_publish_time
+  ON cache_contents(publish_time DESC);
+CREATE INDEX idx_cache_contents_persist_at
+  ON cache_contents(persist_at DESC);
+CREATE UNIQUE INDEX idx_cache_contents_unique
+  ON cache_contents(account_id, id);
+CREATE INDEX idx_cache_contents_account_publish
+  ON cache_contents(account_id, publish_time DESC);
+
+-- ============================================================================
+-- Table: cache_conversations
+-- ============================================================================
+CREATE TABLE cache_conversations (
+  -- 主键
+  id TEXT PRIMARY KEY,
+
+  -- 关联
+  account_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+
+  -- 会话数据 (JSON)
+  -- 结构: { id, conversationId, accountId, platform, type, userId, userName,
+  --         userAvatar, unreadCount, lastMessageContent, lastMessageTime,
+  --         lastMessageType, status, isPinned, isMuted, ... }
+  data TEXT NOT NULL,
+
+  -- 元数据
+  last_message_time INTEGER,              -- 最后消息时间 (业务时间,毫秒)
+  updated_at INTEGER NOT NULL,            -- 记录更新时间 (毫秒)
+  persist_at INTEGER NOT NULL             -- 持久化时间 (毫秒)
+);
+
+CREATE INDEX idx_cache_conversations_account_id
+  ON cache_conversations(account_id);
+CREATE INDEX idx_cache_conversations_user_id
+  ON cache_conversations(user_id);
+CREATE INDEX idx_cache_conversations_last_message_time
+  ON cache_conversations(last_message_time DESC);
+CREATE INDEX idx_cache_conversations_persist_at
+  ON cache_conversations(persist_at DESC);
+CREATE UNIQUE INDEX idx_cache_conversations_unique
+  ON cache_conversations(account_id, id);
+CREATE INDEX idx_cache_conversations_account_last_message
+  ON cache_conversations(account_id, last_message_time DESC);
+
+-- ============================================================================
+-- Table: cache_messages
+-- ============================================================================
+CREATE TABLE cache_messages (
+  -- 主键
+  id TEXT PRIMARY KEY,
+
+  -- 关联
+  account_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+
+  -- 消息数据 (JSON)
+  -- 结构: { id, conversationId, accountId, platform, senderId, senderName,
+  --         senderAvatar, receiverId, content, messageType, createdAt,
+  --         isNew, isRead, status, ... }
+  data TEXT NOT NULL,
+
+  -- 元数据
+  created_at INTEGER NOT NULL,            -- 消息创建时间 (业务时间,毫秒)
+  updated_at INTEGER NOT NULL,            -- 记录更新时间 (毫秒)
+  persist_at INTEGER NOT NULL             -- 持久化时间 (毫秒)
+, read_at INTEGER DEFAULT NULL, is_read INTEGER DEFAULT 0);
+
+CREATE INDEX idx_cache_messages_account_id
+  ON cache_messages(account_id);
+CREATE INDEX idx_cache_messages_conversation_id
+  ON cache_messages(conversation_id);
+CREATE INDEX idx_cache_messages_created_at
+  ON cache_messages(created_at DESC);
+CREATE INDEX idx_cache_messages_persist_at
+  ON cache_messages(persist_at DESC);
+CREATE UNIQUE INDEX idx_cache_messages_unique
+  ON cache_messages(account_id, id);
+CREATE INDEX idx_cache_messages_conversation_created
+  ON cache_messages(conversation_id, created_at DESC);
+CREATE INDEX idx_cache_messages_account_created
+  ON cache_messages(account_id, created_at DESC);
+CREATE INDEX idx_cache_messages_unread ON cache_messages(account_id, is_read, created_at DESC);
+
+-- ============================================================================
+-- Table: cache_metadata
+-- ============================================================================
+CREATE TABLE cache_metadata (
+  -- 主键
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+
+  -- 账户信息
+  account_id TEXT NOT NULL UNIQUE,
+  platform TEXT NOT NULL,
+
+  -- 时间戳 (秒级 UNIX 时间戳)
+  last_update INTEGER NOT NULL,           -- 内存最后更新时间
+  last_persist INTEGER NOT NULL,          -- 最后持久化时间
+  last_load INTEGER,                      -- 最后加载时间
+
+  -- 数据统计
+  comments_count INTEGER DEFAULT 0,
+  contents_count INTEGER DEFAULT 0,
+  conversations_count INTEGER DEFAULT 0,
+  messages_count INTEGER DEFAULT 0,
+  notifications_count INTEGER DEFAULT 0,
+
+  -- 元数据
+  created_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now')),
+  updated_at INTEGER NOT NULL DEFAULT (strftime('%s', 'now'))
+);
+
+CREATE INDEX idx_cache_metadata_account_id
+  ON cache_metadata(account_id);
+CREATE INDEX idx_cache_metadata_last_persist
+  ON cache_metadata(last_persist);
+CREATE INDEX idx_cache_metadata_platform
+  ON cache_metadata(platform);
+
+-- ============================================================================
+-- Table: cache_notifications
+-- ============================================================================
+CREATE TABLE cache_notifications (
+  -- 主键
+  id TEXT PRIMARY KEY,
+
+  -- 关联
+  account_id TEXT NOT NULL,
+
+  -- 通知数据 (JSON)
+  -- 结构: { id, accountId, platform, type, title, content, relatedId,
+  --         relatedType, isRead, createdAt, ... }
+  data TEXT NOT NULL,
+
+  -- 元数据
+  created_at INTEGER NOT NULL,            -- 通知创建时间 (业务时间,毫秒)
+  updated_at INTEGER NOT NULL,            -- 记录更新时间 (毫秒)
+  persist_at INTEGER NOT NULL             -- 持久化时间 (毫秒)
+);
+
+CREATE INDEX idx_cache_notifications_account_id
+  ON cache_notifications(account_id);
+CREATE INDEX idx_cache_notifications_created_at
+  ON cache_notifications(created_at DESC);
+CREATE INDEX idx_cache_notifications_persist_at
+  ON cache_notifications(persist_at DESC);
+CREATE UNIQUE INDEX idx_cache_notifications_unique
+  ON cache_notifications(account_id, id);
+CREATE INDEX idx_cache_notifications_account_created
+  ON cache_notifications(account_id, created_at DESC);
+
+-- ============================================================================
 -- Table: client_sessions
 -- ============================================================================
 CREATE TABLE client_sessions (
@@ -71,180 +282,6 @@ CREATE TABLE client_sessions (
 );
 
 CREATE INDEX idx_sessions_status ON client_sessions(status);
-
--- ============================================================================
--- Table: comments
--- ============================================================================
-CREATE TABLE "comments" (
-  id TEXT PRIMARY KEY,                -- UUID 主键
-  account_id TEXT NOT NULL,
-  platform_user_id TEXT,              -- 平台用户ID
-  platform_comment_id TEXT,
-  content TEXT NOT NULL,
-  author_name TEXT,
-  author_id TEXT,
-  author_avatar TEXT,
-  post_id TEXT,
-  post_title TEXT,
-  is_read BOOLEAN DEFAULT 0,
-  is_new BOOLEAN DEFAULT 1,
-  push_count INTEGER DEFAULT 0,
-  like_count INTEGER DEFAULT 0,
-  reply_count INTEGER DEFAULT 0,
-  detected_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-
-  -- 三字段组合唯一约束：account_id + platform_user_id + platform_comment_id
-  UNIQUE(account_id, platform_user_id, platform_comment_id),
-
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_comments_account ON comments(account_id);
-CREATE INDEX idx_comments_read ON comments(is_read);
-CREATE INDEX idx_comments_detected ON comments(detected_at);
-CREATE INDEX idx_comments_platform_user ON comments(platform_user_id);
-CREATE INDEX idx_comments_account_platform_user_platform_comment ON comments(account_id, platform_user_id, platform_comment_id);
-CREATE INDEX idx_comments_like_count ON comments(like_count);
-
--- ============================================================================
--- Table: conversations
--- ============================================================================
-CREATE TABLE conversations (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL,
-  platform_user_id TEXT NOT NULL,
-  platform_user_name TEXT,
-  platform_user_avatar TEXT,
-  is_group BOOLEAN DEFAULT 0,
-  is_pinned BOOLEAN DEFAULT 0,
-  is_muted BOOLEAN DEFAULT 0,
-  unread_count INTEGER DEFAULT 0,
-  platform_message_id TEXT,
-  last_message_time INTEGER,
-  last_message_content TEXT,
-  last_message_type TEXT DEFAULT 'text',
-  status TEXT DEFAULT 'active',
-  created_at INTEGER NOT NULL,
-  updated_at INTEGER NOT NULL,
-
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-  UNIQUE(account_id, platform_user_id)
-);
-
-CREATE INDEX idx_conversations_account ON conversations(account_id);
-CREATE INDEX idx_conversations_user ON conversations(platform_user_id);
-CREATE INDEX idx_conversations_updated ON conversations(updated_at);
-CREATE INDEX idx_conversations_unread ON conversations(unread_count);
-CREATE INDEX idx_conversations_pinned ON conversations(is_pinned);
-CREATE INDEX idx_conversations_status ON conversations(status);
-
--- ============================================================================
--- Table: direct_messages
--- ============================================================================
-CREATE TABLE "direct_messages" (
-  id TEXT PRIMARY KEY,                -- UUID 主键
-  account_id TEXT NOT NULL,
-  platform_user_id TEXT,              -- 平台用户ID
-  platform_message_id TEXT,
-  content TEXT NOT NULL,
-  platform_sender_id TEXT,
-  platform_sender_name TEXT,
-  platform_receiver_id TEXT,
-  platform_receiver_name TEXT,
-  sender_name TEXT DEFAULT NULL,
-  -- ✅ 新增：发送者头像和昵称字段
-  sender_avatar TEXT,                 -- 发送者头像URL
-  sender_nickname TEXT,               -- 发送者昵称
-  message_type TEXT DEFAULT 'text',
-  direction TEXT NOT NULL,
-  conversation_id TEXT,
-  is_read BOOLEAN DEFAULT 0,
-  is_new BOOLEAN DEFAULT 1,
-  is_deleted BOOLEAN DEFAULT 0,
-  is_recalled BOOLEAN DEFAULT 0,
-  push_count INTEGER DEFAULT 0,
-  status TEXT DEFAULT 'sent',
-  reply_to_message_id TEXT,
-  media_url TEXT,
-  media_thumbnail TEXT,
-  file_size INTEGER,
-  file_name TEXT,
-  duration INTEGER,
-  recalled_at INTEGER,
-  detected_at INTEGER NOT NULL,
-  created_at INTEGER NOT NULL,
-
-  -- 三字段组合唯一约束：account_id + platform_user_id + platform_message_id
-  UNIQUE(account_id, platform_user_id, platform_message_id),
-
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_dm_account ON direct_messages(account_id);
-CREATE INDEX idx_dm_conversation ON direct_messages(conversation_id);
-CREATE INDEX idx_dm_read ON direct_messages(is_read);
-CREATE INDEX idx_dm_detected ON direct_messages(detected_at);
-CREATE INDEX idx_dm_created ON direct_messages(created_at);
-CREATE INDEX idx_dm_platform_id ON direct_messages(platform_message_id);
-CREATE INDEX idx_dm_platform_user ON direct_messages(platform_user_id);
-CREATE INDEX idx_dm_account_platform_user_platform_message ON direct_messages(account_id, platform_user_id, platform_message_id);
-CREATE INDEX idx_direct_messages_sender_name ON direct_messages(sender_name);
-CREATE INDEX idx_dm_status ON direct_messages(status);
-CREATE INDEX idx_dm_reply_to ON direct_messages(reply_to_message_id);
-CREATE INDEX idx_dm_deleted ON direct_messages(is_deleted);
-
--- ============================================================================
--- Table: discussions
--- ============================================================================
-CREATE TABLE discussions (
-        id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL,
-        platform TEXT NOT NULL,
-        platform_user_id TEXT,
-        platform_discussion_id TEXT,
-
-        -- 关联到父评论
-        parent_comment_id TEXT NOT NULL,
-
-        -- 讨论内容
-        content TEXT NOT NULL,
-        author_name TEXT,
-        author_id TEXT,
-        author_avatar TEXT,
-
-        -- 关联内容信息
-        content_id TEXT,
-        post_id TEXT,
-        post_title TEXT,
-
-        -- 状态
-        is_read BOOLEAN DEFAULT 0,
-        is_new BOOLEAN DEFAULT 1,
-        push_count INTEGER DEFAULT 0,
-        like_count INTEGER DEFAULT 0,
-
-        -- 时间戳
-        detected_at INTEGER NOT NULL,
-        created_at INTEGER NOT NULL,
-
-        -- 三字段组合唯一约束
-        UNIQUE(account_id, platform_user_id, platform_discussion_id),
-
-        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE,
-        FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE,
-        FOREIGN KEY (content_id) REFERENCES contents(id) ON DELETE SET NULL
-      );
-
-CREATE INDEX idx_discussions_account ON discussions(account_id);
-CREATE INDEX idx_discussions_platform ON discussions(platform);
-CREATE INDEX idx_discussions_parent_comment ON discussions(parent_comment_id);
-CREATE INDEX idx_discussions_content ON discussions(content_id);
-CREATE INDEX idx_discussions_read ON discussions(is_read);
-CREATE INDEX idx_discussions_is_new ON discussions(is_new);
-CREATE INDEX idx_discussions_detected ON discussions(detected_at);
-CREATE INDEX idx_discussions_platform_user ON discussions(platform_user_id);
-CREATE INDEX idx_discussions_account_platform_user_platform_discussion ON discussions(account_id, platform_user_id, platform_discussion_id);
 
 -- ============================================================================
 -- Table: login_sessions
@@ -267,41 +304,6 @@ CREATE TABLE login_sessions (
 CREATE INDEX idx_login_sessions_status ON login_sessions(status);
 CREATE INDEX idx_login_sessions_account ON login_sessions(account_id);
 CREATE INDEX idx_login_sessions_created ON login_sessions(created_at);
-
--- ============================================================================
--- Table: notification_rules
--- ============================================================================
-CREATE TABLE notification_rules (
-  id TEXT PRIMARY KEY,
-  account_id TEXT,
-  rule_type TEXT NOT NULL,
-  config TEXT NOT NULL,
-  enabled BOOLEAN DEFAULT 1,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-);
-
-CREATE INDEX idx_rules_enabled ON notification_rules(enabled);
-
--- ============================================================================
--- Table: notifications
--- ============================================================================
-CREATE TABLE notifications (
-  id TEXT PRIMARY KEY,
-  type TEXT NOT NULL,
-  account_id TEXT,
-  related_id TEXT,
-  title TEXT NOT NULL,
-  content TEXT NOT NULL,
-  data TEXT,
-  is_sent BOOLEAN DEFAULT 0,
-  sent_at INTEGER,
-  created_at INTEGER NOT NULL,
-  FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE SET NULL
-);
-
-CREATE INDEX idx_notifications_sent ON notifications(is_sent);
-CREATE INDEX idx_notifications_created ON notifications(created_at);
 
 -- ============================================================================
 -- Table: proxies
@@ -389,6 +391,21 @@ CREATE INDEX idx_replies_status ON replies(reply_status);
 CREATE INDEX idx_replies_target ON replies(target_type, target_id);
 CREATE INDEX idx_replies_created ON replies(created_at);
 CREATE INDEX idx_replies_executed ON replies(executed_at);
+
+-- ============================================================================
+-- Table: sqlite_sequence
+-- ============================================================================
+CREATE TABLE sqlite_sequence(name,seq);
+
+-- ============================================================================
+-- Table: sqlite_stat1
+-- ============================================================================
+CREATE TABLE sqlite_stat1(tbl,idx,stat);
+
+-- ============================================================================
+-- Table: sqlite_stat4
+-- ============================================================================
+CREATE TABLE sqlite_stat4(tbl,idx,neq,nlt,ndlt,sample);
 
 -- ============================================================================
 -- Table: worker_configs
@@ -527,57 +544,4 @@ CREATE TABLE workers (
 );
 
 CREATE INDEX idx_workers_status ON workers(status);
-
--- ============================================================================
--- Table: contents (作品/内容表 - 统一存储各平台的视频、文章、图片等内容)
--- ============================================================================
-CREATE TABLE contents (
-        id TEXT PRIMARY KEY,
-        account_id TEXT NOT NULL,
-        platform TEXT NOT NULL,
-        platform_content_id TEXT NOT NULL,
-        platform_user_id TEXT,
-
-        -- 内容类型和信息
-        content_type TEXT NOT NULL CHECK(content_type IN ('video', 'article', 'image', 'audio', 'text')),
-        title TEXT,
-        description TEXT,
-        cover TEXT,
-        url TEXT,
-        publish_time INTEGER,
-
-        -- 统计信息
-        stats_comment_count INTEGER DEFAULT 0,
-        stats_new_comment_count INTEGER DEFAULT 0,
-        stats_like_count INTEGER DEFAULT 0,
-        stats_share_count INTEGER DEFAULT 0,
-        stats_view_count INTEGER DEFAULT 0,
-
-        -- 爬取状态
-        last_crawl_time INTEGER,
-        crawl_status TEXT DEFAULT 'pending',
-        crawl_error TEXT,
-
-        -- 标记
-        is_new BOOLEAN DEFAULT 1,
-        push_count INTEGER DEFAULT 0,
-
-        -- 时间戳
-        created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL,
-
-        -- 三字段组合唯一约束
-        UNIQUE(account_id, platform, platform_content_id),
-
-        FOREIGN KEY (account_id) REFERENCES accounts(id) ON DELETE CASCADE
-      );
-
-CREATE INDEX idx_contents_account ON contents(account_id);
-CREATE INDEX idx_contents_platform ON contents(platform);
-CREATE INDEX idx_contents_platform_content ON contents(platform_content_id);
-CREATE INDEX idx_contents_last_crawl ON contents(last_crawl_time);
-CREATE INDEX idx_contents_platform_user ON contents(platform_user_id);
-CREATE INDEX idx_contents_content_type ON contents(content_type);
-CREATE INDEX idx_contents_is_new ON contents(is_new);
-CREATE INDEX idx_contents_account_platform_content ON contents(account_id, platform, platform_content_id);
 

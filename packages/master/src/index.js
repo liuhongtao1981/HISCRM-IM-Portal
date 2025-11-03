@@ -43,7 +43,7 @@ const HeartbeatMonitor = require('./monitor/heartbeat');
 const TaskScheduler = require('./scheduler/task-scheduler');
 const AccountAssigner = require('./worker_manager/account-assigner');
 const AccountStatusUpdater = require('./worker_manager/account-status-updater');
-const MessageReceiver = require('./communication/message-receiver');
+// const MessageReceiver = require('./communication/message-receiver'); // ❌ 已废弃，使用 DataSyncReceiver 代替
 const SessionManager = require('./communication/session-manager');
 const NotificationBroadcaster = require('./communication/notification-broadcaster');
 const NotificationQueue = require('./communication/notification-queue');
@@ -138,7 +138,7 @@ let heartbeatMonitor;
 let taskScheduler;
 let accountAssigner;
 let accountStatusUpdater;
-let messageReceiver;
+// let messageReceiver; // ❌ 已废弃
 let sessionManager;
 let notificationBroadcaster;
 let notificationQueue;
@@ -493,7 +493,7 @@ async function start() {
     let tempHandlers = {
       [WORKER_REGISTER]: (socket, msg) => workerRegistry.handleRegistration(socket, msg),
       [WORKER_HEARTBEAT]: (socket, msg) => heartbeatMonitor.handleHeartbeat(socket, msg),
-      [WORKER_MESSAGE_DETECTED]: (socket, msg) => messageReceiver.handleMessageDetected(socket, msg),
+      // [WORKER_MESSAGE_DETECTED]: (socket, msg) => messageReceiver.handleMessageDetected(socket, msg), // ❌ 已废弃
       [WORKER_ACCOUNT_STATUS]: (socket, msg) => handleAccountStatus(socket, msg),
       [WORKER_DATA_SYNC]: (socket, msg) => dataSyncReceiver.handleWorkerDataSync(socket, msg),
       [CLIENT_SYNC_REQUEST]: (socket, msg) => handleClientSync(socket, msg),
@@ -1202,9 +1202,9 @@ async function start() {
     notificationQueue.start();
     logger.info('Notification queue started');
 
-    // 7. 初始化消息接收器（带通知队列）
-    messageReceiver = new MessageReceiver(db, notificationQueue);
-    logger.info('Message receiver initialized');
+    // 7. 初始化消息接收器（❌ 已废弃，数据现在通过 DataSyncReceiver 流入 DataStore）
+    // messageReceiver = new MessageReceiver(db, notificationQueue);
+    // logger.info('Message receiver initialized');
 
     // 8. 启动心跳监控
     heartbeatMonitor = new HeartbeatMonitor(db, workerRegistry);
@@ -1241,17 +1241,15 @@ async function start() {
     const createAccountsRouter = require('./api/routes/accounts');
     app.use('/api/v1/accounts', createAccountsRouter(db, accountAssigner));
 
-    const createMessagesRouter = require('./api/routes/messages');
-    const { createCommentsRouter, createDirectMessagesRouter } = require('./api/routes/messages');
-
-    const messagesRouter = createMessagesRouter(db);
-    const commentsRouter = createCommentsRouter(db);
-    const directMessagesRouter = createDirectMessagesRouter(db);
-
-    // 挂载各自的路由器到对应的路径
-    app.use('/api/v1/messages', messagesRouter);
-    app.use('/api/v1/comments', commentsRouter);
-    app.use('/api/v1/direct-messages', directMessagesRouter);
+    // ❌ 已废弃: messages/comments/direct-messages API（使用旧表，未被前端调用）
+    // const createMessagesRouter = require('./api/routes/messages');
+    // const { createCommentsRouter, createDirectMessagesRouter } = require('./api/routes/messages');
+    // const messagesRouter = createMessagesRouter(db);
+    // const commentsRouter = createCommentsRouter(db);
+    // const directMessagesRouter = createDirectMessagesRouter(db);
+    // app.use('/api/v1/messages', messagesRouter);
+    // app.use('/api/v1/comments', commentsRouter);
+    // app.use('/api/v1/direct-messages', directMessagesRouter);
 
     const createStatisticsRouter = require('./api/routes/statistics');
     app.use('/api/v1/statistics', createStatisticsRouter(db));
