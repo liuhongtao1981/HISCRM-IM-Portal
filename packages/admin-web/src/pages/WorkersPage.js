@@ -64,7 +64,7 @@ const WorkersPage = () => {
     setLoading(true);
     try {
       const response = await workersAPI.getWorkerConfigs();
-      const configList = response || [];  // axios拦截器已返回response.data
+      const configList = response.data || [];  // 统一的 {success, data} 格式
       setConfigs(configList);
 
       // 加载每个配置的运行时状态 (silent=true 避免显示未启动Worker的错误)

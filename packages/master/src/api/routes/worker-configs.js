@@ -16,12 +16,15 @@ module.exports = (workerConfigDAO) => {
   router.get('/', (req, res) => {
     try {
       const configs = workerConfigDAO.findAll();
-      res.json(configs);
+      res.json({
+        success: true,
+        data: configs
+      });
     } catch (error) {
       logger.error('Failed to get worker configs:', error);
       res.status(500).json({
-        error: 'Failed to get worker configs',
-        message: error.message
+        success: false,
+        error: error.message
       });
     }
   });
