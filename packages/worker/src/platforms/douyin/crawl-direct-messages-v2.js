@@ -215,22 +215,81 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
     await page.waitForTimeout(2000);
     logger.info(`[Phase 8] Navigated to message page`);
 
+    // ✅ 等待会话列表元素出现（最多10秒）
+    try {
+      await page.waitForSelector('[role="list-item"]', { timeout: 10000 });
+      logger.info(`[Phase 8] ✅ Conversation list loaded`);
+    } catch (error) {
+      logger.warn(`[Phase 8] ⚠️ Timeout waiting for [role="list-item"], trying alternative selectors...`);
+      // 尝试备用选择器
+      try {
+        await page.waitForSelector('li', { timeout: 3000 });
+        logger.info(`[Phase 8] ✅ Found 'li' elements`);
+      } catch {
+        logger.error(`[Phase 8] ❌ No conversation elements found!`);
+      }
+    }
+
+    // 额外等待 API 响应完成（API 拦截器需要时间）
+    logger.info(`[Phase 8] Waiting 3 more seconds for API responses...`);
+    await page.waitForTimeout(3000);
+
     // 第 3 步: 获取会话列表
     logger.debug(`[Phase 8] Step 3: Extracting conversations list`);
+    logger.info(`[DEBUG] API数据状态: conversations=${apiData.conversations?.length || 0}, init=${apiData.init?.length || 0}, history=${apiData.history?.length || 0}`);
+
     const conversations = await extractConversationsList(page, account, apiData);
     logger.info(`[Phase 8] Extracted ${conversations.length} conversations`);
+
+    if (conversations.length === 0) {
+      logger.error(`[DEBUG] ❌ 会话列表为空！API数据: ${JSON.stringify({
+        conversationsCount: apiData.conversations?.length,
+        initCount: apiData.init?.length,
+        historyCount: apiData.history?.length
+      })}`);
+      logger.error(`[DEBUG] 页面状态: URL=${await page.url()}, Title=${await page.title()}`);
+    }
+
+    // ❌ 临时禁用 Protobuf 检测分支 - 该分支返回 0 个会话/消息
+    // 原因：extractMessagesFromDOM() 在滚动后无法提取到数据
+    // 解决：继续使用点击会话的方式提取（Line 587+）
+    /*
+    const hasBinaryResponse = apiData.init.some(item => item.__isBinary);
+    if (hasBinaryResponse) {
+      logger.warn(`⚠️ 检测到二进制Protobuf响应，切换到DOM提取方案`);
+      // ... (省略 60 行代码)
+      return { ... };  // ❌ 提前 return，跳过了点击会话逻辑
+    }
+    */
+
+    // ✅ 即使收到 Protobuf 响应，也继续使用点击会话的方式提取
+    const hasBinaryResponse = apiData.init.some(item => item.__isBinary);
+    if (hasBinaryResponse) {
+      logger.warn(`⚠️ 检测到二进制Protobuf响应，但将继续使用点击会话方式提取消息`);
+    }
 
     // 第 4 步: 对每个会话获取完整消息历史
     logger.debug(`[Phase 8] Step 4: Crawling complete message history for each conversation`);
     const directMessages = [];
 
-    for (let i = 0; i < conversations.length; i++) {
+    // ⚠️ 关键修复: 获取DOM中实际存在的会话数量
+    // 问题: API可能返回220个会话,但虚拟列表只渲染32个
+    // 解决: 只处理DOM中实际存在的会话
+    const domConversationsCount = await page.evaluate(() => {
+      return document.querySelectorAll('[role="list-item"]').length;
+    });
+
+    const conversationsToProcess = Math.min(conversations.length, domConversationsCount);
+    logger.info(`[Phase 8] API返回 ${conversations.length} 个会话, DOM中有 ${domConversationsCount} 个, 将处理前 ${conversationsToProcess} 个`);
+
+    for (let i = 0; i < conversationsToProcess; i++) {
       const conversation = conversations[i];
-      logger.info(`[Phase 8] Processing conversation ${i + 1}/${conversations.length}: ${conversation.platform_user_name}`);
+      logger.info(`[Phase 8] Processing conversation ${i + 1}/${conversationsToProcess}: ${conversation.platform_user_name}`);
 
       try {
         // 打开会话 - 使用刷新的会话列表
-        const opened = await openConversationByIndex(page, conversation, i);
+        // ✅ 传入虚拟列表可见元素数量，动态判断是否需要滚动
+        const opened = await openConversationByIndex(page, conversation, i, domConversationsCount);
         if (!opened) {
           logger.warn(`[Phase 8] Failed to open conversation ${i}, skipping...`);
           continue;
@@ -319,109 +378,11 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
   }
 }
 
-/**
- * 滚动会话列表加载所有会话
- * 针对抖音私信页面的虚拟列表进行滚动，确保加载所有会话
- * @param {Page} page - Playwright页面对象
- */
-async function scrollConversationListToLoadAll(page) {
-  logger.info('[scrollConversationListToLoadAll] 开始滚动会话列表加载所有会话');
-
-  try {
-    // 等待会话列表渲染
-    await page.waitForTimeout(1000);
-
-    let previousCount = 0;
-    let stableCount = 0;
-    const MAX_STABLE_COUNT = 3; // 连续 3 次数量不变则认为已加载完成
-    const MAX_ATTEMPTS = 20; // 最多尝试 20 次
-    let attempts = 0;
-
-    while (stableCount < MAX_STABLE_COUNT && attempts < MAX_ATTEMPTS) {
-      attempts++;
-
-      // 获取当前会话列表项数量
-      const currentCount = await page.evaluate(() => {
-        const items = document.querySelectorAll('[role="list-item"]');
-        return items.length;
-      });
-
-      logger.debug(`[scrollConversationListToLoadAll] Attempt ${attempts}: 当前会话数 = ${currentCount}`);
-
-      // 检查数量是否稳定
-      if (currentCount === previousCount) {
-        stableCount++;
-        logger.debug(`[scrollConversationListToLoadAll] 数量稳定 (${stableCount}/${MAX_STABLE_COUNT})`);
-      } else {
-        stableCount = 0; // 重置稳定计数器
-        previousCount = currentCount;
-      }
-
-      // 滚动到底部
-      const scrolled = await page.evaluate(() => {
-        try {
-          // 尝试多种选择器找到会话列表容器
-          const listContainer =
-            document.querySelector('[role="list"]') ||
-            document.querySelector('.conversation-list') ||
-            document.querySelector('[class*="conversationList"]') ||
-            document.querySelector('[class*="ChatList"]') ||
-            document.querySelector('[class*="list"]');
-
-          if (listContainer) {
-            const previousScrollTop = listContainer.scrollTop;
-            listContainer.scrollTop = listContainer.scrollHeight;
-            const newScrollTop = listContainer.scrollTop;
-            return {
-              success: true,
-              scrolled: newScrollTop > previousScrollTop,
-              scrollTop: newScrollTop,
-              scrollHeight: listContainer.scrollHeight
-            };
-          }
-
-          return { success: false, message: '未找到列表容器' };
-        } catch (error) {
-          return { success: false, message: error.message };
-        }
-      });
-
-      if (!scrolled.success) {
-        logger.warn(`[scrollConversationListToLoadAll] 滚动失败: ${scrolled.message}`);
-      } else if (!scrolled.scrolled) {
-        logger.debug(`[scrollConversationListToLoadAll] 已经在底部`);
-      } else {
-        logger.debug(`[scrollConversationListToLoadAll] 滚动: ${scrolled.scrollTop}/${scrolled.scrollHeight}`);
-      }
-
-      // 等待新会话加载
-      await page.waitForTimeout(500);
-    }
-
-    const finalCount = previousCount;
-    logger.info(`[scrollConversationListToLoadAll] ✅ 滚动完成，共加载 ${finalCount} 个会话 (尝试 ${attempts} 次)`);
-
-    // 滚动回顶部，方便后续操作
-    await page.evaluate(() => {
-      const listContainer =
-        document.querySelector('[role="list"]') ||
-        document.querySelector('.conversation-list') ||
-        document.querySelector('[class*="conversationList"]') ||
-        document.querySelector('[class*="ChatList"]') ||
-        document.querySelector('[class*="list"]');
-
-      if (listContainer) {
-        listContainer.scrollTop = 0;
-      }
-    });
-
-    await page.waitForTimeout(300);
-    logger.debug('[scrollConversationListToLoadAll] 已滚动回顶部');
-
-  } catch (error) {
-    logger.error('[scrollConversationListToLoadAll] 滚动失败:', error);
-  }
-}
+// ❌ 已删除：scrollConversationListToLoadAll() 函数
+// 原因：用户反馈 - "我们关心的就是最近几条，历史的并不在意，而且蜘蛛是持续的，历史数据早已被收录了"
+// 删除日期：2025-11-05
+// 删除的代码行数：116 行
+// 新逻辑：直接读取虚拟列表中的可见会话，不进行滚动加载
 
 /**
  * 提取会话列表 - 改进版
@@ -435,16 +396,19 @@ async function extractConversationsList(page, account, apiData = {}) {
   const conversations = [];
 
   try {
+    logger.info(`[DEBUG extractConversationsList] 开始提取会话列表，apiData.conversations=${apiData.conversations?.length || 0}`);
+
     // ========================================================================
     // 第 0 步：滚动会话列表加载所有会话（修复虚拟列表问题）
     // ========================================================================
-    logger.info('[extractConversationsList] Step 0: Scrolling conversation list to load all conversations');
-    await scrollConversationListToLoadAll(page);
+    // ✅ 用户反馈：直接读取可见会话，不滚动（我们只关心最近几条，历史数据早已被收录）
+    logger.info('[extractConversationsList] 直接提取虚拟列表中的可见会话（无滚动）');
 
     // ========================================================================
     // 优先方案：从 API 响应中提取会话数据（最可靠）
     // ========================================================================
     if (apiData.conversations && apiData.conversations.length > 0) {
+      logger.info(`[DEBUG extractConversationsList] 使用 API 数据: ${apiData.conversations.length} 个响应`);
       logger.info(`[extractConversationsList] Using API data: ${apiData.conversations.length} responses`);
 
       apiData.conversations.forEach((response, idx) => {
@@ -501,16 +465,21 @@ async function extractConversationsList(page, account, apiData = {}) {
 
       if (conversations.length > 0) {
         logger.info(`[extractConversationsList] ✅ Extracted ${conversations.length} conversations from API`);
+        logger.info(`[DEBUG extractConversationsList] 返回 ${conversations.length} 个会话（来自API）`);
         return conversations;
       } else {
         logger.warn(`[extractConversationsList] API data available but no conversations extracted, falling back to DOM`);
+        logger.warn(`[DEBUG extractConversationsList] API有数据但未提取到会话，回退到DOM`);
       }
+    } else {
+      logger.info(`[DEBUG extractConversationsList] 无 API 数据，apiData.conversations=${apiData.conversations?.length || 'undefined'}`);
     }
 
     // ========================================================================
     // 备用方案：从 DOM 提取会话数据（当 API 数据不可用时）
     // ========================================================================
     logger.info(`[extractConversationsList] No API data available, using DOM extraction`);
+    logger.info(`[DEBUG extractConversationsList] 开始 DOM 提取`);
 
     // 第 1 步: 调试页面结构
     logger.debug('[extractConversationsList] Step 1: Analyzing page structure');
@@ -678,21 +647,25 @@ async function extractConversationsList(page, account, apiData = {}) {
  * 支持多种查找方式和重试机制
  * 改进: 每次打开前重新查询会话列表，避免虚拟列表重新渲染导致的索引失效
  */
-async function openConversationByIndex(page, conversation, conversationIndex) {
-  logger.debug(`[openConversationByIndex] Opening conversation: ${conversation.platform_user_name} (index: ${conversationIndex})`);
+/**
+ * @param {Page} page - Playwright 页面对象
+ * @param {Object} conversation - 会话对象
+ * @param {number} conversationIndex - 会话索引
+ * @param {number} totalVisibleConversations - DOM中实际可见的会话总数（虚拟列表限制）
+ */
+async function openConversationByIndex(page, conversation, conversationIndex, totalVisibleConversations) {
+  logger.debug(`[openConversationByIndex] Opening conversation: ${conversation.platform_user_name} (index: ${conversationIndex}, visible: ${totalVisibleConversations})`);
 
   try {
-    // 第 1 步: 重新获取最新的所有对话元素 (虚拟列表可能已重新渲染)
-    await page.waitForTimeout(300); // 给虚拟列表一些时间稳定下来
+    // 第 1 步: 获取所有对话元素
+    await page.waitForTimeout(300);
 
     let allConversations = await page.locator('[role="list-item"]').all();
-    logger.debug(`[openConversationByIndex] Step 1: Found ${allConversations.length} total conversation elements`);
+    logger.debug(`[openConversationByIndex] Step 1: Found ${allConversations.length} total conversation elements in DOM`);
 
-    // 如果找不到会话元素，可能是标签页被改变了，尝试刷新或检查当前标签页
+    // 如果找不到会话元素，尝试刷新
     if (allConversations.length === 0) {
-      logger.warn(`[openConversationByIndex] No conversation elements found, might need to switch tab or refresh`);
-
-      // 尝试通过导航刷新列表
+      logger.warn(`[openConversationByIndex] No conversation elements found, refreshing page`);
       await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
         waitUntil: 'domcontentloaded',
         timeout: 10000
@@ -708,20 +681,60 @@ async function openConversationByIndex(page, conversation, conversationIndex) {
       return false;
     }
 
-    // 第 2 步: 点击指定索引的对话元素
-    const element = allConversations[conversationIndex];
+    // ✅ 动态判断：根据虚拟列表实际可见元素数量来决定是否需要滚动
+    // 原因：不同分辨率下，虚拟列表的可见元素数量不同（从17到32都有可能）
+    // 用户反馈：滚动会导致卡住，暂时只处理可见的会话
+    if (conversationIndex >= totalVisibleConversations) {
+      logger.warn(`[openConversationByIndex] Index ${conversationIndex} >= ${totalVisibleConversations} (virtual list limit), skipping`);
+      logger.warn(`[openConversationByIndex] 提示: 当前虚拟列表只渲染了前 ${totalVisibleConversations} 个会话，超出部分需要滚动加载（暂未实现）`);
+      return false;
+    }
+
+    logger.debug(`[openConversationByIndex] Processing visible conversation at index ${conversationIndex}`);
+    await page.waitForTimeout(300);
+
+    // 第 2 步: 使用索引点击会话
     logger.debug(`[openConversationByIndex] Step 2: Clicking conversation at index ${conversationIndex}`);
 
-    await element.click();
+    const element = allConversations[conversationIndex];
+
+    // 等待元素稳定
+    logger.debug(`[DEBUG openConversationByIndex] Waiting for element to be stable...`);
+    await element.waitFor({ state: 'attached', timeout: 3000 });
+
+    // 点击元素
+    logger.debug(`[DEBUG openConversationByIndex] Clicking element...`);
+    await element.click({ timeout: 10000 });
+    logger.debug(`[DEBUG openConversationByIndex] Element clicked`);
+
     await page.waitForTimeout(1500);
 
     // 第 3 步: 验证是否成功打开了对话详情
     const isChatOpen = await page.evaluate(() => {
-      // 检查是否已经进入对话详情页面
+      // 方法1: 检查右侧消息容器（最可靠）
+      if (document.querySelector('.box-content-jSgLQF')) {
+        return true;
+      }
+
+      // 方法2: 检查虚拟列表中的消息元素
+      if (document.querySelector('[role="grid"]') || document.querySelector('[role="list"]')) {
+        return true;
+      }
+
+      // 方法3: 检查消息输入框
+      if (document.querySelector('[placeholder*="消息"]') ||
+          document.querySelector('[placeholder*="message"]') ||
+          document.querySelector('textarea')) {
+        return true;
+      }
+
+      // 方法4: 原有的宽泛检查
       return document.querySelector('[class*="message"]') !== null ||
              document.querySelector('[class*="chat"]') !== null ||
              window.location.href.includes('/chat/');
     });
+
+    logger.debug(`[DEBUG openConversationByIndex] isChatOpen: ${isChatOpen}, URL: ${page.url()}`);
 
     if (isChatOpen) {
       logger.info(`[openConversationByIndex] ✅ Successfully opened conversation at index ${conversationIndex}: ${conversation.platform_user_name}`);
@@ -732,7 +745,8 @@ async function openConversationByIndex(page, conversation, conversationIndex) {
     }
 
   } catch (error) {
-    logger.error(`[openConversationByIndex] Error opening conversation ${conversation.platform_user_name}:`, error.message);
+    logger.error(`[openConversationByIndex] Error opening conversation ${conversation.platform_user_name}:`);
+    logger.error(`[DEBUG openConversationByIndex] Error stack:`, error);
     return false;
   }
 }
@@ -866,144 +880,128 @@ async function openConversation(page, conversation, conversationIndex) {
 async function crawlCompleteMessageHistory(page, conversation, account, apiData) {
   logger.debug(`Crawling complete message history for: ${conversation.platform_user_name}`);
 
-  const MAX_ATTEMPTS = 50;
-  const BASE_WAIT_TIME = 300;
-  const CONVERGENCE_CHECK_ATTEMPTS = 3; // 检查多次以确认真正收敛
+  // ========================================================================
+  // 第 0 步：等待右侧消息容器加载（✅ 关键修复）
+  // ========================================================================
+  logger.info(`[crawlCompleteMessageHistory] Step 0: Waiting for RIGHT-SIDE message panel to load...`);
 
-  let previousCount = 0;
-  let previousContentHash = '';
-  let convergenceCounter = 0;
-  let attempts = 0;
+  try {
+    // ✅ 等待右侧消息容器出现（.box-content-jSgLQF）
+    const containerFound = await page.waitForSelector('.box-content-jSgLQF', {
+      timeout: 5000
+    }).then(() => true).catch(() => {
+      logger.warn(`[crawlCompleteMessageHistory] .box-content-jSgLQF container not found, trying position-based search...`);
+      return false;
+    });
 
-  while (attempts < MAX_ATTEMPTS) {
-    try {
-      // 第 1 步: 向上滚动虚拟列表以加载更早的消息
-      logger.debug(`Attempt ${attempts + 1}: Scrolling to top to load earlier messages`);
-
-      const scrollResult = await page.evaluate(() => {
-        // 尝试多种选择器找到虚拟列表容器
-        let grid = document.querySelector('[role="grid"]') ||
-                   document.querySelector('[role="list"]') ||
-                   document.querySelector('.virtual-list') ||
-                   document.querySelector('[class*="virtualList"]');
-
-        if (grid) {
-          const previousScroll = grid.scrollTop;
-          grid.scrollTop = 0;
-          return { success: true, previousScroll: previousScroll };
-        }
-
-        return { success: false };
-      });
-
-      if (!scrollResult.success) {
-        logger.warn(`Could not find virtual list container at attempt ${attempts}`);
-      }
-
-      // 第 2 步: 等待新消息加载 (智能延迟)
-      // 根据当前消息数量动态调整延迟时间
-      const dynamicWaitTime = previousCount > 100 ? BASE_WAIT_TIME * 2 : BASE_WAIT_TIME;
-      logger.debug(`Waiting ${dynamicWaitTime}ms for messages to load...`);
-      await page.waitForTimeout(dynamicWaitTime);
-
-      // 第 3 步: 提取当前所有消息
-      const currentMessages = await extractMessagesFromVirtualList(page);
-      const currentCount = currentMessages.length;
-      const currentContentHash = hashMessages(currentMessages);
-
-      logger.debug(`Attempt ${attempts + 1}: Loaded ${currentCount} messages (previous: ${previousCount})`);
-
-      // 第 4 步: 检查是否收敛 (多层判断)
-      const hasNewMessages = currentCount > previousCount;
-      const hasContentChange = currentContentHash !== previousContentHash;
-
-      if (!hasNewMessages && !hasContentChange) {
-        convergenceCounter++;
-        logger.debug(`No changes detected (${convergenceCounter}/${CONVERGENCE_CHECK_ATTEMPTS})`);
-
-        if (convergenceCounter >= CONVERGENCE_CHECK_ATTEMPTS) {
-          logger.info(`✅ Reached convergence at attempt ${attempts}. Total messages: ${currentCount}`);
-          // 为每条消息添加会话信息
-          currentMessages.forEach(msg => {
-            // 使用 senderId 作为 conversationId (for inbound)
-            const originalConvId = msg.conversation_id;
-            if (msg.direction === 'inbound' && msg.platform_sender_id) {
-              msg.conversation_id = msg.platform_sender_id;
-            } else {
-              msg.conversation_id = conversation.platform_user_id || conversation.id;
-            }
-            logger.warn(`[Line 755] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${msg.conversation_id} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id})`);
-            msg.account_id = account.id;
-          });
-          return currentMessages;
-        }
-      } else {
-        // 重置收敛计数器
-        convergenceCounter = 0;
-        logger.debug(`Reset convergence counter. New: ${hasNewMessages}, Changed: ${hasContentChange}`);
-      }
-
-      // 第 5 步: 检查平台特定的分页指示器
-      const hasMoreFlag = await page.evaluate(() => {
-        // 检查 API 响应中是否有 has_more 标志
-        // 这需要在 setupAPIInterceptors 中配置
-        return document.querySelector('[data-has-more="false"]') === null;
-      });
-
-      if (!hasMoreFlag) {
-        logger.info(`✅ Platform "has_more" flag indicates no more messages. Total: ${currentCount}`);
-        currentMessages.forEach(msg => {
-          // 使用 senderId 作为 conversationId (for inbound)
-          const originalConvId = msg.conversation_id;
-          if (msg.direction === 'inbound' && msg.platform_sender_id) {
-            msg.conversation_id = msg.platform_sender_id;
-          } else {
-            msg.conversation_id = conversation.platform_user_id || conversation.id;
-          }
-          logger.warn(`[Line 783] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${msg.conversation_id} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id})`);
-          msg.account_id = account.id;
+    if (!containerFound) {
+      // 回退：通过位置查找右侧容器
+      const hasRightPanel = await page.evaluate(() => {
+        const allDivs = Array.from(document.querySelectorAll('div'));
+        const rightPanel = allDivs.find(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.x > 500 && rect.width > 400 && rect.height > 300;
         });
-        return currentMessages;
+        return !!rightPanel;
+      });
+
+      if (!hasRightPanel) {
+        logger.error(`[crawlCompleteMessageHistory] ❌ 无法找到右侧消息容器！`);
+        return [];
       }
 
-      previousCount = currentCount;
-      previousContentHash = currentContentHash;
-      attempts++;
-
-      // 第 6 步: 延迟以避免过快的加载
-      await page.waitForTimeout(200);
-
-    } catch (error) {
-      logger.error(`Error during message history crawl at attempt ${attempts}:`, error);
-      attempts++;
-      await page.waitForTimeout(500);
+      logger.info(`[crawlCompleteMessageHistory] ✅ 使用位置查找找到右侧容器`);
+    } else {
+      logger.info(`[crawlCompleteMessageHistory] ✅ 找到右侧消息容器 .box-content-jSgLQF`);
     }
+
+    // 额外等待2秒让React Fiber数据完全加载
+    await page.waitForTimeout(2000);
+
+    // ✅ 检查右侧消息容器中的消息
+    const initialCheck = await page.evaluate(() => {
+      const messageContainer = document.querySelector('.box-content-jSgLQF');
+      if (!messageContainer) {
+        // 回退到位置查找
+        const allDivs = Array.from(document.querySelectorAll('div'));
+        const rightPanel = allDivs.find(el => {
+          const rect = el.getBoundingClientRect();
+          return rect.x > 500 && rect.width > 400 && rect.height > 300;
+        });
+
+        if (!rightPanel || !rightPanel.children[0]) {
+          return { elementCount: 0, hasReactFiber: false, container: 'none' };
+        }
+
+        const children = Array.from(rightPanel.children[0].children);
+        return {
+          elementCount: children.length,
+          hasReactFiber: children.some(el => Object.keys(el).some(key => key.startsWith('__react'))),
+          container: 'position-based'
+        };
+      }
+
+      const innerContainer = messageContainer.children[0];
+      if (!innerContainer) {
+        return { elementCount: 0, hasReactFiber: false, container: '.box-content-jSgLQF' };
+      }
+
+      const children = Array.from(innerContainer.children);
+      return {
+        elementCount: children.length,
+        hasReactFiber: children.some(el => Object.keys(el).some(key => key.startsWith('__react'))),
+        container: '.box-content-jSgLQF'
+      };
+    });
+
+    logger.info(`[crawlCompleteMessageHistory] Initial check: ${initialCheck.elementCount} message elements, hasReactFiber: ${initialCheck.hasReactFiber}, container: ${initialCheck.container}`);
+
+    // 如果没有找到消息元素，再等待2秒
+    if (initialCheck.elementCount === 0) {
+      logger.warn(`[crawlCompleteMessageHistory] No message elements found in right panel, waiting additional 2 seconds...`);
+      await page.waitForTimeout(2000);
+    }
+  } catch (error) {
+    logger.error(`[crawlCompleteMessageHistory] Error during initial wait:`, error.message);
   }
 
-  logger.warn(`⚠️ Reached max attempts (${MAX_ATTEMPTS}) without full convergence`);
+  // ✅ 用户反馈：直接读取虚拟列表，不需要重试和滚动（打开后是DOM对象，直接读取一遍即可）
+  logger.info(`[crawlCompleteMessageHistory] 开始单次提取虚拟列表消息...`);
 
-  // 获取最后的消息列表
-  const finalMessages = await extractMessagesFromVirtualList(page);
-  finalMessages.forEach(msg => {
-    // ✅ 最终修复方案：根据消息方向使用不同的逻辑
-    // - inbound 消息：对方是发送者，使用 platform_sender_id 作为会话ID
-    // - outbound 消息：需要使用 conversation.platform_user_id 或其他方式获取对方ID
-    const originalConvId = msg.conversation_id;
-    let conversationId;
-    if (msg.direction === 'inbound' && msg.platform_sender_id) {
-      // inbound 消息：发送者就是对方，这是纯数字 ID
-      conversationId = msg.platform_sender_id;
-    } else {
-      // outbound 消息：使用外层的 conversation.platform_user_id
-      conversationId = conversation.platform_user_id || conversation.id;
-    }
-    logger.warn(`[Line 814] 消息 ${msg.platform_message_id} conversationId: ${originalConvId} -> ${conversationId} (direction: ${msg.direction}, senderId: ${msg.platform_sender_id}, platform_user_id: ${conversation.platform_user_id})`);
-    msg.conversation_id = conversationId;
-    msg.account_id = account.id;
-  });
+  try {
+    // ✅ 监听浏览器控制台输出
+    const browserLogs = [];
+    const consoleHandler = (msg) => {
+      const text = msg.text();
+      browserLogs.push(text);
+      logger.info(`[浏览器] ${text}`);
+    };
+    page.on('console', consoleHandler);
 
-  logger.info(`✅ Crawl completed: ${finalMessages.length} messages for ${conversation.platform_user_name}`);
-  return finalMessages;
+    // 提取虚拟列表中的所有消息（一次性）
+    const messages = await extractMessagesFromVirtualList(page);
+
+    // 移除监听器
+    page.off('console', consoleHandler);
+
+    logger.info(`📥 提取结果: ${messages.length} 条消息`);
+
+    // 为每条消息添加会话信息
+    messages.forEach(msg => {
+      if (msg.direction === 'inbound' && msg.platform_sender_id) {
+        msg.conversation_id = msg.platform_sender_id;
+      } else {
+        msg.conversation_id = conversation.platform_user_id || conversation.id;
+      }
+      msg.account_id = account.id;
+    });
+
+    return messages;
+  } catch (error) {
+    logger.error(`提取消息失败:`, error.message);
+    return [];
+  }
+
 }
 
 /**
@@ -1024,106 +1022,312 @@ function hashMessages(messages) {
  * 支持深层 React Fiber 搜索和多种虚拟列表实现
  */
 async function extractMessagesFromVirtualList(page) {
-  logger.debug('Extracting messages from virtual list (enhanced with Douyin-specific selectors)');
-
   return await page.evaluate(() => {
     const messages = [];
 
-    // Phase 8 改进: 从 React Fiber 虚拟列表中直接提取完整的消息数据
-    // 包括: conversationId, messageId, isFromMe, timestamp, content
-    // 这个方法已在真实抖音私信页面验证有效
+    // ✅ 在浏览器环境中定义时间戳处理函数
+    function normalizeTimestamp(timestamp) {
+      if (!timestamp) return Date.now();
+      if (timestamp instanceof Date) return timestamp.getTime();
 
-    const allElements = document.querySelectorAll('[class*="message"], [class*="item"], [role*="article"]');
+      let timestampInMs;
+      if (typeof timestamp === 'number') {
+        // 判断是秒级还是毫秒级
+        if (timestamp < 10000000000) {
+          timestampInMs = timestamp * 1000;  // 秒级转毫秒
+        } else {
+          timestampInMs = Math.floor(timestamp);  // 毫秒级
+        }
+        // 🔧 时区修正: 抖音API返回UTC+8，转换为标准UTC
+        const TIMEZONE_OFFSET_MS = 8 * 3600 * 1000;
+        return timestampInMs - TIMEZONE_OFFSET_MS;
+      }
+
+      if (typeof timestamp === 'string') {
+        const num = Number(timestamp);
+        if (!isNaN(num)) return normalizeTimestamp(num);
+        const date = new Date(timestamp);
+        if (!isNaN(date.getTime())) return date.getTime();
+      }
+      return Date.now();
+    }
+
+    // 查找右侧消息面板
+    const messageContainer = document.querySelector('.box-content-jSgLQF');
+
+    if (!messageContainer) {
+      // 回退：尝试通过位置查找
+      const allDivs = Array.from(document.querySelectorAll('div'));
+      const rightPanel = allDivs.find(el => {
+        const rect = el.getBoundingClientRect();
+        return rect.x > 500 && rect.width > 400 && rect.height > 300;
+      });
+
+      if (!rightPanel) {
+        console.log('❌ 未找到消息容器');
+        return [];
+      }
+
+      const innerContainer = rightPanel.children[0];
+      if (!innerContainer) {
+        console.log('❌ 容器没有子元素');
+        return [];
+      }
+      var allElements = Array.from(innerContainer.children);
+    } else {
+      const innerContainer = messageContainer.children[0];
+      if (!innerContainer) {
+        console.log('❌ 容器没有子元素');
+        return [];
+      }
+      var allElements = Array.from(innerContainer.children);
+    }
+
+    console.log(`🔍 找到 ${allElements.length} 个元素`);
 
     allElements.forEach((element) => {
       try {
         const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
         if (!fiberKey) return;
 
-        let current = element[fiberKey];
-        let depth = 0;
-        let found = false;
+        // ✅ 使用深度搜索函数查找完整的消息对象
+        function deepSearchMessage(fiber, depth = 0, maxDepth = 20) {
+          if (!fiber || depth > maxDepth) return null;
 
-        // 递归查找包含消息数据的 React Fiber 节点
-        while (current && depth < 20 && !found) {
-          if (current.memoizedProps) {
-            const props = current.memoizedProps;
+          if (fiber.memoizedProps) {
+            const props = fiber.memoizedProps;
 
-            // 检查是否包含消息数据（关键字段）
-            if (props.conversationId || props.serverId || props.content || props.message) {
-              const msgContent = props.content || {};
-              const textContent = msgContent.text || '';
-
-              // 只有当有实际内容时才添加
-              if (textContent || props.messageId || props.serverId) {
-                // ✅ 关键修复：会话 ID 应该是**对方用户的 ID**，而不是抖音的 props.conversationId
-                // props.conversationId 是会话级别的ID，同一会话中所有消息都相同
-                // 我们需要根据消息方向来确定对方是谁
-                let realConversationId;
-                let recipientId = null;
-
-                if (!props.isFromMe) {
-                  // inbound 消息：对方是发送者
-                  const senderId = props.sender || props.senderId;
-                  realConversationId = senderId;  // 会话ID = 对方用户ID
-                  recipientId = props.receiver || props.receiverId || null;
-                } else {
-                  // outbound 消息：对方的 ID 需要从 conversationId 中提取
-                  // conversationId 格式可能是 "0:1:ourId:otherUserId"
-                  if (props.conversationId && props.conversationId.includes(':')) {
-                    const parts = props.conversationId.split(':');
-                    // 最后一部分通常是对方的用户 ID
-                    const otherUserId = parts[parts.length - 1];
-                    realConversationId = otherUserId;  // 会话ID = 对方用户ID
-                    recipientId = otherUserId;
-                  } else {
-                    // 如果 conversationId 不是 ":" 分隔格式，直接使用
-                    realConversationId = props.conversationId;
-                    recipientId = props.conversationId;
-                  }
-                }
-
-                const message = {
-                  index: messages.length,
-                  platform_message_id: props.serverId || props.id || `msg_${messages.length}`,
-                  conversation_id: realConversationId,
-                  platform_user_id: props.conversationId, // 保存原始的完整 conversationId 用于参考
-                  content: textContent.substring(0, 500) || (props.text || '').substring(0, 500),
-                  timestamp: props.timestamp || props.createdAt || new Date().toISOString(),
-                  message_type: props.type || 'text',
-                  // ✅ 发送者ID
-                  platform_sender_id: props.sender || props.senderId || (props.isFromMe ? 'self' : 'other'),
-                  // ✅ 发送者昵称
-                  platform_sender_name: props.nickname || props.senderName || (props.isFromMe ? 'Me' : 'Other'),
-                  // ✅ 发送者头像URL（仅对方消息有此字段）
-                  sender_avatar: props.avatar || null,
-                  // ✅ 发送者昵称（仅对方消息有此字段）
-                  sender_nickname: props.nickname || null,
-                  // ✅ 新增：接收者ID
-                  recipient_id: recipientId,
-                  // ✅ 新增：接收者昵称（如果有）
-                  recipient_name: props.receiverName || null,
-                  direction: props.isFromMe ? 'outbound' : 'inbound',
-                  created_at: normalizeTimestamp(props.timestamp || props.createdAt),
-                  is_read: props.isRead || false,
-                  status: props.status || 'sent'
-                };
-
-                messages.push(message);
-                found = true;
-              }
+            // ✅ 检查是否是完整的消息对象（必须同时包含 serverId、content、sender、conversationId）
+            // ⭐ secSender 是加密的用户ID，用于标准化外层 conversation_id
+            if (props.serverId && props.content && props.sender && props.conversationId) {
+              return props;
             }
           }
 
-          current = current.child;
-          depth++;
+          // 递归搜索子节点
+          if (fiber.child) {
+            const result = deepSearchMessage(fiber.child, depth + 1, maxDepth);
+            if (result) return result;
+          }
+
+          // 递归搜索兄弟节点（限制深度）
+          if (depth < 5 && fiber.sibling) {
+            const result = deepSearchMessage(fiber.sibling, depth + 1, maxDepth);
+            if (result) return result;
+          }
+
+          return null;
+        }
+
+        const props = deepSearchMessage(element[fiberKey]);
+
+        if (props) {
+          // 提取消息内容
+          const msgContent = props.content || {};
+          const textContent = msgContent.text || props.text || '';
+
+          // 添加消息条件
+          if (textContent || props.serverId) {
+            // ✅ 关键修复：会话 ID 应该是**对方用户的 ID**，而不是抖音的 props.conversationId
+            // props.conversationId 是会话级别的ID，同一会话中所有消息都相同
+            // 我们需要根据消息方向来确定对方是谁
+            let realConversationId;
+            let recipientId = null;
+
+            if (!props.isFromMe) {
+              // inbound 消息：对方是发送者
+              const senderId = props.sender || props.senderId;
+              realConversationId = senderId;  // 会话ID = 对方用户ID
+              recipientId = props.receiver || props.receiverId || null;
+            } else {
+              // outbound 消息：对方的 ID 需要从 conversationId 中提取
+              // conversationId 格式可能是 "0:1:ourId:otherUserId"
+              if (props.conversationId && props.conversationId.includes(':')) {
+                const parts = props.conversationId.split(':');
+                // 最后一部分通常是对方的用户 ID
+                const otherUserId = parts[parts.length - 1];
+                realConversationId = otherUserId;  // 会话ID = 对方用户ID
+                recipientId = otherUserId;
+              } else {
+                // 如果 conversationId 不是 ":" 分隔格式，直接使用
+                realConversationId = props.conversationId;
+                recipientId = props.conversationId;
+              }
+            }
+
+            // ⭐⭐⭐ 标准化数据结构改造 ⭐⭐⭐
+            // 外层字段：所有平台统一格式（使用加密ID）
+            // rawData：保留平台特定的原始数据
+
+            // ═══════════════════════════════════════════════════════════
+            // 📦 第一步：收集所有原始数据到 rawData（完整保留）
+            // ═══════════════════════════════════════════════════════════
+            const rawData = {
+              // 消息ID（多种可能的字段名）
+              serverId: props.serverId,
+              id: props.id,
+              msgId: props.msgId,
+              messageId: props.messageId,
+
+              // ⭐⭐⭐ 关键字段：加密的用户ID
+              secSender: props.secSender,
+              secReceiver: props.secReceiver,
+              secUid: props.secUid,
+
+              // 会话ID（抖音原始格式）
+              conversationId: props.conversationId,
+              conversationShortId: props.conversationShortId,
+              conversationType: props.conversationType,
+
+              // 发送者信息（完整）
+              sender: props.sender,
+              senderId: props.senderId,
+              nickname: props.nickname,
+              senderName: props.senderName,
+              avatar: props.avatar,
+              avatarThumb: props.avatarThumb,
+              senderSecUid: props.senderSecUid,
+
+              // 接收者信息（完整）
+              receiver: props.receiver,
+              receiverId: props.receiverId,
+              receiverName: props.receiverName,
+              receiverAvatar: props.receiverAvatar,
+              receiverSecUid: props.receiverSecUid,
+
+              // 消息内容（完整对象）
+              content: props.content,
+              text: props.text,
+              rawContent: props.rawContent,
+
+              // 时间戳（多种格式）
+              createdAt: props.createdAt,
+              timestamp: props.timestamp,
+              createTime: props.createTime,
+              sendTime: props.sendTime,
+
+              // 消息类型
+              type: props.type,
+              msgType: props.msgType,
+              aweType: msgContent.aweType,
+              messageType: props.messageType,
+
+              // 消息状态
+              isFromMe: props.isFromMe,
+              isRead: props.isRead,
+              status: props.status,
+              serverStatus: props.serverStatus,
+              sendStatus: props.sendStatus,
+
+              // 媒体文件
+              mediaUrl: props.mediaUrl,
+              mediaType: props.mediaType,
+              thumbnailUrl: props.thumbnailUrl,
+              fileUrl: props.fileUrl,
+              fileName: props.fileName,
+              fileSize: props.fileSize,
+
+              // 回复相关
+              replyToMessageId: props.replyToMessageId,
+              replyToContent: props.replyToContent,
+              quotedMessage: props.quotedMessage,
+
+              // 扩展数据
+              ext: props.ext,
+              extra: props.extra,
+              metadata: props.metadata,
+
+              // 动态捕获所有其他字段（防止遗漏）
+              ...Object.keys(props)
+                .filter(key => ![
+                  // 排除已明确列出的字段
+                  'serverId', 'id', 'msgId', 'messageId',
+                  'secSender', 'secReceiver', 'secUid',
+                  'conversationId', 'conversationShortId', 'conversationType',
+                  'sender', 'senderId', 'nickname', 'senderName', 'avatar', 'avatarThumb', 'senderSecUid',
+                  'receiver', 'receiverId', 'receiverName', 'receiverAvatar', 'receiverSecUid',
+                  'content', 'text', 'rawContent',
+                  'createdAt', 'timestamp', 'createTime', 'sendTime',
+                  'type', 'msgType', 'messageType',
+                  'isFromMe', 'isRead', 'status', 'serverStatus', 'sendStatus',
+                  'mediaUrl', 'mediaType', 'thumbnailUrl', 'fileUrl', 'fileName', 'fileSize',
+                  'replyToMessageId', 'replyToContent', 'quotedMessage',
+                  'ext', 'extra', 'metadata'
+                ].includes(key))
+                .reduce((acc, key) => {
+                  acc[key] = props[key];
+                  return acc;
+                }, {})
+            };
+
+            // ═══════════════════════════════════════════════════════════
+            // 📌 第二步：构建标准化外层字段（使用加密ID）
+            // ═══════════════════════════════════════════════════════════
+
+            // 消息ID（优先级：serverId > id > msgId > messageId）
+            const messageId = props.serverId || props.id || props.msgId || props.messageId || `msg_${messages.length}`;
+
+            // ⭐ 发送者ID：使用加密ID
+            // 优先级：secSender > secUid > sender
+            const platformSenderId = props.secSender || props.secUid || props.sender || 'unknown';
+
+            // ⭐ 发送者昵称
+            const platformSenderName = props.nickname || props.senderName || 'Unknown';
+
+            // ⭐ 接收者ID（如果可用）
+            const platformReceiverId = props.secReceiver || recipientId || 'unknown';
+
+            // ⭐ 会话ID：优先使用加密ID
+            // 对于 inbound 消息：会话ID = 发送者的加密ID
+            // 对于 outbound 消息：会话ID = 接收者的加密ID
+            const standardConversationId = props.isFromMe
+              ? platformReceiverId
+              : platformSenderId;
+
+            const message = {
+              index: messages.length,
+
+              // 标准字段
+              platform_message_id: messageId,
+              conversation_id: standardConversationId,
+
+              // ⭐ 发送者信息（使用加密ID）
+              platform_sender_id: platformSenderId,
+              platform_sender_name: platformSenderName,
+              sender_avatar: props.avatar || props.avatarThumb || null,
+
+              // ⭐ 接收者信息
+              recipient_id: platformReceiverId,
+              recipient_name: props.receiverName || null,
+
+              // 消息内容
+              content: textContent.substring(0, 500),
+              type: msgContent.aweType || props.type || props.msgType || 'text',
+
+              // 消息元数据
+              direction: props.isFromMe ? 'outbound' : 'inbound',
+              status: props.status || props.serverStatus || props.sendStatus || 'sent',
+              is_read: props.isRead || false,
+              is_recalled: props.isRecalled || false,
+
+              // 时间戳 (统一转换为毫秒时间戳)
+              timestamp: normalizeTimestamp(props.createdAt || props.timestamp || props.createTime),
+              created_at: normalizeTimestamp(props.createdAt || props.timestamp || props.createTime),
+
+              // ⭐⭐⭐ 完整的原始数据
+              rawData: rawData
+            };
+
+            messages.push(message);
+            console.log(`✅ 已添加消息 ${messages.length}:`, message.platform_message_id);
+          }
         }
       } catch (e) {
-        console.debug('Error extracting from Fiber:', e.message);
+        console.error('提取 Fiber 错误:', e.message);
       }
     });
 
-    // 去重：使用 messageId 去重
+    // 去重
     const deduped = [];
     const seen = new Set();
 
@@ -1134,7 +1338,9 @@ async function extractMessagesFromVirtualList(page) {
       }
     });
 
-    console.debug(`Successfully extracted ${deduped.length} messages from React Fiber virtual list`);
+    console.log(`✅ 提取完成: ${deduped.length} 条消息 (去重前 ${messages.length} 条)`);
+
+    // ✅ 直接返回消息数组（向后兼容）
     return deduped;
 
     /**
@@ -1229,6 +1435,16 @@ async function extractMessagesFromVirtualList(page) {
       return Math.abs(hash).toString(36);
     }
   });
+
+  // 记录调试信息
+  if (debugInfo && messages.length === 0) {
+    logger.warn('⚠️  找到 props 但未提取到消息，调试信息:');
+    logger.warn(`  props 字段数: ${debugInfo.allKeys.length}`);
+    logger.warn(`  props 预览: ${debugInfo.propsPreview.substring(0, 500)}`);
+  }
+
+  logger.info(`📊 extractMessagesFromVirtualList 结果: ${messages.length} 条消息`);
+  return messages;
 }
 
 /**
