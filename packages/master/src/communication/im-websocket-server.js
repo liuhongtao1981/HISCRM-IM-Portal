@@ -300,6 +300,14 @@ class IMWebSocketServer {
 
       // 🔧 处理字符串类型的时间戳
       if (typeof timestamp === 'string') {
+        // ✅ 优先尝试解析 ISO 8601 格式 (YYYY-MM-DDTHH:mm:ss.sssZ)
+        if (timestamp.includes('T') || timestamp.includes('-')) {
+          const isoDate = new Date(timestamp);
+          if (!isNaN(isoDate.getTime())) {
+            return isoDate.getTime();  // 返回毫秒级时间戳
+          }
+        }
+
         // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
         const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
         if (match) {
@@ -495,6 +503,14 @@ class IMWebSocketServer {
 
       // 🔧 处理字符串类型的时间戳
       if (typeof timestamp === 'string') {
+        // ✅ 优先尝试解析 ISO 8601 格式 (YYYY-MM-DDTHH:mm:ss.sssZ)
+        if (timestamp.includes('T') || timestamp.includes('-')) {
+          const isoDate = new Date(timestamp);
+          if (!isNaN(isoDate.getTime())) {
+            return isoDate.getTime();  // 返回毫秒级时间戳
+          }
+        }
+
         // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
         const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
         if (match) {
@@ -647,6 +663,14 @@ class IMWebSocketServer {
 
       // 🔧 处理字符串类型的时间戳
       if (typeof timestamp === 'string') {
+        // ✅ 优先尝试解析 ISO 8601 格式 (YYYY-MM-DDTHH:mm:ss.sssZ)
+        if (timestamp.includes('T') || timestamp.includes('-')) {
+          const isoDate = new Date(timestamp);
+          if (!isNaN(isoDate.getTime())) {
+            return isoDate.getTime();  // 返回毫秒级时间戳
+          }
+        }
+
         // 尝试解析中文日期字符串 "发布于2025年11月02日 09:00"
         const match = timestamp.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
         if (match) {
@@ -1036,6 +1060,111 @@ class IMWebSocketServer {
       logger.error('[IM WS] Get unread count error:', error);
       socket.emit('error', { message: '获取未读计数失败' });
     }
+  }
+
+  /**
+   * 启动未读消息定期推送
+   * @param {number} interval - 轮询间隔（毫秒），默认 5000ms
+   */
+  startUnreadNotificationPolling(interval = 5000) {
+    // 如果已经有定时器在运行，先停止
+    if (this.unreadPollingTimer) {
+      clearInterval(this.unreadPollingTimer);
+    }
+
+    // 存储上一次的未读数，用于检测变化
+    this.lastUnreadCounts = new Map(); // accountId -> { comments, messages, total }
+
+    this.unreadPollingTimer = setInterval(() => {
+      this.checkAndPushUnreadNotifications();
+    }, interval);
+
+    logger.info(`[IM WS] Unread notification polling started (interval: ${interval}ms)`);
+  }
+
+  /**
+   * 停止未读消息定期推送
+   */
+  stopUnreadNotificationPolling() {
+    if (this.unreadPollingTimer) {
+      clearInterval(this.unreadPollingTimer);
+      this.unreadPollingTimer = null;
+      logger.info('[IM WS] Unread notification polling stopped');
+    }
+  }
+
+  /**
+   * 检测并推送未读消息通知
+   */
+  checkAndPushUnreadNotifications() {
+    try {
+      // 如果没有连接的客户端，跳过
+      if (this.monitorClients.size === 0 && this.adminClients.size === 0) {
+        return;
+      }
+
+      // 遍历所有账户，检测未读数变化
+      const accounts = this.dataStore.accounts; // Map<accountId, AccountData>
+
+      for (const [accountId, accountData] of accounts) {
+        if (!accountData || !accountData.data) continue;
+
+        // 计算当前未读数
+        const currentUnread = {
+          comments: this.calculateUnreadComments(accountData.data),
+          messages: this.calculateUnreadMessages(accountData.data),
+          total: 0
+        };
+        currentUnread.total = currentUnread.comments + currentUnread.messages;
+
+        // 获取上一次的未读数
+        const lastUnread = this.lastUnreadCounts.get(accountId) || { comments: 0, messages: 0, total: 0 };
+
+        // 检测是否有新的未读消息
+        if (currentUnread.total > lastUnread.total) {
+          const newComments = currentUnread.comments - lastUnread.comments;
+          const newMessages = currentUnread.messages - lastUnread.messages;
+
+          logger.info(`[IM WS] New unread detected for ${accountId}: +${newComments} comments, +${newMessages} messages`);
+
+          // 广播未读数更新
+          this.broadcastToMonitors('monitor:unread_update', {
+            channelId: accountId,
+            unread: currentUnread,
+            delta: {
+              comments: newComments,
+              messages: newMessages,
+              total: currentUnread.total - lastUnread.total
+            }
+          });
+
+          // 更新缓存
+          this.lastUnreadCounts.set(accountId, currentUnread);
+        } else if (currentUnread.total < lastUnread.total) {
+          // 未读数减少（用户标记已读）
+          logger.debug(`[IM WS] Unread decreased for ${accountId}: ${lastUnread.total} -> ${currentUnread.total}`);
+          this.lastUnreadCounts.set(accountId, currentUnread);
+        }
+      }
+    } catch (error) {
+      logger.error('[IM WS] Check unread notifications error:', error);
+    }
+  }
+
+  /**
+   * 计算未读评论数
+   */
+  calculateUnreadComments(dataObj) {
+    const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
+    return commentsList.filter(c => c.isHandled === undefined || !c.isHandled).length;
+  }
+
+  /**
+   * 计算未读私信数
+   */
+  calculateUnreadMessages(dataObj) {
+    const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : (dataObj.conversations || []);
+    return conversationsList.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
   }
 }
 

@@ -215,7 +215,7 @@ class DouyinDataManager extends AccountDataManager {
       collectCount: this.extractCount(douyinData, 'collect_count'),
 
       // 发布信息
-      publishTime: douyinData.create_time || douyinData.publish_time || Date.now(),
+      publishTime: this.parsePublishTime(douyinData.create_time || douyinData.publish_time),
       location: douyinData.poi_name || null,
       tags: this.extractTags(douyinData),
 
@@ -226,7 +226,7 @@ class DouyinDataManager extends AccountDataManager {
       allowShare: douyinData.allow_share !== false,
 
       // 时间戳
-      createdAt: douyinData.create_time || Date.now(),
+      createdAt: this.parsePublishTime(douyinData.create_time),
       updatedAt: Date.now(),
 
       // 保留原始数据
@@ -458,6 +458,50 @@ class DouyinDataManager extends AccountDataManager {
     }
 
     return tags;
+  }
+
+  /**
+   * 解析发布时间（支持中文字符串和时间戳）
+   */
+  parsePublishTime(publishTime) {
+    if (!publishTime) return Date.now();
+
+    // 如果已经是数字（时间戳），直接返回
+    if (typeof publishTime === 'number') {
+      // 判断是秒级还是毫秒级
+      return publishTime < 10000000000 ? publishTime * 1000 : publishTime;
+    }
+
+    // 如果是字符串，尝试解析中文日期 "发布于2025年11月04日 14:16"
+    if (typeof publishTime === 'string') {
+      const match = publishTime.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
+      if (match) {
+        const [, year, month, day, hour, minute] = match;
+        const date = new Date(
+          parseInt(year),
+          parseInt(month) - 1,
+          parseInt(day),
+          parseInt(hour),
+          parseInt(minute)
+        );
+        return date.getTime(); // 返回毫秒时间戳
+      }
+
+      // 尝试解析为数字字符串
+      const num = Number(publishTime);
+      if (!isNaN(num)) {
+        return num < 10000000000 ? num * 1000 : num;
+      }
+
+      // 尝试解析为标准日期字符串
+      const date = new Date(publishTime);
+      if (!isNaN(date.getTime())) {
+        return date.getTime();
+      }
+    }
+
+    // 无法解析，返回当前时间
+    return Date.now();
   }
 
   /**

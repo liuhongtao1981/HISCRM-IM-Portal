@@ -17,12 +17,16 @@ build({
   bundle: true,
   platform: 'node',
   target: 'node18',
-  external: ['electron'],
+  external: ['electron', 'fs', 'path'],
   outfile: `${outdir}/main.js`,
-  format: 'cjs'
+  format: 'cjs',
+  sourcemap: true
 }).then(() => {
   console.log('✓ Main process built')
-}).catch(() => process.exit(1))
+}).catch((err) => {
+  console.error(err)
+  process.exit(1)
+})
 
 // 构建 preload
 build({

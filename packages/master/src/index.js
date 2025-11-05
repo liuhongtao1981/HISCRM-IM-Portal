@@ -536,6 +536,10 @@ async function start() {
     imWebSocketServer.setupHandlers();
     logger.info('IM WebSocket Server initialized with CacheDAO support');
 
+    // 4.3.1 启动未读消息定期推送（每 5 秒检测一次）
+    imWebSocketServer.startUnreadNotificationPolling(5000);
+    logger.info('IM WebSocket unread notification polling started (interval: 5s)');
+
     // 4.4 初始化 NotificationHandler（在 Socket.IO 之后）
     notificationHandler = new NotificationHandler(db, socketNamespaces);
     logger.info('Notification handler initialized');
@@ -741,6 +745,7 @@ async function start() {
           if (heartbeatMonitor) heartbeatMonitor.stop();
           if (notificationQueue) notificationQueue.stop();
           if (loginHandler) loginHandler.stopCleanupTimer();
+          if (imWebSocketServer) imWebSocketServer.stopUnreadNotificationPolling();
         } catch (error) {
           logger.warn('Error stopping schedulers:', error.message);
         }

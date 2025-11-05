@@ -132,43 +132,40 @@ export default function MonitorPage() {
       topic: Topic
       messageCount: number
       unreadCount: number
-      lastMessage: Message
+      lastMessage?: Message  // ✅ 改为可选,因为可能还没加载消息
     }> = []
 
     // 遍历该账户的所有主题(包括普通作品和私信主题)
     currentTopics.forEach(topic => {
-      // 获取该主题的所有消息
-      const topicMessages = messages[topic.id] || []
+      // ✅ 修复: 如果主题标记为私信主题,直接添加到列表,不需要等待消息加载
+      if (topic.isPrivate) {
+        // 获取该主题的所有消息(如果已加载)
+        const topicMessages = messages[topic.id] || []
+        const privateMessages = topicMessages.filter(msg =>
+          msg.messageCategory === 'private'
+        )
 
-      // 如果主题标记为私信主题,或者包含私信消息,则添加到列表
-      const privateMessages = topicMessages.filter(msg =>
-        msg.messageCategory === 'private'
-      )
-
-      // 只有当有私信消息,或者主题被标记为私信主题时才添加
-      if (privateMessages.length > 0 || topic.isPrivate) {
         // 按时间降序排序,取最新的一条
         const sortedMessages = [...privateMessages].sort((a, b) => b.timestamp - a.timestamp)
         const unreadMessages = privateMessages.filter(msg =>
           !msg.isHandled && msg.fromId !== 'monitor_client'
         )
 
-        // 如果有消息,则添加到列表
-        if (sortedMessages.length > 0) {
-          topicsWithPrivate.push({
-            topic,
-            messageCount: privateMessages.length,
-            unreadCount: unreadMessages.length,
-            lastMessage: sortedMessages[0]
-          })
-        }
+        topicsWithPrivate.push({
+          topic,
+          messageCount: privateMessages.length,
+          unreadCount: unreadMessages.length,
+          lastMessage: sortedMessages[0]  // 可能为 undefined
+        })
       }
     })
 
-    // 按最新消息时间降序排列
-    return topicsWithPrivate.sort((a, b) =>
-      b.lastMessage.timestamp - a.lastMessage.timestamp
-    )
+    // 按最新消息时间降序排列 (如果没有消息,使用 topic 的 lastMessageTime)
+    return topicsWithPrivate.sort((a, b) => {
+      const aTime = a.lastMessage?.timestamp || a.topic.lastMessageTime || 0
+      const bTime = b.lastMessage?.timestamp || b.topic.lastMessageTime || 0
+      return bTime - aTime
+    })
   }, [selectedChannelId, currentTopics, messages])
 
   // 调试日志
@@ -696,14 +693,16 @@ export default function MonitorPage() {
                                 {item.topic.title}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {formatTime(item.lastMessage.timestamp)}
+                                {item.lastMessage ? formatTime(item.lastMessage.timestamp) : (item.topic.lastMessageTime ? formatTime(item.topic.lastMessageTime) : '')}
                               </Text>
                             </div>
                           }
                           description={
                             <div>
                               <Text type="secondary" style={{ fontSize: 13 }}>
-                                {item.lastMessage.fromName}: {truncateText(item.lastMessage.content, 50)}
+                                {item.lastMessage
+                                  ? `${item.lastMessage.fromName}: ${truncateText(item.lastMessage.content, 50)}`
+                                  : (item.topic.description || '暂无消息')}
                               </Text>
                             </div>
                           }

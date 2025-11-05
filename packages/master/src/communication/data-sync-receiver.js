@@ -9,8 +9,9 @@ const { createMessage } = require('@hiscrm-im/shared/protocol/messages');
 const logger = createLogger('data-sync-receiver');
 
 class DataSyncReceiver {
-  constructor(dataStore) {
+  constructor(dataStore, imWebSocketServer = null) {
     this.dataStore = dataStore;
+    this.imWebSocketServer = imWebSocketServer; // IM WebSocket 服务器实例
     this.stats = {
       totalReceived: 0,
       lastReceiveTime: null,

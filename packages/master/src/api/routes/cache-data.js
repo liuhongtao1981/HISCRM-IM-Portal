@@ -267,6 +267,7 @@ function createCacheDataRouter(db, cacheDAO = null) {
           created_at: createdAtTimestamp, // 统一为秒级时间戳
           is_read: row.is_read,
           read_at: readAtTimestamp || null,
+          data: messageData, // ⭐ 返回完整的 data 对象（包含 rawData）
         };
       });
 

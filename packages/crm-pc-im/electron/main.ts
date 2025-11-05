@@ -2,7 +2,8 @@ import { app, BrowserWindow, ipcMain } from 'electron'
 import path from 'path'
 import fs from 'fs'
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
+// 使用环境变量判断,避免在模块顶层访问 app.isPackaged
+const isDev = process.env.NODE_ENV === 'development'
 
 let mainWindow: BrowserWindow | null = null
 
@@ -22,7 +23,7 @@ function createWindow() {
   })
 
   if (isDev) {
-    mainWindow.loadURL('http://localhost:5173')
+    mainWindow.loadURL('http://localhost:5176')
     mainWindow.webContents.openDevTools()
   } else {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))

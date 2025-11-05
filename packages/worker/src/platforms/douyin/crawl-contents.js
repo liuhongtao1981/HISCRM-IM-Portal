@@ -528,6 +528,24 @@ function enhanceWorksWithAPIData(contents, apiResponses) {
     const apiData = apiWorkMap.get(work.platform_content_id);
 
     if (apiData) {
+      // 解析 publish_time (可能是中文字符串或时间戳)
+      let publishTime = apiData.create_time || work.publish_time;
+      if (publishTime && typeof publishTime === 'string') {
+        // 尝试解析中文日期字符串 "发布于2025年11月04日 14:16"
+        const match = publishTime.match(/(\d{4})年(\d{1,2})月(\d{1,2})日\s+(\d{1,2}):(\d{2})/);
+        if (match) {
+          const [, year, month, day, hour, minute] = match;
+          const date = new Date(
+            parseInt(year),
+            parseInt(month) - 1,
+            parseInt(day),
+            parseInt(hour),
+            parseInt(minute)
+          );
+          publishTime = Math.floor(date.getTime() / 1000); // 转换为秒级时间戳
+        }
+      }
+
       // 合并 API 数据 (API 优先)
       return {
         ...work,
@@ -535,7 +553,7 @@ function enhanceWorksWithAPIData(contents, apiResponses) {
         description: apiData.desc || work.description,
         cover: apiData.video?.cover?.url_list?.[0] || work.cover,
         url: apiData.share_url || work.url,
-        publish_time: apiData.create_time || work.publish_time,
+        publish_time: publishTime,
 
         stats_comment_count: apiData.statistics?.comment_count || work.stats_comment_count,
         stats_like_count: apiData.statistics?.digg_count || work.stats_like_count,

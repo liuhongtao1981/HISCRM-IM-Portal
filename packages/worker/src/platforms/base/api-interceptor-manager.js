@@ -82,17 +82,50 @@ class APIInterceptorManager {
   }
 
   /**
-   * 解析 JSON 响应
+   * 解析响应 (支持JSON和二进制)
    */
   async parseJSON(response) {
     try {
+      // 先尝试JSON解析
       return await response.json();
     } catch {
       try {
         const text = await response.text();
         return JSON.parse(text);
       } catch {
-        return null;
+        // JSON解析失败，检查是否是二进制响应
+        try {
+          const contentType = response.headers()['content-type'] || '';
+
+          // 如果是Protobuf或二进制流，保存原始buffer
+          if (contentType.includes('protobuf') ||
+              contentType.includes('octet-stream') ||
+              contentType.includes('application/x-protobuf')) {
+
+            const buffer = await response.body();
+
+            logger.warn(`⚠️ Binary response detected: ${response.url()}`);
+            logger.warn(`   Content-Type: ${contentType}`);
+            logger.warn(`   Buffer size: ${buffer?.length || 0} bytes`);
+
+            // 返回特殊标记的对象，包含原始二进制数据
+            return {
+              __isBinary: true,
+              __url: response.url(),
+              __contentType: contentType,
+              __bufferSize: buffer?.length || 0,
+              __buffer: buffer,
+              __timestamp: Date.now()
+            };
+          }
+
+          // 其他情况返回null
+          return null;
+
+        } catch (binaryError) {
+          logger.error(`Failed to handle binary response:`, binaryError);
+          return null;
+        }
       }
     }
   }
