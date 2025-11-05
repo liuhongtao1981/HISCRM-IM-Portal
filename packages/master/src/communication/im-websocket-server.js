@@ -459,11 +459,12 @@ class IMWebSocketServer {
         }
 
         // ✅ 实时计算未读消息数量（不使用数据库的 unreadCount）
-        // 未读条件：消息没有 read_at 字段或 read_at 为空/null
+        // 未读条件：read_at 字段为 null/undefined/0
         const unreadMessages = conversationMessages.filter(m => {
-          // 检查是否已读：read_at 字段存在且不为空/null
-          const isRead = m.read_at || m.readAt || m.isRead;
-          return !isRead;  // 返回未读的消息
+          // ✅ 统一标准：只使用 read_at 或 readAt 字段
+          const readAt = m.read_at || m.readAt;
+          // 明确判断：readAt 为 null/undefined/0 表示未读，有时间戳表示已读
+          return !readAt || readAt === 0;
         });
 
         // ✅ 计算该会话的最新消息时间（从消息列表中获取，而不是数据库的 lastMessageTime）
