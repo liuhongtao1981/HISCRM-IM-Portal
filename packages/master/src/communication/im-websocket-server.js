@@ -452,26 +452,26 @@ class IMWebSocketServer {
         // 计算该会话的消息数（使用 camelCase: conversationId）
         const conversationMessages = messagesList.filter(m => m.conversationId === conversation.conversationId);
 
-        // ✅ 问题3修复: 只推送有私信消息的会话
-        if (conversationMessages.length === 0) {
-          logger.debug(`[FILTER] 跳过无消息的会话: ${conversation.userName || conversation.conversationId}`);
-          continue;
-        }
-
+        // ✅ 全量推送: 推送所有会话（包括无消息的），由客户端自己过滤和展示
+        // 保留 messageCount 字段，客户端可以根据此字段判断是否有历史消息
         const topic = {
           id: conversation.conversationId,
           channelId: channelId,
           title: conversation.userName || '未知用户',
-          description: `私信会话`,
+          description: conversationMessages.length > 0 ? `私信会话 (${conversationMessages.length}条消息)` : '私信会话 (暂无消息)',
           createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
           lastMessageTime: normalizeTimestamp(conversation.lastMessageTime),  // ✅ 修复: 归一化时间戳
-          messageCount: conversationMessages.length,
+          messageCount: conversationMessages.length,  // ✅ 客户端可根据此字段判断是否有消息
           unreadCount: conversation.unreadCount || 0,
           isPinned: false,
           isPrivate: true  // ✅ 新增: 标记为私信主题
         };
 
         topics.push(topic);
+
+        if (conversationMessages.length === 0) {
+          logger.debug(`[PUSH] 推送空会话: ${conversation.userName || conversation.conversationId} (unread: ${topic.unreadCount})`);
+        }
       }
 
       // 🔍 打印第一个 topic 对象
