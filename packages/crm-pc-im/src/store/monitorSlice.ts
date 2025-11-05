@@ -73,15 +73,25 @@ const monitorSlice = createSlice({
     // 设置某个新媒体账户的作品列表
     setTopics: (state, action: PayloadAction<{ channelId: string; topics: Topic[] }>) => {
       const { channelId, topics } = action.payload
-      state.topics[channelId] = topics
+
+      // ✅ 修复: 合并更新而非完全替换，避免会话消失
+      const existingTopics = state.topics[channelId] || []
+      const topicMap = new Map(existingTopics.map(t => [t.id, t]))
+
+      // 更新或添加新 topics
+      topics.forEach(topic => {
+        topicMap.set(topic.id, topic)
+      })
+
+      state.topics[channelId] = Array.from(topicMap.values())
 
       // 更新新媒体账户的作品数量和未读消息数
       const channel = state.channels.find(ch => ch.id === channelId)
       if (channel) {
-        channel.topicCount = topics.length
+        channel.topicCount = state.topics[channelId].length
 
         // ✅ 汇总该账户下所有作品的未读消息数
-        channel.unreadCount = topics.reduce((sum, topic) => sum + (topic.unreadCount || 0), 0)
+        channel.unreadCount = state.topics[channelId].reduce((sum, topic) => sum + (topic.unreadCount || 0), 0)
       }
     },
 
