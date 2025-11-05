@@ -147,14 +147,21 @@ export default function MonitorPage() {
 
         // 按时间降序排序,取最新的一条
         const sortedMessages = [...privateMessages].sort((a, b) => b.timestamp - a.timestamp)
-        const unreadMessages = privateMessages.filter(msg =>
-          !msg.isHandled && msg.fromId !== 'monitor_client'
-        )
+
+        // ✅ 优先使用服务端推送的 unreadCount，如果消息已加载则使用客户端计算的
+        let unreadCount = topic.unreadCount || 0  // 默认使用服务端的值
+        if (topicMessages.length > 0) {
+          // 消息已加载，使用客户端计算的未读数
+          const unreadMessages = privateMessages.filter(msg =>
+            !msg.isHandled && msg.fromId !== 'monitor_client'
+          )
+          unreadCount = unreadMessages.length
+        }
 
         topicsWithPrivate.push({
           topic,
-          messageCount: privateMessages.length,
-          unreadCount: unreadMessages.length,
+          messageCount: privateMessages.length || topic.messageCount || 0,  // 优先使用已加载的消息数
+          unreadCount: unreadCount,
           lastMessage: sortedMessages[0]  // 可能为 undefined
         })
       }
