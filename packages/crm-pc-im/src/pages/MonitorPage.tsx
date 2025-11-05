@@ -69,13 +69,32 @@ export default function MonitorPage() {
   const currentTopics = selectedChannelId ? topics[selectedChannelId] || [] : []
   const selectedTopic = currentTopics.find(tp => tp.id === selectedTopicId)
 
-  // 计算私信和评论的未处理数量
-  const privateUnhandledCount = currentMessages.filter(msg =>
-    msg.messageCategory === 'private' && !msg.isHandled
-  ).length
-  const commentUnhandledCount = currentMessages.filter(msg =>
-    (msg.messageCategory === 'comment' || !msg.messageCategory) && !msg.isHandled
-  ).length
+  // 计算私信和评论的未处理数量（汇总该账户下所有作品的未读消息）
+  const privateUnhandledCount = React.useMemo(() => {
+    if (!selectedChannelId) return 0
+
+    // 遍历该账户的所有作品，汇总私信未读数
+    return currentTopics.reduce((sum, topic) => {
+      if (topic.isPrivate) {
+        // 对于私信主题，使用服务端推送的 unreadCount
+        return sum + (topic.unreadCount || 0)
+      }
+      return sum
+    }, 0)
+  }, [selectedChannelId, currentTopics])
+
+  const commentUnhandledCount = React.useMemo(() => {
+    if (!selectedChannelId) return 0
+
+    // 遍历该账户的所有作品，汇总评论未读数
+    return currentTopics.reduce((sum, topic) => {
+      if (!topic.isPrivate) {
+        // 对于评论主题，使用服务端推送的 unreadCount
+        return sum + (topic.unreadCount || 0)
+      }
+      return sum
+    }, 0)
+  }, [selectedChannelId, currentTopics])
 
   // 根据当前标签页过滤消息
   const filteredMessages = currentMessages.filter(msg => {

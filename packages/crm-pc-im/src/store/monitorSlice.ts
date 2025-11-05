@@ -260,6 +260,12 @@ const monitorSlice = createSlice({
           if (topic) {
             topic.unreadCount = 0
           }
+
+          // ✅ 重新计算该账户的总未读数
+          const channel = state.channels.find(ch => ch.id === state.selectedChannelId)
+          if (channel) {
+            channel.unreadCount = topics.reduce((sum, t) => sum + (t.unreadCount || 0), 0)
+          }
         }
       }
     },
