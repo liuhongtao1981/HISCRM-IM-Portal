@@ -408,7 +408,7 @@ class IMWebSocketServer {
           createdTime: normalizeTimestamp(content.publishTime),  // ✅ 修复: 归一化时间戳
           lastMessageTime: normalizeTimestamp(content.lastCrawlTime),  // ✅ 修复: 归一化时间戳
           messageCount: contentComments.length,
-          unreadCount: contentComments.filter(c => c.isHandled === undefined || !c.isHandled).length,  // 修改：使用 isHandled 而不是 isNew，默认未处理
+          unreadCount: contentComments.filter(c => !c.isRead).length,  // ✅ 统一标准: 使用 isRead 字段
           isPinned: false
         };
 
@@ -459,13 +459,8 @@ class IMWebSocketServer {
         }
 
         // ✅ 实时计算未读消息数量（不使用数据库的 unreadCount）
-        // 未读条件：read_at 字段为 null/undefined/0
-        const unreadMessages = conversationMessages.filter(m => {
-          // ✅ 统一标准：只使用 read_at 或 readAt 字段
-          const readAt = m.read_at || m.readAt;
-          // 明确判断：readAt 为 null/undefined/0 表示未读，有时间戳表示已读
-          return !readAt || readAt === 0;
-        });
+        // 统一标准：使用内存对象的 isRead 字段
+        const unreadMessages = conversationMessages.filter(m => !m.isRead);
 
         // ✅ 计算该会话的最新消息时间（从消息列表中获取，而不是数据库的 lastMessageTime）
         const sortedMessages = [...conversationMessages].sort((a, b) => {
@@ -620,7 +615,7 @@ class IMWebSocketServer {
             replyToContent: null,
             direction: isAuthorReply ? 'outgoing' : 'incoming',  // 作者回复为outgoing，其他为incoming
             isAuthorReply: isAuthorReply,
-            isHandled: comment.isHandled || false  // ✅ 新增: 是否已处理，默认为 false
+            isRead: comment.isRead || false  // ✅ 统一标准: 使用 isRead 字段
           });
         }
       }
@@ -648,7 +643,7 @@ class IMWebSocketServer {
             direction: msg.direction || 'incoming',  // 消息方向：incoming/outgoing
             recipientId: msg.recipientId || '',
             recipientName: msg.recipientName || '',
-            isHandled: msg.isHandled || false  // ✅ 新增: 是否已处理，默认为 false
+            isRead: msg.isRead || false  // ✅ 统一标准: 使用 isRead 字段
           });
         }
       }
@@ -670,9 +665,9 @@ class IMWebSocketServer {
     const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
     const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : (dataObj.conversations || []);
 
-    // 计算未读评论数（使用 isHandled 而不是 isNew）
+    // 计算未读评论数（✅ 统一标准: 使用 isRead）
     if (commentsList.length > 0) {
-      unreadCount += commentsList.filter(c => c.isHandled === undefined || !c.isHandled).length;
+      unreadCount += commentsList.filter(c => !c.isRead).length;
     }
 
     // 计算未读会话消息数（使用 camelCase: unreadCount）

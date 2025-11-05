@@ -122,7 +122,7 @@ export default function MonitorPage() {
       const topicMessages = messages[topic.id] || []
       const unreadMessages = topicMessages.filter(msg =>
         (msg.messageCategory === 'comment' || !msg.messageCategory) &&
-        !msg.isHandled &&
+        !msg.isRead &&  // ✅ 统一标准: 使用 isRead 字段
         msg.fromId !== 'monitor_client' // 排除客服自己发的消息
       )
 
@@ -171,11 +171,10 @@ export default function MonitorPage() {
         let unreadCount = topic.unreadCount || 0  // 默认使用服务端的值
         if (topicMessages.length > 0) {
           // 消息已加载，使用客户端计算的未读数
-          // ✅ 统一标准：使用 read_at 或 readAt 字段判断是否已读
-          const unreadMessages = privateMessages.filter(msg => {
-            const readAt = msg.read_at || msg.readAt
-            return (!readAt || readAt === 0) && msg.fromId !== 'monitor_client'
-          })
+          // ✅ 统一标准：使用 isRead 字段判断是否已读
+          const unreadMessages = privateMessages.filter(msg =>
+            !msg.isRead && msg.fromId !== 'monitor_client'
+          )
           unreadCount = unreadMessages.length
         }
 

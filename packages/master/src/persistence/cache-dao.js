@@ -220,16 +220,27 @@ class CacheDAO {
     const now = Date.now();
     let count = 0;
 
+    // 需要修改 prepared statement 以包含 is_read 字段
+    const upsertWithReadStatus = this.db.prepare(`
+      INSERT OR REPLACE INTO cache_comments (
+        id, account_id, content_id, data, created_at, updated_at, persist_at, is_read
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
     const transaction = this.db.transaction((comments) => {
       for (const comment of comments) {
-        this.preparedStmts.upsertComment.run(
+        // ✅ 从内存对象的 isRead 更新到数据库的 is_read 字段
+        const isRead = comment.isRead ? 1 : 0;
+
+        upsertWithReadStatus.run(
           comment.id,
           accountId,
           comment.contentId || null,
           JSON.stringify(comment),
           comment.createdAt || now,
           now,
-          now
+          now,
+          isRead
         );
         count++;
       }
@@ -243,7 +254,14 @@ class CacheDAO {
    * 获取账户的所有评论
    */
   getCommentsByAccount(accountId) {
-    return this.preparedStmts.getCommentsByAccount.all(accountId);
+    const rows = this.preparedStmts.getCommentsByAccount.all(accountId);
+
+    // ✅ 从 is_read 字段同步到内存对象的 isRead 属性
+    return rows.map(row => {
+      const data = JSON.parse(row.data);
+      data.isRead = row.is_read === 1;  // 0 → false, 1 → true
+      return { ...row, data: JSON.stringify(data) };
+    });
   }
 
   /**
@@ -385,20 +403,31 @@ class CacheDAO {
     const now = Date.now();
     let count = 0;
 
+    // 需要修改 prepared statement 以包含 is_read 字段
+    const upsertWithReadStatus = this.db.prepare(`
+      INSERT OR REPLACE INTO cache_messages (
+        id, account_id, conversation_id, data, created_at, updated_at, persist_at, is_read
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
     const transaction = this.db.transaction((messages) => {
       for (const message of messages) {
         // 保持毫秒级时间戳 (13位数字)
         // Worker 已经通过 normalizeTimestamp() 统一为毫秒级
         const createdAtTimestamp = message.createdAt || now;
 
-        this.preparedStmts.upsertMessage.run(
+        // ✅ 从内存对象的 isRead 更新到数据库的 is_read 字段
+        const isRead = message.isRead ? 1 : 0;
+
+        upsertWithReadStatus.run(
           message.id,
           accountId,
           message.conversationId || '',
           JSON.stringify(message),
           createdAtTimestamp,
           now,
-          now
+          now,
+          isRead
         );
         count++;
       }
@@ -412,7 +441,14 @@ class CacheDAO {
    * 获取账户的所有私信
    */
   getMessagesByAccount(accountId) {
-    return this.preparedStmts.getMessagesByAccount.all(accountId);
+    const rows = this.preparedStmts.getMessagesByAccount.all(accountId);
+
+    // ✅ 从 is_read 字段同步到内存对象的 isRead 属性
+    return rows.map(row => {
+      const data = JSON.parse(row.data);
+      data.isRead = row.is_read === 1;  // 0 → false, 1 → true
+      return { ...row, data: JSON.stringify(data) };
+    });
   }
 
   /**
