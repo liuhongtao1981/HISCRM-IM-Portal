@@ -164,6 +164,7 @@ class Message extends BaseDataModel {
     this.direction = 'incoming';       // 方向：incoming/outgoing
     this.status = 'delivered';         // 状态：sending/sent/delivered/read/failed
     this.isRecalled = false;           // 是否已撤回
+    this.isRead = false;               // ✅ 是否已读（用于未读数统计）
 
     // 引用消息（回复功能）
     this.replyToMessageId = null;      // 引用的消息ID
@@ -253,6 +254,7 @@ class Comment extends BaseDataModel {
     this.isPinned = false;             // 是否置顶
     this.isAuthorReply = false;        // 是否作者回复
     this.isLiked = false;              // 当前账户是否点赞
+    this.isRead = false;               // ✅ 是否已读（用于未读数统计）
   }
 }
 

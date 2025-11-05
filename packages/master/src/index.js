@@ -531,10 +531,13 @@ async function start() {
 
     // 4.3 初始化 IM WebSocket 服务器 (CRM PC IM 客户端)
     // 使用 CacheDAO 支持已读状态处理（从 cache_* 表读取）
+    // 使用 AccountsDAO 获取账户信息（user_info, avatar等）
+    const AccountsDAO = require('./database/accounts-dao');
+    const accountsDAO = new AccountsDAO(db);
     const IMWebSocketServer = require('./communication/im-websocket-server');
-    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore, cacheDAO);
+    const imWebSocketServer = new IMWebSocketServer(socketNamespaces.io, dataStore, cacheDAO, accountsDAO);
     imWebSocketServer.setupHandlers();
-    logger.info('IM WebSocket Server initialized with CacheDAO support');
+    logger.info('IM WebSocket Server initialized with CacheDAO and AccountsDAO support');
 
     // 4.3.1 启动未读消息定期推送（每 5 秒检测一次）
     imWebSocketServer.startUnreadNotificationPolling(5000);

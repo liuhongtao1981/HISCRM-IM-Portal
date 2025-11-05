@@ -113,34 +113,43 @@ export default function MonitorPage() {
     const topicsWithUnread: Array<{
       topic: Topic
       unreadCount: number
-      lastUnreadMessage: Message
+      lastUnreadMessage?: Message
     }> = []
 
     // 遍历该账户的所有作品
     currentTopics.forEach(topic => {
-      // 获取该作品的所有未读评论消息
-      const topicMessages = messages[topic.id] || []
-      const unreadMessages = topicMessages.filter(msg =>
-        (msg.messageCategory === 'comment' || !msg.messageCategory) &&
-        !msg.isRead &&  // ✅ 统一标准: 使用 isRead 字段
-        msg.fromId !== 'monitor_client' // 排除客服自己发的消息
-      )
+      // ✅ 修复: 直接使用服务端返回的 unreadCount，不依赖客户端 messages 缓存
+      // 评论作品 (isPrivate = false) 且有未读数
+      if (!topic.isPrivate && topic.unreadCount && topic.unreadCount > 0) {
+        // 尝试获取该作品的消息（如果已加载）
+        const topicMessages = messages[topic.id] || []
+        const unreadMessages = topicMessages.filter(msg =>
+          (msg.messageCategory === 'comment' || !msg.messageCategory) &&
+          !msg.isRead &&
+          msg.fromId !== 'monitor_client'
+        )
 
-      if (unreadMessages.length > 0) {
-        // 按时间降序排序,取最新的一条
-        const sortedUnread = [...unreadMessages].sort((a, b) => b.timestamp - a.timestamp)
+        // 如果有加载的消息，取最新的一条；否则为 undefined
+        let lastUnreadMessage: Message | undefined = undefined
+        if (unreadMessages.length > 0) {
+          const sortedUnread = [...unreadMessages].sort((a, b) => b.timestamp - a.timestamp)
+          lastUnreadMessage = sortedUnread[0]
+        }
+
         topicsWithUnread.push({
           topic,
-          unreadCount: unreadMessages.length,
-          lastUnreadMessage: sortedUnread[0]
+          unreadCount: topic.unreadCount,  // ✅ 使用服务端的 unreadCount
+          lastUnreadMessage
         })
       }
     })
 
-    // 按最新未读消息时间降序排列
-    return topicsWithUnread.sort((a, b) =>
-      b.lastUnreadMessage.timestamp - a.lastUnreadMessage.timestamp
-    )
+    // 按最新消息时间降序排列
+    return topicsWithUnread.sort((a, b) => {
+      const aTime = a.lastUnreadMessage?.timestamp || a.topic.lastMessageTime || 0
+      const bTime = b.lastUnreadMessage?.timestamp || b.topic.lastMessageTime || 0
+      return bTime - aTime
+    })
   }, [selectedChannelId, currentTopics, messages])
 
   // 构建私信列表(按作品分组,按最新消息时间倒序排列)
@@ -167,16 +176,10 @@ export default function MonitorPage() {
         // 按时间降序排序,取最新的一条
         const sortedMessages = [...privateMessages].sort((a, b) => b.timestamp - a.timestamp)
 
-        // ✅ 优先使用服务端推送的 unreadCount，如果消息已加载则使用客户端计算的
-        let unreadCount = topic.unreadCount || 0  // 默认使用服务端的值
-        if (topicMessages.length > 0) {
-          // 消息已加载，使用客户端计算的未读数
-          // ✅ 统一标准：使用 isRead 字段判断是否已读
-          const unreadMessages = privateMessages.filter(msg =>
-            !msg.isRead && msg.fromId !== 'monitor_client'
-          )
-          unreadCount = unreadMessages.length
-        }
+        // ✅ 修复未读数跳动问题：完全信任服务端推送的 unreadCount
+        // 服务端基于完整的 DataStore 数据计算，客户端只有部分消息
+        // 客户端不应该用不完整的数据覆盖服务端的准确值
+        const unreadCount = topic.unreadCount || 0
 
         topicsWithPrivate.push({
           topic,
@@ -187,14 +190,8 @@ export default function MonitorPage() {
       }
     })
 
-    // ✅ 排序逻辑：1. 未读消息优先  2. 按最新消息时间降序
+    // ✅ 排序逻辑：按最新消息时间降序（最新的在最上面）
     return topicsWithPrivate.sort((a, b) => {
-      // 1. 优先比较未读数（未读数多的在前）
-      if (a.unreadCount !== b.unreadCount) {
-        return b.unreadCount - a.unreadCount
-      }
-
-      // 2. 未读数相同，按最新消息时间排序（新的在前）
       const aTime = a.lastMessage?.timestamp || a.topic.lastMessageTime || 0
       const bTime = b.lastMessage?.timestamp || b.topic.lastMessageTime || 0
       return bTime - aTime
@@ -258,7 +255,30 @@ export default function MonitorPage() {
 
         // 监听作品列表
         websocketService.on('monitor:topics', (data: any) => {
-          console.log('[监听] 收到作品列表:', data)
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+          console.log('📡 [WebSocket] 收到服务端推送 monitor:topics')
+          console.log(`   频道ID: ${data.channelId}`)
+          console.log(`   Topics 数量: ${data.topics ? data.topics.length : 0}`)
+
+          // 统计未读数
+          let privateUnread = 0
+          let commentUnread = 0
+          if (data.topics) {
+            data.topics.forEach((topic: any) => {
+              const unread = topic.unreadCount || 0
+              if (topic.isPrivate) {
+                privateUnread += unread
+              } else {
+                commentUnread += unread
+              }
+            })
+          }
+          console.log(`   📧 私信未读: ${privateUnread}`)
+          console.log(`   💬 评论未读: ${commentUnread}`)
+          console.log(`   📊 总未读: ${privateUnread + commentUnread}`)
+          console.log('   → 调用 dispatch(setTopics)')
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
           dispatch(setTopics({ channelId: data.channelId, topics: data.topics }))
         })
 
@@ -452,12 +472,25 @@ export default function MonitorPage() {
     const diff = now - timestamp
     const date = new Date(timestamp)
 
+    // 获取今天 0 点的时间戳
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const todayStart = today.getTime()
+
+    // 1分钟内：显示"刚刚"
     if (diff < 60000) return '刚刚'
+
+    // 1小时内：显示"X分钟前"
     if (diff < 3600000) return `${Math.floor(diff / 60000)}分钟前`
-    if (diff < 86400000) {
+
+    // ✅ 修复：只有今天的消息才显示时间，其他都显示日期
+    if (timestamp >= todayStart) {
+      // 今天的消息：显示时间（如 "10:58"）
       return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+    } else {
+      // 昨天及更早的消息：显示日期（如 "11/04"）
+      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
     }
-    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
   }
 
   const formatMessageTime = (timestamp: number) => {
@@ -521,6 +554,20 @@ export default function MonitorPage() {
               const isSelected = channel.id === selectedChannelId
               const hasUnread = channel.unreadCount > 0
 
+              // ✅ 解析用户信息用于显示（通用结构，支持所有平台）
+              let userInfo = null
+              try {
+                userInfo = channel.userInfo ? JSON.parse(channel.userInfo) : null
+              } catch (e) {
+                console.error('Failed to parse userInfo:', e)
+              }
+
+              // ✅ 优先使用 userInfo 中的字段，fallback 到 channel 字段
+              const displayAvatar = userInfo?.avatar || channel.avatar
+              const displayName = userInfo?.nickname || channel.name
+              // ✅ 通用平台账号ID字段（支持所有平台）
+              const platformUserId = userInfo?.platformUserId || userInfo?.douyin_id || null
+
               return (
                 <div
                   key={channel.id}
@@ -529,16 +576,23 @@ export default function MonitorPage() {
                 >
                   <Badge count={channel.unreadCount} offset={[0, 10]}>
                     <Avatar
-                      src={channel.avatar}
+                      src={displayAvatar}
                       icon={<UserOutlined />}
                       size={48}
                     />
                   </Badge>
                   <div className="wechat-account-info">
                     <div className="wechat-account-header">
-                      <Text strong className={hasUnread ? 'unread' : ''}>
-                        {channel.name}
-                      </Text>
+                      <div style={{ display: 'flex', flexDirection: 'column', flex: 1 }}>
+                        <Text strong className={hasUnread ? 'unread' : ''}>
+                          {displayName}
+                        </Text>
+                        {platformUserId && (
+                          <Text type="secondary" style={{ fontSize: 11 }}>
+                            {platformUserId}
+                          </Text>
+                        )}
+                      </div>
                       <Text type="secondary" className="wechat-time">
                         {channel.lastMessageTime ? formatTime(channel.lastMessageTime) : ''}
                       </Text>
@@ -566,7 +620,11 @@ export default function MonitorPage() {
 
       {/* 右侧消息对话框 */}
       <Content className="wechat-chat-content">
-        {selectedChannel && (selectedTopic || (activeTab === 'comment' && showCommentList)) ? (
+        {selectedChannel && (
+          selectedTopic ||
+          (activeTab === 'comment' && showCommentList) ||
+          (activeTab === 'private' && showPrivateList)
+        ) ? (
           <>
             {/* 对话框头部 */}
             <div className="wechat-chat-header">
@@ -666,15 +724,36 @@ export default function MonitorPage() {
                                 {item.topic.title}
                               </Text>
                               <Text type="secondary" style={{ fontSize: 12 }}>
-                                {formatTime(item.lastUnreadMessage.timestamp)}
+                                {(() => {
+                                  // ✅ 优先使用消息的时间戳，如果没有则使用作品的最后消息时间
+                                  const timestamp = item.lastUnreadMessage?.timestamp || item.topic.lastMessageTime
+                                  const now = Date.now()
+                                  const diff = now - timestamp
+
+                                  // 🔧 如果时间差小于 60 秒，可能是 lastCrawlTime 使用了当前时间
+                                  // 这种情况下显示日期而不是"刚刚"
+                                  if (diff < 60000 && !item.lastUnreadMessage) {
+                                    // 没有消息详情且显示"刚刚"，改为显示日期
+                                    const date = new Date(timestamp)
+                                    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+                                  }
+
+                                  return formatTime(timestamp)
+                                })()}
                               </Text>
                             </div>
                           }
                           description={
                             <div>
-                              <Text type="secondary" style={{ fontSize: 13 }}>
-                                {item.lastUnreadMessage.fromName}: {truncateText(item.lastUnreadMessage.content, 50)}
-                              </Text>
+                              {item.lastUnreadMessage ? (
+                                <Text type="secondary" style={{ fontSize: 13 }}>
+                                  {item.lastUnreadMessage.fromName}: {truncateText(item.lastUnreadMessage.content, 50)}
+                                </Text>
+                              ) : (
+                                <Text type="secondary" style={{ fontSize: 13 }}>
+                                  {item.unreadCount} 条未读评论
+                                </Text>
+                              )}
                             </div>
                           }
                         />

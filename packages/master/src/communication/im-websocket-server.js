@@ -9,17 +9,18 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('im-websocket');
 
 class IMWebSocketServer {
-  constructor(io, dataStore, cacheDAO = null) {
+  constructor(io, dataStore, cacheDAO = null, accountDAO = null) {
     this.io = io;
     this.dataStore = dataStore;
     this.cacheDAO = cacheDAO;
+    this.accountDAO = accountDAO;
 
     // 在线客户端管理
     this.monitorClients = new Map(); // clientId -> socketId
     this.adminClients = new Map();   // adminId -> socketId
     this.socketToClientId = new Map(); // socketId -> clientId
 
-    logger.info('IM WebSocket Server initialized with CacheDAO support');
+    logger.info('IM WebSocket Server initialized with CacheDAO and AccountDAO support');
   }
 
   /**
@@ -125,7 +126,9 @@ class IMWebSocketServer {
       logger.info(`[IM WS] Client registered: ${clientId}, type: ${clientType}, channels: ${channels.length}`);
     } catch (error) {
       logger.error('[IM WS] Monitor register error:', error);
-      socket.emit('error', { message: '监控注册失败' });
+      logger.error('[IM WS] Error stack:', error.stack);
+      logger.error('[IM WS] accountDAO status:', this.accountDAO ? 'initialized' : 'NOT initialized');
+      socket.emit('error', { message: '监控注册失败', details: error.message });
     }
   }
 
@@ -201,7 +204,7 @@ class IMWebSocketServer {
         serverTimestamp: Date.now(),
         replyToId,
         replyToContent,
-        isHandled: false  // ✅ 新增: 默认未处理
+        isRead: false  // ✅ 统一使用 isRead 字段，默认未读
       };
 
       // 广播给所有监控客户端
@@ -245,6 +248,22 @@ class IMWebSocketServer {
       // DataStore 数据结构是 {accountId, platform, lastUpdate, data}
       const dataObj = accountData.data || accountData;
 
+      // ✅ 从数据库查询账户信息（获取平台昵称和用户信息）
+      let accountInfo = null;
+      if (this.accountDAO) {
+        try {
+          accountInfo = this.accountDAO.findById(accountId);  // ✅ 正确的方法名
+        } catch (error) {
+          logger.warn(`[IM WS] Failed to get account info for ${accountId}:`, error.message);
+        }
+      } else {
+        logger.warn('[IM WS] accountDAO is not initialized, using default values');
+      }
+      const accountName = accountInfo?.account_name || accountId;
+      const avatar = accountInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${accountId}`;
+      const userInfo = accountInfo?.user_info || null;  // ✅ 获取用户信息字段
+      const platform = accountData.platform || accountInfo?.platform || '';
+
       // 计算未读消息数
       const unreadCount = this.calculateUnreadCount(dataObj);
 
@@ -262,8 +281,10 @@ class IMWebSocketServer {
 
       const channel = {
         id: accountId,
-        name: accountData.accountName || accountId,
-        avatar: accountData.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${accountId}`,
+        name: accountName,  // ✅ 使用数据库中的平台昵称
+        avatar: avatar,     // ✅ 使用数据库中的头像
+        userInfo: userInfo, // ✅ 包含详细的用户信息（nickname, douyin_id等）
+        platform: platform, // ✅ 平台标识
         description: accountData.platform || '',
         lastMessage: lastMessage?.content || '',
         lastMessageTime: lastMessage?.timestamp || accountData.lastUpdate || Date.now(),
@@ -276,6 +297,19 @@ class IMWebSocketServer {
       // 🔍 DEBUG: 打印 channel 对象
       logger.info(`[DEBUG] Channel 对象:`);
       logger.info(`  id: ${channel.id}`);
+      logger.info(`  name: ${channel.name}`);  // ✅ DEBUG: 打印账户名称
+      logger.info(`  avatar: ${channel.avatar?.substring(0, 60)}...`);
+      logger.info(`  userInfo: ${channel.userInfo ? '存在' : '不存在'}`);
+      if (channel.userInfo) {
+        try {
+          const parsed = JSON.parse(channel.userInfo);
+          logger.info(`  userInfo.nickname: ${parsed.nickname}`);
+          logger.info(`  userInfo.douyin_id: ${parsed.douyin_id || parsed.platformUserId}`);
+        } catch (e) {
+          logger.error(`  ❌ userInfo 解析失败: ${e.message}`);
+        }
+      }
+      logger.info(`  platform: ${channel.platform}`);
       logger.info(`  lastMessageTime: ${channel.lastMessageTime}`);
       logger.info(`  typeof lastMessageTime: ${typeof channel.lastMessageTime}`);
       logger.info(`  转换为日期: ${new Date(channel.lastMessageTime).toLocaleString('zh-CN')}`);
@@ -400,16 +434,29 @@ class IMWebSocketServer {
           logger.warn(`[DEBUG] 作品 "${content.title}" (contentId: ${content.contentId}) 有 ${contentComments.length} 条评论`);
         }
 
+        // ✅ 修复: 计算该作品的最新评论时间（从评论列表中获取，而不是 lastCrawlTime）
+        let actualLastCommentTime = content.lastCrawlTime;
+        if (contentComments.length > 0) {
+          const sortedComments = [...contentComments].sort((a, b) => {
+            const aTime = a.createdAt || a.timestamp || 0;
+            const bTime = b.createdAt || b.timestamp || 0;
+            return bTime - aTime;
+          });
+          const latestComment = sortedComments[0];
+          actualLastCommentTime = latestComment.createdAt || latestComment.timestamp || content.lastCrawlTime;
+        }
+
         const topic = {
           id: content.contentId,
           channelId: channelId,
           title: content.title || '无标题作品',
           description: content.description || '',
-          createdTime: normalizeTimestamp(content.publishTime),  // ✅ 修复: 归一化时间戳
-          lastMessageTime: normalizeTimestamp(content.lastCrawlTime),  // ✅ 修复: 归一化时间戳
+          createdTime: normalizeTimestamp(content.publishTime),  // ✅ 归一化时间戳
+          lastMessageTime: normalizeTimestamp(actualLastCommentTime),  // ✅ 修复: 使用评论列表中的实际最新时间
           messageCount: contentComments.length,
           unreadCount: contentComments.filter(c => !c.isRead).length,  // ✅ 统一标准: 使用 isRead 字段
-          isPinned: false
+          isPinned: false,
+          isPrivate: false  // ✅ 标记为评论主题（非私信）
         };
 
         // 🔍 DEBUG: 打印前3个作品的时间戳原始值和转换结果
@@ -845,8 +892,28 @@ class IMWebSocketServer {
 
       if (type === 'comment') {
         success = this.cacheDAO.markCommentAsRead(id, readAt);
+
+        // ✅ 同步更新内存对象
+        if (success && channelId) {
+          const accountData = this.dataStore.accounts.get(channelId);
+          if (accountData && accountData.data.comments.has(id)) {
+            const comment = accountData.data.comments.get(id);
+            comment.isRead = true;
+            logger.debug(`[IM WS] Memory object updated: comment/${id} isRead=true`);
+          }
+        }
       } else if (type === 'message') {
         success = this.cacheDAO.markMessageAsRead(id, readAt);
+
+        // ✅ 同步更新内存对象
+        if (success && channelId) {
+          const accountData = this.dataStore.accounts.get(channelId);
+          if (accountData && accountData.data.messages.has(id)) {
+            const message = accountData.data.messages.get(id);
+            message.isRead = true;
+            logger.debug(`[IM WS] Memory object updated: message/${id} isRead=true`);
+          }
+        }
       } else {
         socket.emit('error', { message: `不支持的消息类型: ${type}` });
         return;
@@ -902,8 +969,36 @@ class IMWebSocketServer {
 
       if (type === 'comment') {
         count = this.cacheDAO.markCommentsAsRead(ids, readAt);
+
+        // ✅ 同步更新内存对象
+        if (count > 0 && channelId) {
+          const accountData = this.dataStore.accounts.get(channelId);
+          if (accountData) {
+            ids.forEach(id => {
+              if (accountData.data.comments.has(id)) {
+                const comment = accountData.data.comments.get(id);
+                comment.isRead = true;
+              }
+            });
+            logger.debug(`[IM WS] Memory objects updated: ${count} comments isRead=true`);
+          }
+        }
       } else if (type === 'message') {
         count = this.cacheDAO.markMessagesAsRead(ids, readAt);
+
+        // ✅ 同步更新内存对象
+        if (count > 0 && channelId) {
+          const accountData = this.dataStore.accounts.get(channelId);
+          if (accountData) {
+            ids.forEach(id => {
+              if (accountData.data.messages.has(id)) {
+                const message = accountData.data.messages.get(id);
+                message.isRead = true;
+              }
+            });
+            logger.debug(`[IM WS] Memory objects updated: ${count} messages isRead=true`);
+          }
+        }
       } else {
         socket.emit('error', { message: `不支持的消息类型: ${type}` });
         return;
@@ -954,6 +1049,20 @@ class IMWebSocketServer {
       const readAt = Math.floor(Date.now() / 1000);
       const count = this.cacheDAO.markTopicAsRead(topicId, channelId, readAt);
 
+      // ✅ 同步更新内存对象
+      if (count > 0 && channelId) {
+        const accountData = this.dataStore.accounts.get(channelId);
+        if (accountData) {
+          // 遍历所有评论，找到属于该作品的评论并标记为已读
+          for (const comment of accountData.data.comments.values()) {
+            if (comment.contentId === topicId && !comment.isRead) {
+              comment.isRead = true;
+            }
+          }
+          logger.debug(`[IM WS] Memory objects updated: topic/${topicId} all comments isRead=true`);
+        }
+      }
+
       // 响应客户端
       socket.emit('monitor:mark_topic_as_read_response', {
         success: true,
@@ -998,6 +1107,20 @@ class IMWebSocketServer {
 
       const readAt = Math.floor(Date.now() / 1000);
       const count = this.cacheDAO.markConversationAsRead(conversationId, channelId, readAt);
+
+      // ✅ 同步更新内存对象
+      if (count > 0 && channelId) {
+        const accountData = this.dataStore.accounts.get(channelId);
+        if (accountData) {
+          // 遍历所有私信，找到属于该会话的消息并标记为已读
+          for (const message of accountData.data.messages.values()) {
+            if (message.conversationId === conversationId && !message.isRead) {
+              message.isRead = true;
+            }
+          }
+          logger.debug(`[IM WS] Memory objects updated: conversation/${conversationId} all messages isRead=true`);
+        }
+      }
 
       // 响应客户端
       socket.emit('monitor:mark_conversation_as_read_response', {
@@ -1185,10 +1308,11 @@ class IMWebSocketServer {
 
   /**
    * 计算未读评论数
+   * ✅ 统一使用 isRead 字段（与 getTopicsFromDataStore 一致）
    */
   calculateUnreadComments(dataObj) {
     const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
-    return commentsList.filter(c => c.isHandled === undefined || !c.isHandled).length;
+    return commentsList.filter(c => !c.isRead).length;  // ✅ 改为使用 isRead
   }
 
   /**

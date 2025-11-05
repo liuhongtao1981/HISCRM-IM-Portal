@@ -74,25 +74,49 @@ const monitorSlice = createSlice({
     setTopics: (state, action: PayloadAction<{ channelId: string; topics: Topic[] }>) => {
       const { channelId, topics } = action.payload
 
-      // ✅ 修复: 合并更新而非完全替换，避免会话消失
-      const existingTopics = state.topics[channelId] || []
-      const topicMap = new Map(existingTopics.map(t => [t.id, t]))
+      // 📊 调试日志 - 记录原始数据
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔄 [setTopics] 接收到服务端数据')
+      console.log(`   频道ID: ${channelId}`)
+      console.log(`   Topics 数量: ${topics.length}`)
 
-      // 更新或添加新 topics
+      // 计算详细未读数
+      let privateUnread = 0
+      let commentUnread = 0
       topics.forEach(topic => {
-        topicMap.set(topic.id, topic)
+        const unread = topic.unreadCount || 0
+        if (topic.isPrivate) {
+          privateUnread += unread
+        } else {
+          commentUnread += unread
+        }
+        if (unread > 0) {
+          console.log(`     - ${topic.isPrivate ? '[私信]' : '[评论]'} ${topic.title}: ${unread} 条未读`)
+        }
       })
+      console.log(`   📧 私信未读: ${privateUnread}`)
+      console.log(`   💬 评论未读: ${commentUnread}`)
+      console.log(`   📊 总未读: ${privateUnread + commentUnread}`)
 
-      state.topics[channelId] = Array.from(topicMap.values())
+      // ✅ 修复：直接替换而非合并，服务端返回的数据是完整且正确的
+      // 无论是推送还是主动请求，每次都应该是最新的完整数据
+      state.topics[channelId] = topics
 
       // 更新新媒体账户的作品数量和未读消息数
       const channel = state.channels.find(ch => ch.id === channelId)
       if (channel) {
-        channel.topicCount = state.topics[channelId].length
+        const oldUnread = channel.unreadCount
+        channel.topicCount = topics.length
 
         // ✅ 汇总该账户下所有作品的未读消息数
-        channel.unreadCount = state.topics[channelId].reduce((sum, topic) => sum + (topic.unreadCount || 0), 0)
+        channel.unreadCount = topics.reduce((sum, topic) => sum + (topic.unreadCount || 0), 0)
+
+        console.log(`   ✅ 更新左侧徽章: ${oldUnread} → ${channel.unreadCount}`)
+        if (oldUnread !== channel.unreadCount) {
+          console.log(`   ⚠️  徽章数字发生变化！差异: ${channel.unreadCount - oldUnread}`)
+        }
       }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     },
 
     // 添加或更新作品
@@ -247,37 +271,63 @@ const monitorSlice = createSlice({
 
     // 选择新媒体账户
     selectChannel: (state, action: PayloadAction<string>) => {
-      state.selectedChannelId = action.payload
+      const channelId = action.payload
+
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('👆 [selectChannel] 用户点击账户')
+      console.log(`   频道ID: ${channelId}`)
+
+      const channel = state.channels.find(ch => ch.id === channelId)
+      if (channel) {
+        console.log(`   账户名: ${channel.accountName}`)
+        console.log(`   点击前徽章: ${channel.unreadCount}`)
+      }
+
+      state.selectedChannelId = channelId
       state.selectedTopicId = null // 清除选中的作品
 
+      // ✅ 清空该账户的 topics，避免显示旧数据导致未读数跳动
+      const oldTopics = state.topics[channelId]
+      console.log(`   清空前 Topics: ${oldTopics ? oldTopics.length : 0} 个`)
+      state.topics[channelId] = []
+      console.log(`   ✅ 已清空 Topics，等待服务端推送新数据`)
+
       // 清除该新媒体账户的未读计数
-      const channel = state.channels.find(ch => ch.id === action.payload)
       if (channel) {
         channel.unreadCount = 0
         channel.isFlashing = false
+        console.log(`   ✅ 重置徽章为 0`)
       }
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     },
 
     // 选择作品
     selectTopic: (state, action: PayloadAction<string>) => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('👉 [selectTopic] 用户选择作品')
+      console.log(`   作品ID: ${action.payload}`)
+
       state.selectedTopicId = action.payload
 
-      // 清除该作品的未读计数
-      if (state.selectedChannelId) {
-        const topics = state.topics[state.selectedChannelId]
-        if (topics) {
-          const topic = topics.find(t => t.id === action.payload)
-          if (topic) {
-            topic.unreadCount = 0
-          }
+      // ❌ 暂时注释：不在客户端修改未读数，避免与服务端数据不一致导致跳动
+      // 真正的已读标记应该通过 API 调用服务端，由服务端推送更新
+      // if (state.selectedChannelId) {
+      //   const topics = state.topics[state.selectedChannelId]
+      //   if (topics) {
+      //     const topic = topics.find(t => t.id === action.payload)
+      //     if (topic) {
+      //       topic.unreadCount = 0
+      //     }
+      //     const channel = state.channels.find(ch => ch.id === state.selectedChannelId)
+      //     if (channel) {
+      //       channel.unreadCount = topics.reduce((sum, t) => sum + (t.unreadCount || 0), 0)
+      //     }
+      //   }
+      // }
 
-          // ✅ 重新计算该账户的总未读数
-          const channel = state.channels.find(ch => ch.id === state.selectedChannelId)
-          if (channel) {
-            channel.unreadCount = topics.reduce((sum, t) => sum + (t.unreadCount || 0), 0)
-          }
-        }
-      }
+      console.log('   ✅ 仅更新 selectedTopicId，不修改未读数')
+      console.log('   💡 未读数由服务端统一管理')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     },
 
     // 清除选择
