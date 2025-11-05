@@ -36,7 +36,7 @@ const monitorSlice = createSlice({
     setChannels: (state, action: PayloadAction<Channel[]>) => {
       state.channels = action.payload.map(ch => ({
         ...ch,
-        unreadCount: 0,
+        unreadCount: ch.unreadCount || 0,  // ✅ 保留服务端推送的未读数
         isFlashing: false,
         topicCount: 0
       }))
@@ -75,10 +75,13 @@ const monitorSlice = createSlice({
       const { channelId, topics } = action.payload
       state.topics[channelId] = topics
 
-      // 更新新媒体账户的作品数量
+      // 更新新媒体账户的作品数量和未读消息数
       const channel = state.channels.find(ch => ch.id === channelId)
       if (channel) {
         channel.topicCount = topics.length
+
+        // ✅ 汇总该账户下所有作品的未读消息数
+        channel.unreadCount = topics.reduce((sum, topic) => sum + (topic.unreadCount || 0), 0)
       }
     },
 
