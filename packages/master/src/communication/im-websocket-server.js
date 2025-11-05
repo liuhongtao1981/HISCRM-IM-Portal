@@ -452,6 +452,12 @@ class IMWebSocketServer {
         // 计算该会话的消息数（使用 camelCase: conversationId）
         const conversationMessages = messagesList.filter(m => m.conversationId === conversation.conversationId);
 
+        // ✅ 问题3修复: 只推送有私信消息的会话
+        if (conversationMessages.length === 0) {
+          logger.debug(`[FILTER] 跳过无消息的会话: ${conversation.userName || conversation.conversationId}`);
+          continue;
+        }
+
         const topic = {
           id: conversation.conversationId,
           channelId: channelId,
@@ -483,8 +489,15 @@ class IMWebSocketServer {
       logger.warn(`[DEBUG] No conversations found or conversations is empty`);
     }
 
-    // 按最后消息时间排序
-    topics.sort((a, b) => b.lastMessageTime - a.lastMessageTime);
+    // ✅ 问题2修复: 排序逻辑 - 优先显示有未读消息的会话，然后按最后消息时间排序
+    topics.sort((a, b) => {
+      // 1. 优先比较未读数（未读数多的在前）
+      if (a.unreadCount !== b.unreadCount) {
+        return b.unreadCount - a.unreadCount;
+      }
+      // 2. 未读数相同，按最后消息时间排序（新的在前）
+      return b.lastMessageTime - a.lastMessageTime;
+    });
 
     logger.info(`[DEBUG] Total topics created: ${topics.length}`);
 
