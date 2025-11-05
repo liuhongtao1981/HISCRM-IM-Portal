@@ -466,6 +466,15 @@ class IMWebSocketServer {
           return !isRead;  // 返回未读的消息
         });
 
+        // ✅ 计算该会话的最新消息时间（从消息列表中获取，而不是数据库的 lastMessageTime）
+        const sortedMessages = [...conversationMessages].sort((a, b) => {
+          const aTime = a.createdAt || a.timestamp || 0;
+          const bTime = b.createdAt || b.timestamp || 0;
+          return bTime - aTime;  // 降序排序，最新的在前
+        });
+        const latestMessage = sortedMessages[0];
+        const actualLastMessageTime = latestMessage ? (latestMessage.createdAt || latestMessage.timestamp) : conversation.lastMessageTime;
+
         // ✅ 只推送有消息的会话
         const topic = {
           id: conversation.conversationId,
@@ -473,7 +482,7 @@ class IMWebSocketServer {
           title: conversation.userName || '未知用户',
           description: `私信会话 (${conversationMessages.length}条消息)`,
           createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
-          lastMessageTime: normalizeTimestamp(conversation.lastMessageTime),  // ✅ 修复: 归一化时间戳
+          lastMessageTime: normalizeTimestamp(actualLastMessageTime),  // ✅ 修复: 使用消息列表中的实际最新时间
           messageCount: conversationMessages.length,
           unreadCount: unreadMessages.length,  // ✅ 实时计算: 从内存中的消息列表计算未读数量
           isPinned: false,
