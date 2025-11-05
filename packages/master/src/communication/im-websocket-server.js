@@ -452,6 +452,12 @@ class IMWebSocketServer {
         // 计算该会话的消息数（使用 camelCase: conversationId）
         const conversationMessages = messagesList.filter(m => m.conversationId === conversation.conversationId);
 
+        // ✅ 服务端过滤：跳过无消息的会话，不推送给 IM 客户端
+        if (conversationMessages.length === 0) {
+          logger.debug(`[FILTER] 跳过无消息的会话: ${conversation.userName || conversation.conversationId}`);
+          continue;  // 跳过此会话，不添加到 topics 列表
+        }
+
         // ✅ 实时计算未读消息数量（不使用数据库的 unreadCount）
         // 未读条件：消息没有 read_at 字段或 read_at 为空/null
         const unreadMessages = conversationMessages.filter(m => {
@@ -460,16 +466,15 @@ class IMWebSocketServer {
           return !isRead;  // 返回未读的消息
         });
 
-        // ✅ 全量推送: 推送所有会话（包括无消息的），由客户端自己过滤和展示
-        // 保留 messageCount 字段，客户端可以根据此字段判断是否有历史消息
+        // ✅ 只推送有消息的会话
         const topic = {
           id: conversation.conversationId,
           channelId: channelId,
           title: conversation.userName || '未知用户',
-          description: conversationMessages.length > 0 ? `私信会话 (${conversationMessages.length}条消息)` : '私信会话 (暂无消息)',
+          description: `私信会话 (${conversationMessages.length}条消息)`,
           createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
           lastMessageTime: normalizeTimestamp(conversation.lastMessageTime),  // ✅ 修复: 归一化时间戳
-          messageCount: conversationMessages.length,  // ✅ 客户端可根据此字段判断是否有消息
+          messageCount: conversationMessages.length,
           unreadCount: unreadMessages.length,  // ✅ 实时计算: 从内存中的消息列表计算未读数量
           isPinned: false,
           isPrivate: true  // ✅ 新增: 标记为私信主题
@@ -480,10 +485,6 @@ class IMWebSocketServer {
         // 🔍 调试日志：打印未读消息计算结果
         if (unreadMessages.length > 0) {
           logger.info(`[UNREAD] 会话 "${conversation.userName}" 有 ${unreadMessages.length} 条未读消息 (总消息数: ${conversationMessages.length})`);
-        }
-
-        if (conversationMessages.length === 0) {
-          logger.debug(`[PUSH] 推送空会话: ${conversation.userName || conversation.conversationId} (unread: ${topic.unreadCount})`);
         }
       }
 
