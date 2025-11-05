@@ -167,8 +167,14 @@ export default function MonitorPage() {
       }
     })
 
-    // 按最新消息时间降序排列 (如果没有消息,使用 topic 的 lastMessageTime)
+    // ✅ 排序逻辑：1. 未读消息优先  2. 按最新消息时间降序
     return topicsWithPrivate.sort((a, b) => {
+      // 1. 优先比较未读数（未读数多的在前）
+      if (a.unreadCount !== b.unreadCount) {
+        return b.unreadCount - a.unreadCount
+      }
+
+      // 2. 未读数相同，按最新消息时间排序（新的在前）
       const aTime = a.lastMessage?.timestamp || a.topic.lastMessageTime || 0
       const bTime = b.lastMessage?.timestamp || b.topic.lastMessageTime || 0
       return bTime - aTime
