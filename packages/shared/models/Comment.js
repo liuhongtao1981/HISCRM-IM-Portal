@@ -16,6 +16,7 @@ class Comment {
     this.content = data.content;
     this.author_name = data.author_name || null;
     this.author_id = data.author_id || null;
+    this.author_avatar = data.author_avatar || null;  // ✅ 新增: 评论人头像
     this.post_id = data.post_id || null;
     this.post_title = data.post_title || null;
     this.is_read = data.is_read !== undefined ? data.is_read : false;
@@ -64,6 +65,7 @@ class Comment {
       content: this.content,
       author_name: this.author_name,
       author_id: this.author_id,
+      author_avatar: this.author_avatar,  // ✅ 新增: 评论人头像
       post_id: this.post_id,
       post_title: this.post_title,
       is_read: this.is_read ? 1 : 0, // SQLite boolean
@@ -96,6 +98,7 @@ class Comment {
       content: this.content,
       author_name: this.author_name,
       author_id: this.author_id,
+      author_avatar: this.author_avatar,  // ✅ 新增: 评论人头像
       post_id: this.post_id,
       post_title: this.post_title,
       is_read: this.is_read,
@@ -117,6 +120,7 @@ class Comment {
       content: data.content,
       author_name: data.author_name,
       author_id: data.author_id,
+      author_avatar: data.author_avatar,  // ✅ 新增: 评论人头像
       post_id: data.post_id,
       post_title: data.post_title,
       detected_at: data.detected_at,
