@@ -25,6 +25,7 @@ export interface Topic {
   id: string           // 作品ID
   channelId: string    // 所属新媒体账户ID
   title: string        // 作品标题
+  avatar?: string      // ✅ 新增: 头像URL (私信会话使用对方用户头像)
   description?: string // 作品描述
   createdTime: number  // 创建时间
   lastMessageTime?: number  // 最后消息时间
@@ -42,9 +43,11 @@ export interface Message {
   channelId: string    // 所属新媒体账户ID
   fromName?: string    // 发送者名称
   fromId?: string      // 发送者ID
+  authorAvatar?: string // ✅ 新增: 发送者头像URL
   content: string
   type: 'text' | 'file' | 'image' | 'comment' // 消息类型
   messageCategory?: 'private' | 'comment' // 消息分类: 私信或评论
+  direction?: 'inbound' | 'outbound' // ✅ 新增: 消息方向 (inbound=用户发的, outbound=客服发的)
   timestamp: number
   serverTimestamp?: number
   fileUrl?: string
@@ -61,6 +64,7 @@ export interface ChannelMessage {
   topicId?: string     // 所属作品ID (新增)
   fromName?: string    // 发送者名称
   fromId?: string      // 发送者ID
+  authorAvatar?: string // ✅ 新增: 发送者头像URL
   content: string
   type: 'text' | 'file' | 'image' | 'comment'
   messageCategory?: 'private' | 'comment' // 消息分类: 私信或评论

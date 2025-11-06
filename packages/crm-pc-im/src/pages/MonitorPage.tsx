@@ -133,13 +133,17 @@ export default function MonitorPage() {
 
         // ✅ 使用服务端推送的 unreadCount
         const unreadCount = topic.unreadCount || 0
+        const messageCount = commentMessages.length || topic.messageCount || 0
 
-        topicsWithComments.push({
-          topic,
-          messageCount: commentMessages.length || topic.messageCount || 0,
-          unreadCount: unreadCount,
-          lastMessage: sortedMessages[0]  // 可能为 undefined
-        })
+        // ✅ 只显示有评论的作品（过滤掉评论数为 0 的作品）
+        if (messageCount > 0) {
+          topicsWithComments.push({
+            topic,
+            messageCount: messageCount,
+            unreadCount: unreadCount,
+            lastMessage: sortedMessages[0]  // 可能为 undefined
+          })
+        }
       }
     })
 
@@ -431,13 +435,19 @@ export default function MonitorPage() {
       return
     }
 
+    // ✅ 获取当前登录用户信息
+    const currentUser = localStorage.getItem('username') || '客服'
+    const currentUserId = localStorage.getItem('crm-im-client-id') || 'monitor_client'
+    const currentUserAvatar = localStorage.getItem('user-avatar') || null  // ✅ 获取客服头像（如果有）
+
     // 立即在本地添加消息(乐观更新)
     const tempMessage: ChannelMessage = {
       id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
       topicId: selectedTopicId,
       channelId: selectedChannelId,
-      fromName: '客服',
-      fromId: 'monitor_client',
+      fromName: currentUser,  // ✅ 使用真实用户名
+      fromId: currentUserId,  // ✅ 使用真实用户ID
+      authorAvatar: currentUserAvatar,  // ✅ 使用客服头像
       content: replyContent.trim(),
       type: 'comment',
       timestamp: Date.now(),
@@ -456,7 +466,10 @@ export default function MonitorPage() {
       type: 'comment',  // 指定消息类型为评论
       replyToId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
-      content: replyContent.trim()
+      content: replyContent.trim(),
+      fromName: currentUser,  // ✅ 发送当前用户名
+      fromId: currentUserId,   // ✅ 发送当前用户ID
+      authorAvatar: currentUserAvatar  // ✅ 发送客服头像
     })
 
     setReplyContent('')
@@ -743,6 +756,7 @@ export default function MonitorPage() {
                               <Badge count={item.unreadCount} offset={[-5, 5]}>
                                 <Avatar
                                   size={48}
+                                  src={item.topic.avatar}
                                   icon={<CommentOutlined />}
                                   style={{ backgroundColor: '#1890ff' }}
                                 />
@@ -829,6 +843,7 @@ export default function MonitorPage() {
                             <Badge count={item.unreadCount} offset={[-5, 5]}>
                               <Avatar
                                 size={48}
+                                src={item.topic.avatar}
                                 icon={<MessageOutlined />}
                                 style={{ backgroundColor: '#52c41a' }}
                               />
@@ -927,12 +942,36 @@ export default function MonitorPage() {
                     ? []
                     : filteredMessages.filter(msg => msg.replyToId)
 
+                  // 🔍 调试计数器
+                  let debugCounter = 0
+
                   // 渲染消息和其讨论
                   const renderMessageWithDiscussions = (mainMsg: Message) => {
-                    const isReply = mainMsg.fromId === 'monitor_client' || mainMsg.fromName === '客服'
+                    // ✅ 优先使用 direction 字段判断（私信消息），fallback 到 fromId（评论消息）
+                    // fromId 以 'monitor_' 开头表示是客服回复（客户端ID格式: monitor_{timestamp}_{random}）
+                    const isReply = (mainMsg as any).direction === 'outbound' ||
+                                    (mainMsg.fromId && mainMsg.fromId.startsWith('monitor_'))
                     const msgDiscussions = activeTab === 'private'
                       ? []
                       : discussions.filter(d => d.replyToId === mainMsg.id)
+
+                    // ✅ 统一使用 mainMsg.authorAvatar 作为头像来源
+                    // 如果 Master 没有提供头像，fallback 到左侧账户列表的头像
+                    const avatarSrc = mainMsg.authorAvatar || (isReply && selectedChannel ? selectedChannel.avatar : undefined)
+
+                    // 🔍 调试: 打印前3条消息的头像数据
+                    if (activeTab === 'private' && selectedTopic && debugCounter < 3) {
+                      console.log('[IM-Client] Private message avatar debug (new logic):', {
+                        messageId: mainMsg.id,
+                        direction: (mainMsg as any).direction,
+                        fromId: mainMsg.fromId,
+                        fromName: mainMsg.fromName,
+                        isReply,
+                        msgAuthorAvatar: mainMsg.authorAvatar,
+                        finalAvatarSrc: avatarSrc
+                      })
+                      debugCounter++
+                    }
 
                     return (
                       <div key={mainMsg.id} className="wechat-message-group">
@@ -941,8 +980,9 @@ export default function MonitorPage() {
                           <div className="wechat-message-avatar">
                             <Avatar
                               size={40}
+                              src={avatarSrc}
                               icon={<UserOutlined />}
-                              style={isReply ? { backgroundColor: '#07c160' } : undefined}
+                              style={avatarSrc ? undefined : (isReply ? { backgroundColor: '#07c160' } : undefined)}
                             />
                           </div>
 
@@ -1000,6 +1040,7 @@ export default function MonitorPage() {
                                 <div key={discussion.id} className="wechat-discussion-item">
                                   <Avatar
                                     size={32}
+                                    src={isDiscussionReply ? undefined : discussion.authorAvatar}
                                     icon={<UserOutlined />}
                                     style={isDiscussionReply ? { backgroundColor: '#07c160' } : undefined}
                                   />

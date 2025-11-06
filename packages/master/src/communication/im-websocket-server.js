@@ -9,18 +9,20 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('im-websocket');
 
 class IMWebSocketServer {
-  constructor(io, dataStore, cacheDAO = null, accountDAO = null) {
+  constructor(io, dataStore, cacheDAO = null, accountDAO = null, workerRegistry = null, replyDAO = null) {
     this.io = io;
     this.dataStore = dataStore;
     this.cacheDAO = cacheDAO;
     this.accountDAO = accountDAO;
+    this.workerRegistry = workerRegistry;  // ✅ 新增: Worker 注册表
+    this.replyDAO = replyDAO;  // ✅ 新增: 回复数据访问层
 
     // 在线客户端管理
     this.monitorClients = new Map(); // clientId -> socketId
     this.adminClients = new Map();   // adminId -> socketId
     this.socketToClientId = new Map(); // socketId -> clientId
 
-    logger.info('IM WebSocket Server initialized with CacheDAO and AccountDAO support');
+    logger.info('IM WebSocket Server initialized with CacheDAO, AccountDAO, WorkerRegistry and ReplyDAO support');
   }
 
   /**
@@ -86,6 +88,15 @@ class IMWebSocketServer {
       // 断开连接
       socket.on('disconnect', () => {
         this.handleDisconnect(socket);
+      });
+    });
+
+    // ✅ 监听 Worker 命名空间的回复结果
+    const workerNamespace = this.io.of('/worker');
+    workerNamespace.on('connection', (socket) => {
+      // 监听 Worker 发送的回复结果
+      socket.on('worker:reply:result', (data) => {
+        this.handleWorkerReplyResult(socket, data);
       });
     });
 
@@ -182,40 +193,214 @@ class IMWebSocketServer {
   /**
    * 处理监控客户端回复
    */
-  handleMonitorReply(socket, data) {
+  async handleMonitorReply(socket, data) {
     try {
-      const { channelId, topicId, content, replyToId, replyToContent, messageCategory } = data;  // ✅ 接收 messageCategory
-      logger.info(`[IM WS] Monitor reply:`, { channelId, topicId, content, messageCategory });
+      const { channelId, topicId, content, replyToId, replyToContent, messageCategory, fromName, fromId, authorAvatar: clientAuthorAvatar } = data;
+      logger.info(`[IM WS] Monitor reply:`, { channelId, topicId, content, messageCategory, fromName, fromId, clientAuthorAvatar });
 
-      // 根据消息分类确定消息类型
+      // 根据消息分类确定消息类型和目标类型
       const messageType = messageCategory === 'private' ? 'text' : 'comment';
+      const targetType = messageCategory === 'private' ? 'direct_message' : 'comment';
 
-      // 创建回复消息
+      // 创建回复消息ID（用于客户端展示和结果追踪）
+      const replyId = `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      const requestId = `req_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+      // ✅ 优先使用前端传来的头像，如果没有则根据 fromId 查找
+      let finalAuthorAvatar = clientAuthorAvatar || null;
+
+      // 如果前端没有提供头像，且是私信回复，则根据 senderId 查找头像
+      if (!finalAuthorAvatar && messageCategory === 'private' && this.dataStore) {
+        const accountData = this.dataStore.getAccountData(channelId);
+        const senderId = fromId || 'monitor_client';
+
+        // ✅ 构建 userId -> userAvatar 映射表（包含对方用户和账户自己）
+        const userAvatarMap = new Map();
+
+        // 1. 添加对方用户的头像（从 conversations）
+        if (accountData && accountData.conversations) {
+          const conversationsList = accountData.conversations instanceof Map ?
+            Array.from(accountData.conversations.values()) : accountData.conversations;
+          conversationsList.forEach(conv => {
+            if (conv.userId && (conv.platform_user_avatar || conv.userAvatar)) {
+              userAvatarMap.set(conv.userId, conv.platform_user_avatar || conv.userAvatar);
+            }
+          });
+        }
+
+        // 2. 添加账户自己的头像（从 accounts 表）
+        // senderId 可能等于 channelId（账户自己发送的消息）
+        if (this.accountDAO) {
+          try {
+            const accountInfo = this.accountDAO.findById(channelId);
+            if (accountInfo && accountInfo.avatar) {
+              userAvatarMap.set(channelId, accountInfo.avatar);
+              // 也可能需要添加其他可能的 ID 格式
+              if (accountInfo.account_id) {
+                userAvatarMap.set(accountInfo.account_id, accountInfo.avatar);
+              }
+            }
+          } catch (error) {
+            logger.warn(`[IM WS] Failed to get account avatar for ${channelId}:`, error.message);
+          }
+        }
+
+        // ✅ 根据消息发送者ID查找头像
+        finalAuthorAvatar = userAvatarMap.get(senderId) || null;
+
+        logger.debug(`[IM WS] Customer service reply avatar lookup:`, {
+          channelId,
+          senderId,
+          userAvatarMapSize: userAvatarMap.size,
+          foundAvatar: !!finalAuthorAvatar,
+          avatarUrl: finalAuthorAvatar
+        });
+      }
+
+      // 创建回复消息（立即广播给所有监控客户端，显示"发送中"状态）
       const replyMessage = {
-        id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        id: replyId,
         channelId,
         topicId,
-        fromName: '客服',
-        fromId: 'monitor_client',
+        fromName: fromName || '客服',  // ✅ 使用前端传来的真实用户名
+        fromId: fromId || 'monitor_client',  // ✅ 使用前端传来的真实用户ID
+        authorAvatar: finalAuthorAvatar,  // ✅ 优先使用前端传来的头像，fallback 到 conversations 查找
         content,
-        type: messageType,  // ✅ 根据分类设置类型
-        messageCategory: messageCategory || 'comment',  // ✅ 新增: 消息分类，默认为 'comment'
+        type: messageType,
+        messageCategory: messageCategory || 'comment',
+        direction: 'outbound',  // ✅ 标记为客服发送的消息
         timestamp: Date.now(),
         serverTimestamp: Date.now(),
         replyToId,
         replyToContent,
-        isRead: false  // ✅ 统一使用 isRead 字段，默认未读
+        isRead: false,
+        status: 'sending'
       };
 
-      // 广播给所有监控客户端
+      // 广播给所有监控客户端（立即显示）
       this.broadcastToMonitors('channel:message', replyMessage);
 
-      // 确认回复成功
-      socket.emit('reply:success', { messageId: replyMessage.id });
+      // ✅ 查找负责该账户的 Worker 并发送回复任务
+      if (this.workerRegistry && this.accountDAO) {
+        try {
+          // 查询账户信息，获取 assigned_worker_id 和 platform
+          const accountInfo = this.accountDAO.findById(channelId);
+          if (!accountInfo) {
+            throw new Error(`Account not found: ${channelId}`);
+          }
 
-      logger.info(`[IM WS] Reply sent: ${replyMessage.id}, category: ${messageCategory || 'comment'}`);
+          const { assigned_worker_id, platform } = accountInfo;
+          if (!assigned_worker_id) {
+            throw new Error(`No worker assigned to account: ${channelId}`);
+          }
+
+          // 获取 Worker socket
+          const workerSocket = this.workerRegistry.getWorkerSocket(assigned_worker_id);
+          if (!workerSocket || !workerSocket.connected) {
+            throw new Error(`Worker not connected: ${assigned_worker_id}`);
+          }
+
+          // 构造回复任务（符合 Worker 的 ReplyExecutor 期望的格式）
+          const replyTask = {
+            reply_id: replyId,
+            request_id: requestId,
+            platform: platform,
+            account_id: channelId,
+            target_type: targetType,  // 'comment' 或 'direct_message'
+            target_id: replyToId || topicId,  // 评论ID 或 会话ID
+            conversation_id: targetType === 'direct_message' ? topicId : null,  // 私信会话ID
+            platform_message_id: targetType === 'direct_message' ? replyToId : null,  // 私信消息ID（可选）
+            reply_content: content,
+            context: {
+              reply_to_content: replyToContent,
+              monitor_client_id: socket.id
+            }
+          };
+
+          // 发送给 Worker
+          workerSocket.emit('master:reply:request', replyTask);
+
+          logger.info(`[IM WS] Reply task sent to worker ${assigned_worker_id}`, {
+            replyId,
+            requestId,
+            platform,
+            targetType
+          });
+
+          // 确认回复任务已提交
+          socket.emit('reply:success', {
+            messageId: replyId,
+            requestId: requestId,
+            status: 'submitted'
+          });
+
+        } catch (error) {
+          logger.error('[IM WS] Failed to send reply task to worker:', error);
+
+          // 更新回复状态为失败
+          this.broadcastToMonitors('channel:message:status', {
+            messageId: replyId,
+            status: 'failed',
+            error: error.message
+          });
+
+          // 返回错误给客户端
+          socket.emit('reply:error', {
+            messageId: replyId,
+            error: error.message
+          });
+        }
+      } else {
+        // 没有 workerRegistry，只做客户端广播（向后兼容）
+        logger.warn('[IM WS] WorkerRegistry not available, reply will not be sent to platform');
+        socket.emit('reply:success', {
+          messageId: replyId,
+          status: 'local_only',
+          warning: 'Reply not sent to platform (WorkerRegistry not available)'
+        });
+      }
+
     } catch (error) {
       logger.error('[IM WS] Monitor reply error:', error);
+      socket.emit('reply:error', { error: error.message });
+    }
+  }
+
+  /**
+   * 处理 Worker 回复结果
+   * Worker 执行回复后，返回结果（成功/失败）
+   */
+  handleWorkerReplyResult(socket, data) {
+    try {
+      const { reply_id, request_id, status, error_message, platform_reply_id } = data;
+
+      logger.info(`[IM WS] Worker reply result received:`, {
+        replyId: reply_id,
+        requestId: request_id,
+        status,
+        workerId: socket.workerId
+      });
+
+      // 根据状态更新消息状态
+      let messageStatus = 'sent';
+      if (status === 'failed' || status === 'blocked' || status === 'error') {
+        messageStatus = 'failed';
+      } else if (status === 'success') {
+        messageStatus = 'sent';
+      }
+
+      // 广播状态更新给所有监控客户端
+      this.broadcastToMonitors('channel:message:status', {
+        messageId: reply_id,
+        status: messageStatus,
+        error: error_message,
+        platformReplyId: platform_reply_id,
+        timestamp: Date.now()
+      });
+
+      logger.info(`[IM WS] Reply result broadcasted: ${reply_id} -> ${messageStatus}`);
+    } catch (error) {
+      logger.error('[IM WS] Handle worker reply result error:', error);
     }
   }
 
@@ -450,6 +635,7 @@ class IMWebSocketServer {
           id: content.contentId,
           channelId: channelId,
           title: content.title || '无标题作品',
+          avatar: content.coverUrl || null,  // ✅ 新增: 作品封面图作为头像
           description: content.description || '',
           createdTime: normalizeTimestamp(content.publishTime),  // ✅ 归一化时间戳
           lastMessageTime: normalizeTimestamp(actualLastCommentTime),  // ✅ 修复: 使用评论列表中的实际最新时间
@@ -523,6 +709,7 @@ class IMWebSocketServer {
           id: conversation.conversationId,
           channelId: channelId,
           title: conversation.userName || '未知用户',
+          avatar: conversation.platform_user_avatar || conversation.userAvatar || null,  // ✅ 新增: 对方用户头像 (优先使用 platform_user_avatar)
           description: `私信会话 (${conversationMessages.length}条消息)`,
           createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
           lastMessageTime: normalizeTimestamp(actualLastMessageTime),  // ✅ 修复: 使用消息列表中的实际最新时间
@@ -531,6 +718,17 @@ class IMWebSocketServer {
           isPinned: false,
           isPrivate: true  // ✅ 新增: 标记为私信主题
         };
+
+        // 🔍 调试: 打印前3个会话的头像数据
+        if (topics.length < 3) {
+          logger.debug(`[IM-WS] Conversation topic avatar debug:`, {
+            conversationId: conversation.conversationId,
+            userName: conversation.userName,
+            platform_user_avatar: conversation.platform_user_avatar,
+            userAvatar: conversation.userAvatar,
+            finalAvatar: topic.avatar
+          });
+        }
 
         topics.push(topic);
 
@@ -653,6 +851,7 @@ class IMWebSocketServer {
             topicId: topicId,
             fromName: isAuthorReply ? '客服' : (comment.authorName || '未知用户'),
             fromId: isAuthorReply ? 'monitor_client' : (comment.authorId || ''),
+            authorAvatar: comment.authorAvatar || null,  // ✅ 新增: 评论人头像
             content: comment.content || '',
             type: 'comment',  // ✅ 修改: 评论消息类型为 'comment'
             messageCategory: 'comment',  // ✅ 新增: 消息分类为 'comment'
@@ -670,16 +869,66 @@ class IMWebSocketServer {
       // 查找私信消息 (topicId = conversationId，使用 camelCase)
       if (dataObj.messages) {
         const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : dataObj.messages;
+
+        // ✅ 构建 userId -> userAvatar 映射表（包含对方用户和账户自己）
+        const userAvatarMap = new Map();
+
+        // 1. 添加对方用户的头像（从 conversations）
+        if (dataObj.conversations) {
+          const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : dataObj.conversations;
+          conversationsList.forEach(conv => {
+            if (conv.userId && (conv.platform_user_avatar || conv.userAvatar)) {
+              userAvatarMap.set(conv.userId, conv.platform_user_avatar || conv.userAvatar);
+            }
+          });
+        }
+
+        // 2. 添加账户自己的头像（从 accounts 表）
+        if (this.accountDAO) {
+          try {
+            const accountInfo = this.accountDAO.findById(accountId);
+            if (accountInfo && accountInfo.avatar) {
+              userAvatarMap.set(accountId, accountInfo.avatar);
+              if (accountInfo.account_id) {
+                userAvatarMap.set(accountInfo.account_id, accountInfo.avatar);
+              }
+            }
+          } catch (error) {
+            logger.warn(`[IM WS] Failed to get account avatar for ${accountId}:`, error.message);
+          }
+        }
+
         const msgs = messagesList.filter(m => m.conversationId === topicId);
         for (const msg of msgs) {
-          // 如果是 outgoing 消息（我发的），fromId 设置为 'monitor_client'，fromName 设置为 '客服'
-          const isOutgoing = msg.direction === 'outgoing';
+          const isOutbound = msg.direction === 'outbound';
+
+          // ✅ 统一逻辑: 根据消息的 senderId 查找头像（无论是对方还是账户自己）
+          let authorAvatar = null;
+          if (msg.senderId) {
+            authorAvatar = userAvatarMap.get(msg.senderId) || msg.senderAvatar || null;
+          }
+
+          // 🔍 调试: 打印私信消息的头像逻辑
+          if (msgs.indexOf(msg) < 3) {  // 只打印前3条消息
+            logger.debug(`[IM-WS] Private message avatar debug (fixed logic):`, {
+              messageId: msg.messageId,
+              direction: msg.direction,
+              isOutbound,
+              senderId: msg.senderId,
+              userAvatarFromMap: userAvatarMap.get(msg.senderId),
+              msgSenderAvatar: msg.senderAvatar,
+              finalAuthorAvatar: authorAvatar,
+              senderName: msg.senderName
+            });
+          }
+
           messages.push({
             id: msg.messageId,
             channelId: accountId,
             topicId: topicId,
-            fromName: isOutgoing ? '客服' : (msg.senderName || '未知用户'),
-            fromId: isOutgoing ? 'monitor_client' : (msg.senderId || ''),
+            fromName: isOutbound ? '客服' : (msg.senderName || '未知用户'),
+            fromId: isOutbound ? 'monitor_client' : (msg.senderId || ''),
+            authorAvatar: authorAvatar,  // ✅ 修复: 根据 senderId 从 conversations 查找头像
             content: msg.content || '',
             type: msg.messageType || 'text',
             messageCategory: 'private',  // ✅ 新增: 消息分类为 'private'
@@ -687,7 +936,7 @@ class IMWebSocketServer {
             serverTimestamp: normalizeTimestamp(msg.detectedAt),  // ✅ 修复: 归一化时间戳
             replyToId: null,
             replyToContent: null,
-            direction: msg.direction || 'incoming',  // 消息方向：incoming/outgoing
+            direction: msg.direction || 'inbound',  // ✅ 消息方向：inbound(用户发的)/outbound(客服发的)
             recipientId: msg.recipientId || '',
             recipientName: msg.recipientName || '',
             isRead: msg.isRead || false  // ✅ 统一标准: 使用 isRead 字段
