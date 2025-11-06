@@ -1080,6 +1080,13 @@ class IMWebSocketServer {
         read_at: readAt
       });
 
+      // ✅ 重新推送更新后的 topics（包含新的未读数）
+      const updatedTopics = this.getTopicsFromDataStore(channelId);
+      this.broadcastToMonitors('monitor:topics', {
+        channelId,
+        topics: updatedTopics
+      });
+
       logger.info(`[IM WS] ${count} comments in topic ${topicId} marked as read`);
 
     } catch (error) {
@@ -1137,6 +1144,13 @@ class IMWebSocketServer {
         channelId,
         count,
         read_at: readAt
+      });
+
+      // ✅ 重新推送更新后的 topics（包含新的未读数）
+      const updatedTopics = this.getTopicsFromDataStore(channelId);
+      this.broadcastToMonitors('monitor:topics', {
+        channelId,
+        topics: updatedTopics
       });
 
       logger.info(`[IM WS] ${count} messages in conversation ${conversationId} marked as read`);

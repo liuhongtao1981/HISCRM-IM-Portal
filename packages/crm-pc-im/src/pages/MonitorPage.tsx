@@ -107,47 +107,51 @@ export default function MonitorPage() {
   })
 
   // 构建未读评论列表(按作品分组,显示每个作品的未读数量和最新消息)
+  // 构建评论列表（显示所有作品，未读在前，已读在后）
   const unreadCommentsByTopic = React.useMemo(() => {
     if (!selectedChannelId) return []
 
-    const topicsWithUnread: Array<{
+    const topicsWithComments: Array<{
       topic: Topic
+      messageCount: number
       unreadCount: number
-      lastUnreadMessage?: Message
+      lastMessage?: Message
     }> = []
 
     // 遍历该账户的所有作品
     currentTopics.forEach(topic => {
-      // ✅ 修复: 直接使用服务端返回的 unreadCount，不依赖客户端 messages 缓存
-      // 评论作品 (isPrivate = false) 且有未读数
-      if (!topic.isPrivate && topic.unreadCount && topic.unreadCount > 0) {
-        // 尝试获取该作品的消息（如果已加载）
+      // ✅ 只处理评论作品 (isPrivate = false)
+      if (!topic.isPrivate) {
+        // 获取该作品的所有评论消息（如果已加载）
         const topicMessages = messages[topic.id] || []
-        const unreadMessages = topicMessages.filter(msg =>
-          (msg.messageCategory === 'comment' || !msg.messageCategory) &&
-          !msg.isRead &&
-          msg.fromId !== 'monitor_client'
+        const commentMessages = topicMessages.filter(msg =>
+          (msg.messageCategory === 'comment' || !msg.messageCategory)
         )
 
-        // 如果有加载的消息，取最新的一条；否则为 undefined
-        let lastUnreadMessage: Message | undefined = undefined
-        if (unreadMessages.length > 0) {
-          const sortedUnread = [...unreadMessages].sort((a, b) => b.timestamp - a.timestamp)
-          lastUnreadMessage = sortedUnread[0]
-        }
+        // 按时间降序排序，取最新的一条
+        const sortedMessages = [...commentMessages].sort((a, b) => b.timestamp - a.timestamp)
 
-        topicsWithUnread.push({
+        // ✅ 使用服务端推送的 unreadCount
+        const unreadCount = topic.unreadCount || 0
+
+        topicsWithComments.push({
           topic,
-          unreadCount: topic.unreadCount,  // ✅ 使用服务端的 unreadCount
-          lastUnreadMessage
+          messageCount: commentMessages.length || topic.messageCount || 0,
+          unreadCount: unreadCount,
+          lastMessage: sortedMessages[0]  // 可能为 undefined
         })
       }
     })
 
-    // 按最新消息时间降序排列
-    return topicsWithUnread.sort((a, b) => {
-      const aTime = a.lastUnreadMessage?.timestamp || a.topic.lastMessageTime || 0
-      const bTime = b.lastUnreadMessage?.timestamp || b.topic.lastMessageTime || 0
+    // ✅ 排序逻辑：未读的在前，已读的在后；同类按最新消息时间降序
+    return topicsWithComments.sort((a, b) => {
+      // 先按未读状态分组（有未读的排在前面）
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1
+
+      // 同类按最新消息时间降序（最新的在最上面）
+      const aTime = a.lastMessage?.timestamp || a.topic.lastMessageTime || 0
+      const bTime = b.lastMessage?.timestamp || b.topic.lastMessageTime || 0
       return bTime - aTime
     })
   }, [selectedChannelId, currentTopics, messages])
@@ -190,8 +194,13 @@ export default function MonitorPage() {
       }
     })
 
-    // ✅ 排序逻辑：按最新消息时间降序（最新的在最上面）
+    // ✅ 排序逻辑：未读的在前，已读的在后；同类按最新消息时间降序
     return topicsWithPrivate.sort((a, b) => {
+      // 先按未读状态分组（有未读的排在前面）
+      if (a.unreadCount > 0 && b.unreadCount === 0) return -1
+      if (a.unreadCount === 0 && b.unreadCount > 0) return 1
+
+      // 同类按最新消息时间降序（最新的在最上面）
       const aTime = a.lastMessage?.timestamp || a.topic.lastMessageTime || 0
       const bTime = b.lastMessage?.timestamp || b.topic.lastMessageTime || 0
       return bTime - aTime
@@ -376,6 +385,15 @@ export default function MonitorPage() {
     dispatch(selectTopic(topicId))
     websocketService.emit('monitor:request_messages', { topicId })
     setShowCommentList(false) // 切换到对话视图
+
+    // ✅ 标记该作品的所有评论为已读
+    if (selectedChannelId) {
+      console.log('[标记已读] 作品评论 topicId:', topicId, 'channelId:', selectedChannelId)
+      websocketService.emit('monitor:mark_topic_as_read', {
+        channelId: selectedChannelId,
+        topicId: topicId
+      })
+    }
   }
 
   // 返回未读评论列表
@@ -390,6 +408,15 @@ export default function MonitorPage() {
     dispatch(selectTopic(topicId))
     websocketService.emit('monitor:request_messages', { topicId })
     setShowPrivateList(false) // 切换到对话视图
+
+    // ✅ 标记该会话的所有私信为已读
+    if (selectedChannelId) {
+      console.log('[标记已读] 私信会话 conversationId:', topicId, 'channelId:', selectedChannelId)
+      websocketService.emit('monitor:mark_conversation_as_read', {
+        channelId: selectedChannelId,
+        conversationId: topicId
+      })
+    }
   }
 
   // 返回私信列表
@@ -687,82 +714,90 @@ export default function MonitorPage() {
               ]}
             />
 
-            {/* 评论Tab下的未读评论列表 */}
+            {/* 评论Tab下的评论列表（显示所有作品，未读在前） */}
             {activeTab === 'comment' && showCommentList ? (
-              <div className="wechat-unread-comment-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+              <div className="wechat-comment-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
                 {unreadCommentsByTopic.length > 0 ? (
                   <List
                     dataSource={unreadCommentsByTopic}
-                    renderItem={(item) => (
-                      <List.Item
-                        key={item.topic.id}
-                        onClick={() => handleEnterTopicFromCommentList(item.topic.id)}
-                        style={{
-                          cursor: 'pointer',
-                          padding: '16px',
-                          marginBottom: '12px',
-                          backgroundColor: '#fff',
-                          borderRadius: '8px',
-                          border: '1px solid #e8e8e8',
-                          transition: 'all 0.3s'
-                        }}
-                        className="unread-comment-item"
-                      >
-                        <List.Item.Meta
-                          avatar={
-                            <Badge count={item.unreadCount} offset={[-5, 5]}>
-                              <Avatar
-                                size={48}
-                                icon={<CommentOutlined />}
-                                style={{ backgroundColor: '#1890ff' }}
-                              />
-                            </Badge>
-                          }
-                          title={
-                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <Text strong style={{ fontSize: 15 }}>
-                                {item.topic.title}
-                              </Text>
-                              <Text type="secondary" style={{ fontSize: 12 }}>
-                                {(() => {
-                                  // ✅ 优先使用消息的时间戳，如果没有则使用作品的最后消息时间
-                                  const timestamp = item.lastUnreadMessage?.timestamp || item.topic.lastMessageTime
-                                  const now = Date.now()
-                                  const diff = now - timestamp
-
-                                  // 🔧 如果时间差小于 60 秒，可能是 lastCrawlTime 使用了当前时间
-                                  // 这种情况下显示日期而不是"刚刚"
-                                  if (diff < 60000 && !item.lastUnreadMessage) {
-                                    // 没有消息详情且显示"刚刚"，改为显示日期
-                                    const date = new Date(timestamp)
-                                    return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
-                                  }
-
-                                  return formatTime(timestamp)
-                                })()}
-                              </Text>
-                            </div>
-                          }
-                          description={
-                            <div>
-                              {item.lastUnreadMessage ? (
-                                <Text type="secondary" style={{ fontSize: 13 }}>
-                                  {item.lastUnreadMessage.fromName}: {truncateText(item.lastUnreadMessage.content, 50)}
+                    renderItem={(item) => {
+                      const isRead = item.unreadCount === 0
+                      return (
+                        <List.Item
+                          key={item.topic.id}
+                          onClick={() => handleEnterTopicFromCommentList(item.topic.id)}
+                          style={{
+                            cursor: 'pointer',
+                            padding: '16px',
+                            marginBottom: '12px',
+                            backgroundColor: isRead ? '#fafafa' : '#fff',
+                            borderRadius: '8px',
+                            border: '1px solid #e8e8e8',
+                            transition: 'all 0.3s',
+                            opacity: isRead ? 0.7 : 1
+                          }}
+                          className={isRead ? 'read-comment-item' : 'unread-comment-item'}
+                        >
+                          <List.Item.Meta
+                            avatar={
+                              <Badge count={item.unreadCount} offset={[-5, 5]}>
+                                <Avatar
+                                  size={48}
+                                  icon={<CommentOutlined />}
+                                  style={{ backgroundColor: '#1890ff' }}
+                                />
+                              </Badge>
+                            }
+                            title={
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <Text strong style={{ fontSize: 15 }}>
+                                  {item.topic.title}
                                 </Text>
-                              ) : (
-                                <Text type="secondary" style={{ fontSize: 13 }}>
-                                  {item.unreadCount} 条未读评论
+                                <Text type="secondary" style={{ fontSize: 12 }}>
+                                  {(() => {
+                                    // ✅ 优先使用消息的时间戳，如果没有则使用作品的最后消息时间
+                                    const timestamp = item.lastMessage?.timestamp || item.topic.lastMessageTime
+                                    const now = Date.now()
+                                    const diff = now - timestamp
+
+                                    // 🔧 如果时间差小于 60 秒，可能是 lastCrawlTime 使用了当前时间
+                                    // 这种情况下显示日期而不是"刚刚"
+                                    if (diff < 60000 && !item.lastMessage) {
+                                      // 没有消息详情且显示"刚刚"，改为显示日期
+                                      const date = new Date(timestamp)
+                                      return date.toLocaleDateString('zh-CN', { month: '2-digit', day: '2-digit' })
+                                    }
+
+                                    return formatTime(timestamp)
+                                  })()}
                                 </Text>
-                              )}
-                            </div>
-                          }
-                        />
-                      </List.Item>
-                    )}
+                              </div>
+                            }
+                            description={
+                              <div>
+                                {item.lastMessage ? (
+                                  <Text type="secondary" style={{ fontSize: 13 }}>
+                                    {item.lastMessage.fromName}: {truncateText(item.lastMessage.content, 50)}
+                                  </Text>
+                                ) : isRead ? (
+                                  <Text type="secondary" style={{ fontSize: 13 }}>
+                                    {item.topic.description || '暂无评论'}
+                                  </Text>
+                                ) : (
+                                  <Text type="secondary" style={{ fontSize: 13 }}>
+                                    {item.unreadCount} 条未读评论
+                                  </Text>
+                                )}
+                              </div>
+                            }
+                          />
+                        </List.Item>
+                      )
+                    }}
                   />
                 ) : (
                   <Empty
-                    description="暂无未读评论"
+                    description="暂无评论"
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     style={{ marginTop: '100px' }}
                   />

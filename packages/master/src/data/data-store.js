@@ -66,49 +66,104 @@ class DataStore {
       accountData.lastUpdate = Date.now();
       accountData.platform = platform;
 
-      // 更新评论
+      // 更新评论（增量合并，已有的跳过，新的才添加）
       if (data.comments && Array.isArray(data.comments)) {
-        accountData.data.comments.clear();
+        // ✅ 增量处理：已有的保留（包括 isRead 状态），新的才添加
+        let addedCount = 0;
+        let skippedCount = 0;
+
         data.comments.forEach((comment) => {
-          accountData.data.comments.set(comment.id, comment);
+          if (accountData.data.comments.has(comment.id)) {
+            // 已存在，跳过（保留 Master 中的所有状态，包括 isRead）
+            skippedCount++;
+          } else {
+            // 新消息，添加进来
+            accountData.data.comments.set(comment.id, comment);
+            addedCount++;
+          }
         });
-        logger.debug(`Updated ${data.comments.length} comments for ${accountId}`);
+
+        logger.debug(`Updated comments for ${accountId}: added ${addedCount}, skipped ${skippedCount} (incremental merge)`);
       }
 
-      // 更新作品
+      // 更新作品（增量合并，已有的跳过，新的才添加）
       if (data.contents && Array.isArray(data.contents)) {
-        accountData.data.contents.clear();
+        // ✅ 增量处理：已有的保留，新的才添加
+        let addedCount = 0;
+        let skippedCount = 0;
+
         data.contents.forEach((content) => {
-          accountData.data.contents.set(content.id, content);
+          if (accountData.data.contents.has(content.id)) {
+            // 已存在，跳过（保留 Master 中的状态）
+            skippedCount++;
+          } else {
+            // 新作品，添加进来
+            accountData.data.contents.set(content.id, content);
+            addedCount++;
+          }
         });
-        logger.debug(`Updated ${data.contents.length} contents for ${accountId}`);
+
+        logger.debug(`Updated contents for ${accountId}: added ${addedCount}, skipped ${skippedCount} (incremental merge)`);
       }
 
-      // 更新会话
+      // 更新会话（增量合并，已有的跳过，新的才添加）
       if (data.conversations && Array.isArray(data.conversations)) {
-        accountData.data.conversations.clear();
+        // ✅ 增量处理：已有的保留，新的才添加
+        let addedCount = 0;
+        let skippedCount = 0;
+
         data.conversations.forEach((conversation) => {
-          accountData.data.conversations.set(conversation.id, conversation);
+          if (accountData.data.conversations.has(conversation.id)) {
+            // 已存在，跳过（保留 Master 中的状态）
+            skippedCount++;
+          } else {
+            // 新会话，添加进来
+            accountData.data.conversations.set(conversation.id, conversation);
+            addedCount++;
+          }
         });
-        logger.debug(`Updated ${data.conversations.length} conversations for ${accountId}`);
+
+        logger.debug(`Updated conversations for ${accountId}: added ${addedCount}, skipped ${skippedCount} (incremental merge)`);
       }
 
-      // 更新私信
+      // 更新私信（增量合并，已有的跳过，新的才添加）
       if (data.messages && Array.isArray(data.messages)) {
-        accountData.data.messages.clear();
+        // ✅ 增量处理：已有的保留（包括 isRead 状态），新的才添加
+        let addedCount = 0;
+        let skippedCount = 0;
+
         data.messages.forEach((message) => {
-          accountData.data.messages.set(message.id, message);
+          if (accountData.data.messages.has(message.id)) {
+            // 已存在，跳过（保留 Master 中的所有状态，包括 isRead）
+            skippedCount++;
+          } else {
+            // 新消息，添加进来
+            accountData.data.messages.set(message.id, message);
+            addedCount++;
+          }
         });
-        logger.debug(`Updated ${data.messages.length} messages for ${accountId}`);
+
+        logger.debug(`Updated messages for ${accountId}: added ${addedCount}, skipped ${skippedCount} (incremental merge)`);
       }
 
-      // 更新通知
+      // 更新通知（增量合并，已有的跳过，新的才添加）
       if (data.notifications && Array.isArray(data.notifications)) {
-        accountData.data.notifications.clear();
+        // ✅ 增量处理：已有的保留，新的才添加
+        let addedCount = 0;
+        let skippedCount = 0;
+
         data.notifications.forEach((notification) => {
-          accountData.data.notifications.set(notification.id, notification);
+          if (accountData.data.notifications.has(notification.id)) {
+            // 已存在，跳过（保留 Master 中的状态）
+            skippedCount++;
+          } else {
+            // 新通知，添加进来
+            accountData.data.notifications.set(notification.id, notification);
+            addedCount++;
+          }
         });
-        logger.debug(`Updated ${data.notifications.length} notifications for ${accountId}`);
+
+        logger.debug(`Updated notifications for ${accountId}: added ${addedCount}, skipped ${skippedCount} (incremental merge)`);
       }
 
       // 更新统计
