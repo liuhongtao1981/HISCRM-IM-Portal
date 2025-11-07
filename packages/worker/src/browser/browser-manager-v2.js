@@ -340,11 +340,23 @@ class BrowserManagerV2 {
       // 启动 PersistentContext（会自动创建并管理 Browser）
       const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 
-      // 📌 获取第一个默认标签页用于登录和平台首页访问
+      // 📌 获取第一个默认标签页并导航到创作者中心（用于登录检测）
       const pages = context.pages();
       if (pages.length > 0) {
         const defaultPage = pages[0];
-        logger.info(`📌 Tab 1 (默认) 用于登录和平台首页导航 - 账户 ${accountId}`);
+        logger.info(`📌 Tab 1 (默认) 导航到创作者中心用于登录检测 - 账户 ${accountId}`);
+
+        // ⭐ 默认 Tab 直接打开创作者中心（而不是 douyin.com）
+        try {
+          await defaultPage.goto('https://creator.douyin.com/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 30000
+          });
+          logger.info(`✅ 默认 Tab 已导航到创作者中心 - 账户 ${accountId}`);
+        } catch (navError) {
+          logger.warn(`导航到创作者中心失败，使用 about:blank: ${navError.message}`);
+        }
+
         // 将默认页面设为 spider1（登录后会被spider1使用）
         if (!this.spiderPages.has(accountId)) {
           this.spiderPages.set(accountId, {});
@@ -905,21 +917,55 @@ class BrowserManagerV2 {
   }
 
   /**
-   * 🆕 启动页面健康检查
-   * 定期检查所有页面是否仍然活跃
-   * @param {number} interval - 检查间隔（毫秒，默认30秒）
+   * 🆕 启动浏览器健康检查（轻量级）
+   * 定期检查浏览器连接是否正常，如果断开则自动重启
+   * @param {number} interval - 检查间隔（毫秒，默认 60 秒）
    */
-  // ⭐ 注意: 页面健康检查已移除！
-  // 原因: 页面生命周期现在由 getAccountPage() 完全管理
-  // - 每次调用 getAccountPage() 都会检查页面是否已关闭
-  // - 如果已关闭，自动删除并重新创建
-  // - 无需额外的定期维护进程
-  //
-  // 优势:
-  // ✅ 按需创建，零浪费
-  // ✅ 无额外 CPU 占用
-  // ✅ 代码更简洁
-  // ✅ 自动响应（无延迟）
+  startBrowserHealthCheck(interval = 60000) {
+    if (this.healthCheckInterval) {
+      logger.warn('Browser health check already running');
+      return;
+    }
+
+    logger.info(`Starting browser health check (interval: ${interval/1000}s)`);
+
+    this.healthCheckInterval = setInterval(async () => {
+      try {
+        const accountIds = Array.from(this.contexts.keys());
+
+        for (const accountId of accountIds) {
+          const context = this.contexts.get(accountId);
+
+          // 检查浏览器连接是否仍然有效
+          if (context && context.browser && !context.browser().isConnected()) {
+            logger.warn(`🔴 Browser disconnected for account ${accountId}, cleaning up...`);
+
+            // 清理断开的上下文
+            this.contexts.delete(accountId);
+            this.accountPages.delete(accountId);
+
+            logger.info(`✅ Cleaned up disconnected browser for account ${accountId}`);
+            logger.info(`   Next task will automatically recreate the browser`);
+          }
+        }
+      } catch (error) {
+        logger.error('Error in browser health check:', error);
+      }
+    }, interval);
+
+    logger.info('✅ Browser health check started');
+  }
+
+  /**
+   * 停止浏览器健康检查
+   */
+  stopBrowserHealthCheck() {
+    if (this.healthCheckInterval) {
+      clearInterval(this.healthCheckInterval);
+      this.healthCheckInterval = null;
+      logger.info('Browser health check stopped');
+    }
+  }
 
   /**
    * 🆕 获取页面统计信息

@@ -350,6 +350,10 @@ async function start() {
       logger.info(`✓ AccountInitializer linked to MCP for browser ready notifications`);
     }
 
+    // 19. 启动浏览器健康检查（每 1 分钟检查一次）
+    browserManager.startBrowserHealthCheck(60000);
+    logger.info('✓ Browser health check started (interval: 60s)');
+
   } catch (error) {
     logger.error('Failed to start worker:', error);
     process.exit(1);
@@ -590,6 +594,12 @@ async function shutdown(signal) {
   if (accountStatusReporter) {
     accountStatusReporter.stop();
     logger.info('Account status reporter stopped');
+  }
+
+  // 停止浏览器健康检查
+  if (browserManager) {
+    browserManager.stopBrowserHealthCheck();
+    logger.info('Browser health check stopped');
   }
 
   // 关闭所有浏览器实例

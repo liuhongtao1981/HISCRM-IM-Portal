@@ -12,14 +12,17 @@ const { v4: uuidv4 } = require('uuid');
 const { TabTag } = require('../../browser/tab-manager');
 
 // 导入爬取函数
-const { crawlContents } = require('./crawl-contents');
-const { crawlComments: crawlCommentsV2 } = require('./crawl-comments');
-const { crawlDirectMessagesV2 } = require('./crawl-direct-messages-v2');
+const { crawlContents } = require('./crawler-contents');
+const { crawlComments: crawlCommentsV2 } = require('./crawler-comments');
+const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
-const { onWorksListAPI, onWorkDetailAPI } = require('./crawl-contents');
-const { onCommentsListAPI, onDiscussionsListAPI } = require('./crawl-comments');
-const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawl-direct-messages-v2');
+const { onWorksListAPI, onWorkDetailAPI } = require('./crawler-contents');
+const { onCommentsListAPI, onDiscussionsListAPI } = require('./crawler-comments');
+const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
+
+// 导入实时监控管理器
+const DouyinRealtimeMonitor = require('./realtime-monitor');
 
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
@@ -32,6 +35,9 @@ class DouyinPlatform extends PlatformBase {
     this.loginHandler = new DouyinLoginHandler(browserManager, workerBridge.socket);
 
     // ⭐ 页面现在由 BrowserManager 统一管理，不再需要 this.currentPage
+
+    // 实时监控管理器集合 (accountId => DouyinRealtimeMonitor)
+    this.realtimeMonitors = new Map();
   }
 
   /**
@@ -48,9 +54,9 @@ class DouyinPlatform extends PlatformBase {
     const dataManager = this.dataManagers.get(account.id);
     if (dataManager) {
       // 导入各个爬虫模块的 globalContext 并设置
-      const { globalContext: contentsContext } = require('./crawl-contents');
-      const { globalContext: commentsContext } = require('./crawl-comments');
-      const { globalContext: dmContext } = require('./crawl-direct-messages-v2');
+      const { globalContext: contentsContext } = require('./crawler-contents');
+      const { globalContext: commentsContext } = require('./crawler-comments');
+      const { globalContext: dmContext } = require('./crawler-messages');
 
       // 设置到所有爬虫模块的 globalContext（账户级别全局）
       contentsContext.dataManager = dataManager;
@@ -2909,7 +2915,7 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<DouyinDataManager>}
    */
   async createDataManager(accountId) {
-    const { DouyinDataManager } = require('./douyin-data-manager');
+    const { DouyinDataManager } = require('./data-manager');
     logger.info(`Creating DouyinDataManager for account ${accountId}`);
 
     const dataManager = new DouyinDataManager(accountId, this.dataPusher);
@@ -2918,12 +2924,195 @@ class DouyinPlatform extends PlatformBase {
     return dataManager;
   }
 
+  // ============================================================================
+  // 实时监控管理
+  // ============================================================================
+
+  /**
+   * 启动实时监控
+   * @param {Object} account - 账户对象
+   * @param {Object} page - Playwright Page 实例 (可选,如未提供则自动创建)
+   */
+  async startRealtimeMonitor(account, page = null) {
+    logger.info(`启动实时监控 (账户: ${account.id})`);
+
+    // 检查配置
+    const config = this.parseMonitoringConfig(account);
+    if (!config.enableRealtimeMonitor) {
+      logger.info(`实时监控未启用 (账户: ${account.id})`);
+      return;
+    }
+
+    // 检查是否已存在
+    if (this.realtimeMonitors.has(account.id)) {
+      logger.warn(`实时监控已存在 (账户: ${account.id})`);
+      return;
+    }
+
+    try {
+      // 获取 DataManager
+      const dataManager = this.dataManagers.get(account.id);
+      if (!dataManager) {
+        throw new Error(`DataManager 未初始化 (账户: ${account.id})`);
+      }
+
+      // 1. 获取或创建常驻页面
+      let realtimePage = page;
+      let realtimeTabId = null;
+
+      if (!realtimePage) {
+        logger.info(`查找或创建实时监控页面 (账户: ${account.id})`);
+
+        // 🔍 查找已存在的 REALTIME_MONITOR Tab（避免重复创建）
+        const accountTabs = this.browserManager.tabManager.tabs.get(account.id);
+        if (accountTabs) {
+          for (const [tabId, tabInfo] of accountTabs.entries()) {
+            try {
+              // 只复用已标记为 REALTIME_MONITOR 的 Tab
+              if (tabInfo.tag === TabTag.REALTIME_MONITOR && !tabInfo.page.isClosed()) {
+                logger.info(`♻️  复用现有实时监控 Tab ${tabId}`);
+                realtimePage = tabInfo.page;
+                realtimeTabId = tabId;
+                break;
+              }
+            } catch (error) {
+              logger.warn(`检查 Tab ${tabId} 失败: ${error.message}`);
+            }
+          }
+        }
+
+        // 如果没找到，强制创建新的独立 Tab
+        if (!realtimePage) {
+          logger.info(`创建独立的实时监控 Tab (账户: ${account.id})`);
+          const result = await this.browserManager.tabManager.getPageForTask(
+            account.id,
+            {
+              tag: TabTag.REALTIME_MONITOR,
+              persistent: true,
+              shareable: false,
+              forceNew: true  // ⭐ 强制创建新 Tab，不复用其他 Tag 的 Tab
+            }
+          );
+          realtimePage = result.page;
+          realtimeTabId = result.tabId;
+          logger.info(`✅ 独立实时监控 Tab 创建成功 (tabId: ${realtimeTabId})`);
+        }
+      }
+
+      // 2. 导航到抖音首页（实时监控在首页监听 Redux Store）
+      const targetUrl = 'https://www.douyin.com/';
+      const currentUrl = realtimePage.url();
+
+      if (!currentUrl.includes('www.douyin.com')) {
+        logger.info(`导航到抖音首页进行实时监控...`);
+        await realtimePage.goto(targetUrl, {
+          waitUntil: 'domcontentloaded',
+          timeout: 30000
+        });
+        await realtimePage.waitForTimeout(2000);
+        logger.info(`✅ 页面导航完成: ${targetUrl}`);
+      } else {
+        logger.info(`页面已在抖音首页，跳过导航`);
+      }
+
+      // 3. 创建实时监控管理器
+      const monitor = new DouyinRealtimeMonitor(account, realtimePage, dataManager);
+
+      // 4. 启动监控 (注入 Hook)
+      await monitor.start();
+
+      // 5. 保存到集合
+      this.realtimeMonitors.set(account.id, monitor);
+
+      logger.info(`✅ 实时监控启动成功 (账户: ${account.id})`);
+    } catch (error) {
+      logger.error(`❌ 实时监控启动失败 (账户: ${account.id}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 停止实时监控
+   * @param {string} accountId - 账户 ID
+   */
+  async stopRealtimeMonitor(accountId) {
+    const monitor = this.realtimeMonitors.get(accountId);
+    if (!monitor) {
+      logger.warn(`实时监控不存在 (账户: ${accountId})`);
+      return;
+    }
+
+    logger.info(`停止实时监控 (账户: ${accountId})`);
+
+    try {
+      await monitor.stop();
+      this.realtimeMonitors.delete(accountId);
+
+      logger.info(`✅ 实时监控已停止 (账户: ${accountId})`);
+    } catch (error) {
+      logger.error(`停止实时监控失败 (账户: ${accountId}):`, error);
+      throw error;
+    }
+  }
+
+  /**
+   * 获取实时监控状态
+   * @param {string} accountId - 账户 ID
+   * @returns {Object|null}
+   */
+  getRealtimeMonitorStatus(accountId) {
+    const monitor = this.realtimeMonitors.get(accountId);
+    if (!monitor) {
+      return null;
+    }
+
+    return monitor.getStats();
+  }
+
+  /**
+   * 解析监控配置
+   * @param {Object} account - 账户对象
+   * @returns {Object} 配置对象
+   */
+  parseMonitoringConfig(account) {
+    // 默认配置
+    const defaultConfig = {
+      enableRealtimeMonitor: true,
+      crawlIntervalMin: 5,
+      crawlIntervalMax: 10
+    };
+
+    if (!account.monitoring_config) {
+      return defaultConfig;
+    }
+
+    try {
+      const config = typeof account.monitoring_config === 'string'
+        ? JSON.parse(account.monitoring_config)
+        : account.monitoring_config;
+
+      return { ...defaultConfig, ...config };
+    } catch (error) {
+      logger.warn(`解析 monitoring_config 失败: ${error.message}，使用默认配置`);
+      return defaultConfig;
+    }
+  }
+
+  // ============================================================================
+  // 清理资源
+  // ============================================================================
+
   /**
    * 清理资源
    * @param {string} accountId - 账户 ID
    */
   async cleanup(accountId) {
     logger.info(`Cleaning up Douyin platform for account ${accountId}`);
+
+    // 停止实时监控
+    if (this.realtimeMonitors.has(accountId)) {
+      await this.stopRealtimeMonitor(accountId);
+    }
 
     // ⭐ 页面现在由 BrowserManager 统一管理和清理
     // 不再需要手动管理 this.currentPage

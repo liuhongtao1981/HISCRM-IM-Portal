@@ -26,6 +26,7 @@ const TabTag = {
   LOGIN_CHECK: 'login_check',       // 登录检测
   REPLY_DM: 'reply_dm',             // 私信回复
   REPLY_COMMENT: 'reply_comment',   // 评论回复
+  REALTIME_MONITOR: 'realtime_monitor', // 实时监控常驻任务
   PLACEHOLDER: 'placeholder',       // 占位窗口
 };
 

@@ -556,6 +556,11 @@ async function start() {
         logger.error('Failed to handle notification push:', error);
       }
     };
+
+    // 5. 初始化 LoginHandler（在 Socket.IO 和 namespaces 初始化之后）
+    loginHandler = new LoginHandler(db, adminNamespace, workerNamespace, workerRegistry);
+    logger.info('Login handler initialized');
+
     // 5.1 添加登录事件处理器（在 loginHandler 初始化后）
     tempHandlers.onLoginQRCodeReady = (data) => {
       loginHandler.handleQRCodeReady(data.session_id, data.qr_code_data, data.qr_code_url);

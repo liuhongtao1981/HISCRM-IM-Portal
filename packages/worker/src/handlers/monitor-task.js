@@ -42,13 +42,49 @@ class MonitorTask {
     this.totalFollowers = 0;
     this.totalFollowing = 0;
 
-    // 随机间隔配置 (15-30秒)
-    this.minInterval = 15;  // 最小间隔15秒
-    this.maxInterval = 30;  // 最大间隔30秒
+    // 解析监控配置
+    this.parseMonitoringConfig();
   }
 
   /**
-   * 生成随机间隔时间 (15-30秒)
+   * 解析监控配置
+   * 从 account.monitoring_config 读取配置，支持动态调整爬虫间隔
+   */
+  parseMonitoringConfig() {
+    // 默认间隔: 5-10分钟 (改为辅助爬虫)
+    let minInterval = 5 * 60;  // 5分钟 = 300秒
+    let maxInterval = 10 * 60; // 10分钟 = 600秒
+
+    // 从 account.monitoring_config 读取配置
+    if (this.account.monitoring_config) {
+      try {
+        const config = typeof this.account.monitoring_config === 'string'
+          ? JSON.parse(this.account.monitoring_config)
+          : this.account.monitoring_config;
+
+        // 读取爬虫间隔配置
+        if (config.crawlIntervalMin !== undefined) {
+          minInterval = config.crawlIntervalMin * 60; // 分钟转秒
+        }
+        if (config.crawlIntervalMax !== undefined) {
+          maxInterval = config.crawlIntervalMax * 60; // 分钟转秒
+        }
+
+        logger.info(`✅ 从配置加载爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
+      } catch (error) {
+        logger.warn(`⚠️  解析 monitoring_config 失败，使用默认值: ${error.message}`);
+      }
+    } else {
+      logger.info(`使用默认爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
+    }
+
+    // 保存间隔配置
+    this.minInterval = minInterval;
+    this.maxInterval = maxInterval;
+  }
+
+  /**
+   * 生成随机间隔时间 (默认 5-10分钟，可配置)
    * @returns {number} 随机间隔时间(毫秒)
    */
   getRandomInterval() {
@@ -65,9 +101,9 @@ class MonitorTask {
     }
 
     const nextInterval = this.getRandomInterval();
-    const nextIntervalSec = (nextInterval / 1000).toFixed(1);
+    const nextIntervalMin = (nextInterval / 1000 / 60).toFixed(1);
 
-    logger.info(`Scheduling next execution in ${nextIntervalSec}s for account ${this.account.id}`);
+    logger.info(`Scheduling next execution in ${nextIntervalMin}min for account ${this.account.id}`);
 
     this.timeoutId = setTimeout(() => {
       this.execute();
@@ -85,7 +121,7 @@ class MonitorTask {
 
     logger.info(`Starting monitor task for account ${this.account.account_name}`, {
       account_id: this.account.id,
-      interval_range: `${this.minInterval}-${this.maxInterval}s (random)`,
+      interval_range: `${this.minInterval/60}-${this.maxInterval/60}min (random)`,
     });
 
     // 获取平台实例
@@ -94,16 +130,28 @@ class MonitorTask {
       logger.error(`Platform ${this.account.platform} not supported or not loaded`);
       return;
     }
-    
+
     this.platformInstance = platformInstance;
 
     this.isRunning = true;
+
+    // ⭐ 启动实时监控（如果平台支持且配置启用）
+    if (this.account.platform === 'douyin' && typeof platformInstance.startRealtimeMonitor === 'function') {
+      try {
+        logger.info(`🚀 启动实时监控 (账户: ${this.account.id})...`);
+        await platformInstance.startRealtimeMonitor(this.account);
+        logger.info(`✅ 实时监控已启动 (账户: ${this.account.id})`);
+      } catch (error) {
+        // 实时监控启动失败不影响定时爬虫
+        logger.error(`⚠️  实时监控启动失败 (账户: ${this.account.id}):`, error);
+      }
+    }
 
     // 不阻塞启动流程,直接调度第一次执行
     // 第一次执行会在随机延迟后自动开始
     this.scheduleNext();
 
-    logger.info(`Monitor task started with random interval ${this.minInterval}-${this.maxInterval}s`);
+    logger.info(`Monitor task started with random interval ${this.minInterval/60}-${this.maxInterval/60}min`);
   }
 
   /**
@@ -117,6 +165,17 @@ class MonitorTask {
     logger.info(`Stopping monitor task for account ${this.account.id}`);
 
     this.isRunning = false;
+
+    // ⭐ 停止实时监控（如果存在）
+    if (this.platformInstance && typeof this.platformInstance.stopRealtimeMonitor === 'function') {
+      try {
+        logger.info(`🛑 停止实时监控 (账户: ${this.account.id})...`);
+        await this.platformInstance.stopRealtimeMonitor(this.account.id);
+        logger.info(`✅ 实时监控已停止 (账户: ${this.account.id})`);
+      } catch (error) {
+        logger.error(`⚠️  实时监控停止失败 (账户: ${this.account.id}):`, error);
+      }
+    }
 
     // 清除定时器
     if (this.timeoutId) {
@@ -163,29 +222,20 @@ class MonitorTask {
       try {
         // ⭐ 使用 TabManager 获取登录检测窗口
         // 登录检测规则:
-        // - 如果有登录任务窗口,复用它
-        // - 如果没有登录任务窗口,创建新的检测窗口
-        // - 检测后如果不是登录任务窗口,关闭它
+        // ⭐ 复用默认页（PLACEHOLDER）进行登录检测，避免创建额外 Tab
         const { TabTag } = require('../browser/tab-manager');
         const { tabId, page, shouldClose } = await this.browserManager.tabManager.getPageForTask(this.account.id, {
-          tag: TabTag.LOGIN_CHECK,
-          persistent: false,     // 检测完关闭
-          shareable: true,       // 可以复用登录窗口
-          forceNew: false        // 优先复用已有窗口
+          tag: TabTag.PLACEHOLDER,  // 使用默认占位页
+          persistent: true,          // 保持打开
+          shareable: true,           // 可共享
+          forceNew: false            // 优先复用
         });
 
         loginCheckTabId = tabId;
         loginCheckPage = page;
 
-        // 导航到创作中心（如果还没在那里）
-        if (!page.url().includes('creator.douyin.com')) {
-          logger.info('Navigating to creator center for login check...');
-          await page.goto('https://creator.douyin.com/', {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-          await page.waitForTimeout(2000);
-        }
+        // 默认页已在浏览器启动时导航到创作者中心，直接检测
+        logger.info('Using default tab (creator center) for login check...');
 
         // 调用平台的登录状态检测方法
         const loginStatus = await this.platformInstance.checkLoginStatus(page);
@@ -202,7 +252,8 @@ class MonitorTask {
             });
           }
 
-          // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
+          // ⭐ 不关闭 PLACEHOLDER Tab（持久化，供下次检测复用）
+          // shouldClose 为 false，因为 persistent: true
           if (loginCheckTabId && shouldClose) {
             await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
           }
@@ -219,7 +270,8 @@ class MonitorTask {
           });
         }
 
-        // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
+        // ⭐ 不关闭 PLACEHOLDER Tab（持久化，供下次检测复用）
+        // shouldClose 为 false，因为 persistent: true
         if (loginCheckTabId && shouldClose) {
           await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
         }

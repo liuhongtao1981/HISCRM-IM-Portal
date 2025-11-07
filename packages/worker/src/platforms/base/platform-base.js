@@ -98,7 +98,7 @@ class PlatformBase {
    *
    * 示例：
    * async createDataManager(accountId) {
-   *   const { DouyinDataManager } = require('./douyin-data-manager');
+   *   const { DouyinDataManager } = require('./data-manager');
    *   return new DouyinDataManager(accountId, this.dataPusher);
    * }
    *
