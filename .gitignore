@@ -38,6 +38,10 @@ npm-debug.log*
 .env.local
 .env.*.local
 
+# Keep specific env files tracked (explicit exceptions)
+!packages/master/.env
+!packages/worker/.env
+
 # IDE
 .vscode/
 .idea/
