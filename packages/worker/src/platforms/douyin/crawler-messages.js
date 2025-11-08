@@ -1099,7 +1099,26 @@ async function extractMessagesFromVirtualList(page) {
             // ✅ 检查是否是完整的消息对象（必须同时包含 serverId、content、sender、conversationId）
             // ⭐ secSender 是加密的用户ID，用于标准化外层 conversation_id
             if (props.serverId && props.content && props.sender && props.conversationId) {
+              console.log('✅ 找到完整消息对象:', {
+                serverId: props.serverId,
+                sender: props.sender,
+                conversationId: props.conversationId,
+                hasContent: !!props.content
+              });
               return props;
+            }
+            
+            // 🔍 添加调试日志 - 记录部分消息数据
+            if (props.serverId || props.content || props.sender) {
+              console.log('🔍 找到部分消息数据:', {
+                hasServerId: !!props.serverId,
+                hasContent: !!props.content,
+                hasSender: !!props.sender,
+                hasConversationId: !!props.conversationId,
+                type: props.type,
+                msgType: props.msgType,
+                keys: Object.keys(props).slice(0, 15)
+              });
             }
           }
 
@@ -1121,14 +1140,37 @@ async function extractMessagesFromVirtualList(page) {
         const props = deepSearchMessage(element[fiberKey]);
 
         if (props) {
+          // 🔍 记录找到的完整props对象
+          console.log(`🔍 找到消息props:`, {
+            hasServerId: !!props.serverId,
+            hasContent: !!props.content,
+            hasSender: !!props.sender,
+            hasConversationId: !!props.conversationId,
+            type: props.type,
+            msgType: props.msgType,
+            contentAweType: props.content?.aweType,
+            isFromMe: props.isFromMe
+          });
+          
           // 提取消息内容
           const msgContent = props.content || {};
           const textContent = msgContent.text || props.text || '';
 
-          // 🔥 只处理私信消息 (type 7 或 type 1)，过滤通知、系统消息
-          const messageType = msgContent.aweType || props.type || props.msgType;
+          // 🔥 处理私信消息 (type 7 或 type 1)，过滤通知、系统消息
+          // ⭐ 关键: 使用 props.type (值为7), 而不是 content.aweType (值为700/701/...)
+          const messageType = props.type || props.msgType;
+          const aweType = msgContent.aweType;
+          
+          // 🔍 过滤系统消息: aweType 701 通常是"我们已互相关注"等系统提示
+          // 只保留 aweType 700 (普通文本消息) 或没有 aweType 的消息
+          if (aweType && aweType === 701) {
+            console.log(`⏭️ 跳过系统消息 aweType=${aweType}, text="${textContent.substring(0, 30)}"`);
+            return;
+          }
+          
+          // 检查消息类型: 只处理 type 7 (私信) 或 type 1
           if (messageType && messageType !== 7 && messageType !== 1) {
-            // console.log(`⏭️  跳过非私信消息 type=${messageType}`);
+            console.log(`⏭️ 跳过非私信消息 type=${messageType}`);
             return;
           }
 
