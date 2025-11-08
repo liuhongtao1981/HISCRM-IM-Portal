@@ -254,6 +254,14 @@ function createCacheDataRouter(db, cacheDAO = null) {
           readAtTimestamp = Math.floor(new Date(row.read_at).getTime() / 1000);
         }
 
+        // ⭐ 统一消息方向命名: incoming → inbound, outgoing → outbound
+        let normalizedDirection = messageData.direction || 'inbound';
+        if (normalizedDirection === 'incoming') {
+          normalizedDirection = 'inbound';
+        } else if (normalizedDirection === 'outgoing') {
+          normalizedDirection = 'outbound';
+        }
+
         return {
           id: row.id,
           account_id: row.account_id,
@@ -263,7 +271,7 @@ function createCacheDataRouter(db, cacheDAO = null) {
           content: messageData.content || '',
           sender_name: messageData.senderName || '',
           sender_id: messageData.senderId || '',
-          direction: messageData.direction || 'inbound',
+          direction: normalizedDirection,
           created_at: createdAtTimestamp, // 统一为秒级时间戳
           is_read: row.is_read,
           read_at: readAtTimestamp || null,

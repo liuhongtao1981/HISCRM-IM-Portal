@@ -296,7 +296,7 @@ class DouyinRealtimeMonitor {
     console.log(`💬 [RealtimeMonitor] Message received (total: ${this.stats.messagesReceived})`);
 
     // 1. Deduplication check
-    const messageId = rawMsg.serverId || rawMsg.id;
+    const messageId = rawMsg.platform_message_id || rawMsg.message_id || rawMsg.serverId || rawMsg.id;
     console.log(`💬 [RealtimeMonitor] Message ID: ${messageId}`);
     
     if (!messageId) {
@@ -311,10 +311,72 @@ class DouyinRealtimeMonitor {
       return;
     }
 
-    // 2. Use DataManager to process message
-    logger.info(`[Realtime] Captured message: ${messageId.substring(0, 12)}... (account: ${this.account.id})`);
+    // 2. Process conversation and user info if provided
+    if (rawMsg.conversation_info && rawMsg.user_info) {
+      try {
+        console.log(`✅ [Realtime] 检测到会话和用户信息:`, {
+          conversationId: rawMsg.conversation_info.conversationId,
+          nickname: rawMsg.user_info.nickname,
+          userId: rawMsg.user_info.userId
+        });
+        logger.info(`[Realtime] Processing conversation and user info for message ${messageId.substring(0, 12)}...`);
+        
+        // Prepare conversation data in platform format for upsertConversation
+        // 匹配 DataManager.mapConversationData 期望的格式
+        const conversationData = {
+          // ⭐ 基础标识: user_id 使用发送人的 secUid (这样可以关联消息)
+          user_id: rawMsg.user_info.secUid,
+          
+          // 用户信息 (嵌套对象格式,匹配 API 格式)
+          user: {
+            nickname: rawMsg.user_info.nickname,
+            unique_id: rawMsg.user_info.uniqueId,
+            sec_uid: rawMsg.user_info.secUid,
+            avatar_thumb: {
+              url_list: rawMsg.user_info.avatar ? [rawMsg.user_info.avatar] : []
+            }
+          },
+          
+          // 也提供扁平格式作为后备
+          nickname: rawMsg.user_info.nickname,
+          avatar: rawMsg.user_info.avatar ? {
+            url_list: [rawMsg.user_info.avatar]
+          } : null,
+          
+          // 会话附加信息
+          conversation_short_id: rawMsg.conversation_info.conversationShortId,
+          unread_count: rawMsg.conversation_info.unreadCount || 0,
+          last_message: {
+            content: rawMsg.content || rawMsg.conversation_info.lastMessageContent,
+            created_time: rawMsg.created_at * 1000 || rawMsg.conversation_info.lastMessageTime
+          }
+        };
+        
+        // Use DataManager's upsertConversation method
+        // This will automatically mark it as dirty for sync to Master
+        const conversation = this.dataManager.upsertConversation(conversationData, DataSource.REALTIME);
+        console.log(`✅ [Realtime] 会话已插入/更新:`, {
+          id: conversation.id,
+          userName: conversation.userName,
+          unreadCount: conversation.unreadCount
+        });
+        logger.info(`✅ [Realtime] Conversation upserted: ${conversation.id} (${conversation.userName})`);
+        
+      } catch (error) {
+        console.error(`❌ [Realtime] 会话处理失败:`, error);
+        logger.error(`Failed to process conversation info for message ${messageId}:`, error);
+      }
+    } else {
+      console.log(`⚠️ [Realtime] 消息缺少会话或用户信息:`, {
+        has_conversation_info: !!rawMsg.conversation_info,
+        has_user_info: !!rawMsg.user_info
+      });
+    }
 
-    // 3. Push to DataManager using batch method
+    // 3. Use DataManager to process message
+    logger.info(`[Realtime] Processing message: ${messageId.substring(0, 12)}... (account: ${this.account.id})`);
+
+    // 4. Push to DataManager using batch method
     try {
       // Use batchUpsertMessages with array containing single message
       const upserted = this.dataManager.batchUpsertMessages([rawMsg], DataSource.REALTIME);
@@ -322,11 +384,18 @@ class DouyinRealtimeMonitor {
       if (upserted && upserted.length > 0) {
         this.processedIds.add(messageId);
         this.stats.messagesProcessed++;
+        console.log(`✅ [Realtime] 消息已处理:`, {
+          messageId: messageId.substring(0, 12) + '...',
+          content: rawMsg.content?.substring(0, 20),
+          sender: rawMsg.sender_name
+        });
         logger.info(`✅ [Realtime] Message processed successfully: ${messageId.substring(0, 12)}...`);
       } else {
+        console.log(`⚠️ [Realtime] 消息未处理 (可能重复):`, messageId);
         logger.warn(`⚠️ [Realtime] Message not processed (possibly duplicate): ${messageId}`);
       }
     } catch (error) {
+      console.error(`❌ [Realtime] 消息处理失败:`, error);
       logger.error(`Failed to process realtime message ${messageId}:`, error);
       this.stats.errors++;
     }

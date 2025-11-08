@@ -375,6 +375,47 @@ async function start() {
     browserManager.startBrowserHealthCheck(60000);
     logger.info('✓ Browser health check started (interval: 60s)');
 
+    // 20. 监听浏览器恢复事件，像 Worker 初始化一样重启登录检测（自动启动所有任务）
+    browserManager.on('browser-recovered', async ({ accountId, workerId, timestamp }) => {
+      logger.info(`🔄 Browser recovered for account ${accountId}, restarting login detection...`);
+
+      try {
+        // 从 TaskRunner 获取登录检测任务
+        const loginDetectionTask = taskRunner.loginDetectionTasks.get(accountId);
+        
+        if (!loginDetectionTask) {
+          logger.warn(`LoginDetectionTask not found for ${accountId}, skipping restart`);
+          return;
+        }
+
+        // 🔥 重启登录检测任务
+        // 登录检测会自动检查登录状态，如果 logged_in 则会启动:
+        //   1. 爬虫任务 (MonitorTask)
+        //   2. 实时监控 (RealtimeMonitor)
+        // 这与 Worker 初始化时的行为一致
+        try {
+          logger.info(`🔄 Restarting login detection for account ${accountId}...`);
+          logger.info(`   (will auto-start monitoring tasks if logged in)`);
+          
+          // 停止旧任务
+          if (loginDetectionTask.isRunning) {
+            await loginDetectionTask.stop();
+          }
+          
+          // 重新启动（会立即执行第一次检查）
+          await loginDetectionTask.start();
+          logger.info(`✅ Login detection restarted for account ${accountId}`);
+          logger.info(`   Next: Login check will auto-start all monitoring tasks`);
+        } catch (error) {
+          logger.error(`❌ Failed to restart login detection: ${error.message}`);
+        }
+
+      } catch (error) {
+        logger.error(`❌ Failed to restart tasks for account ${accountId}:`, error.message);
+      }
+    });
+    logger.info('✓ Browser recovery listener registered (delegated to login detection)');
+
   } catch (error) {
     logger.error('Failed to start worker:', error);
     process.exit(1);

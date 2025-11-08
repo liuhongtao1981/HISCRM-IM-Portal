@@ -102,6 +102,8 @@ class LoginDetectionTask {
     // 如果当前是已登录状态，需要停止爬虫任务
     if (this.currentLoginStatus === 'logged_in') {
       await this.onLoginStatusChanged('not_logged_in');
+      // ⭐ 重置状态，以便重启后能检测到状态变化
+      this.currentLoginStatus = 'not_logged_in';
     }
 
     logger.info(`Login detection task stopped for account ${this.account.id}`);

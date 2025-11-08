@@ -155,9 +155,10 @@
    * @param {Function} onAdd - 添加回调函数
    * @param {string} name - 数组名称 (用于日志)
    * @param {Object} options - 配置选项
+   * @param {Object} store - Store对象 (传递给handler用于查找用户信息等)
    * @returns {Object|null} { success: boolean, disposer: Function|null }
    */
-  function observeArray(arr, onAdd, name, options = {}) {
+  function observeArray(arr, onAdd, name, options = {}, store = null) {
     const { debug = false } = options;
 
     if (debug) console.log(`🔧 [BaseHook] 监听数组: ${name}`);
@@ -210,7 +211,7 @@
               setTimeout(() => {
                 clonedItems.forEach(item => {
                   try {
-                    onAdd(item);
+                    onAdd(item, store);
                   } catch (e) {
                     console.error(`❌ [BaseHook] ${name} 回调错误:`, e);
                   }
@@ -368,7 +369,8 @@
           arr,
           handler,
           `${storeName}.${arrayPath}`,
-          { debug }
+          { debug },
+          store  // 传递store对象给handler使用
         );
 
         if (observeResult.success) {
@@ -388,6 +390,16 @@
       ? `✅ [BaseHook] ========== 初始化成功! (${result.installedCount} 个监听) ==========`
       : '❌ [BaseHook] ========== 初始化失败，未找到任何 Store =========='
     );
+
+    // 🔥 新增: 如果初始化成功且提供了 onSuccess 回调,则调用
+    if (result.success && config.onSuccess && typeof config.onSuccess === 'function') {
+      try {
+        console.log('🎯 [BaseHook] 调用 onSuccess 回调...');
+        config.onSuccess(result);
+      } catch (error) {
+        console.error('❌ [BaseHook] onSuccess 回调执行失败:', error);
+      }
+    }
 
     return result;
   };

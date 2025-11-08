@@ -110,7 +110,8 @@ class DouyinDataManager extends AccountDataManager {
       thumbnailUrl: douyinData.thumbnail_url || null,
 
       // 消息状态
-      direction: douyinData.direction || 'incoming',
+      // ⭐ 统一消息方向命名: incoming → inbound, outgoing → outbound
+      direction: this.normalizeDirection(douyinData.direction),
       status: 'delivered',
       isRecalled: douyinData.is_recalled || false,
 
@@ -121,6 +122,24 @@ class DouyinDataManager extends AccountDataManager {
       // 保留原始数据
       rawData: douyinData,
     };
+  }
+
+  /**
+   * 统一消息方向命名
+   * @param {string} direction - 原始方向 ('incoming'|'outgoing'|'inbound'|'outbound')
+   * @returns {string} 标准方向 ('inbound'|'outbound')
+   */
+  normalizeDirection(direction) {
+    if (!direction) return 'inbound';
+    
+    const normalized = direction.toLowerCase();
+    if (normalized === 'incoming') return 'inbound';
+    if (normalized === 'outgoing') return 'outbound';
+    if (normalized === 'inbound') return 'inbound';
+    if (normalized === 'outbound') return 'outbound';
+    
+    // 默认返回 inbound
+    return 'inbound';
   }
 
   /**

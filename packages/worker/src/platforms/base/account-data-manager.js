@@ -336,7 +336,8 @@ class AccountDataManager {
   // ==================== ID 生成（子类可以覆盖） ====================
 
   generateConversationId(conversation) {
-    return `conv_${this.accountId}_${conversation.userId}_${Date.now()}`;
+    // ✅ 使用 conversationId (即对方的 secUid)
+    return `conv_${this.accountId}_${conversation.conversationId}`;
   }
 
   generateMessageId(message) {

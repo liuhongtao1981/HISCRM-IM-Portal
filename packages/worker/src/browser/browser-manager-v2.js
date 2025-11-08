@@ -6,13 +6,15 @@
 const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
+const { EventEmitter } = require('events');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { TabManager } = require('./tab-manager');
 
 const logger = createLogger('browser-manager-v2');
 
-class BrowserManagerV2 {
+class BrowserManagerV2 extends EventEmitter {
   constructor(workerId, config = {}) {
+    super();
     this.workerId = workerId;
     this.config = {
       headless: config.headless !== undefined ? config.headless : true,
@@ -928,14 +930,32 @@ class BrowserManagerV2 {
 
           // 检查浏览器连接是否仍然有效
           if (context && context.browser && !context.browser().isConnected()) {
-            logger.warn(`🔴 Browser disconnected for account ${accountId}, cleaning up...`);
+            logger.warn(`🔴 Browser disconnected for account ${accountId}, attempting restart...`);
 
-            // 清理断开的上下文
-            this.contexts.delete(accountId);
+            // 🔥 完整清理断开的浏览器资源
+            await this.forceCleanupContext(accountId);
             this.accountPages.delete(accountId);
+            this.spiderPages.delete(accountId);
+            this.temporaryPages.delete(accountId);
 
-            logger.info(`✅ Cleaned up disconnected browser for account ${accountId}`);
-            logger.info(`   Next task will automatically recreate the browser`);
+            // 🔥 立即重启浏览器（而不是等待下次任务）
+            try {
+              await this.launchPersistentContextForAccount(accountId);
+              logger.info(`✅ Browser restarted successfully for account ${accountId}`);
+
+              // 🔥 触发浏览器恢复事件，让常驻任务（实时监控）可以重新连接
+              if (this.workerId) {
+                this.emit('browser-recovered', {
+                  accountId,
+                  workerId: this.workerId,
+                  timestamp: Date.now()
+                });
+                logger.info(`📢 Emitted browser-recovered event for account ${accountId}`);
+              }
+            } catch (restartError) {
+              logger.error(`❌ Failed to restart browser for account ${accountId}:`, restartError.message);
+              logger.info(`   Will retry on next health check or task execution`);
+            }
           }
         }
       } catch (error) {

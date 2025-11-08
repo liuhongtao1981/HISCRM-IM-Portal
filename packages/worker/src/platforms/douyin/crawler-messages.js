@@ -422,6 +422,9 @@ async function extractConversationsList(page, account, apiData = {}) {
               const userId = String(userItem.user_id || '');
               const user = userItem.user || {};
 
+              // ⭐ 提取 secUid (用于关联消息)
+              const secUid = user.sec_uid || '';
+
               // 提取用户名
               const userName = user.nickname || user.unique_id || user.ShortId || 'Unknown';
 
@@ -431,30 +434,26 @@ async function extractConversationsList(page, account, apiData = {}) {
                                  user.avatar_medium?.url_list?.[0] ||
                                  null;
 
-              if (!userId) {
-                logger.warn(`[extractConversationsList] API User ${userIdx}: No user_id found, skipping`);
+              if (!userId || !secUid) {
+                logger.warn(`[extractConversationsList] API User ${userIdx}: Missing user_id or sec_uid, skipping`);
                 return;
               }
 
+              // ⭐ 使用 secUid 作为 user_id,这样可以与消息的 conversation_id 匹配
+              // 消息的 conversation_id 也是对方的 secUid
               const conversation = {
-                id: generateConversationId(account.id, userId),
-                account_id: account.id,
-                platform_user_id: userId,  // ✅ 使用真实的平台用户 ID
-                platform_user_name: userName,  // ✅ 使用真实的用户昵称
-                platform_user_avatar: userAvatar,  // ✅ 使用真实的头像 URL
-                last_message_time: Math.floor(Date.now() / 1000),  // API 不包含消息信息，使用当前时间
-                last_message_content: '',  // API 不包含消息内容
-                platform_message_id: null,
-                is_group: false,  // 私信一般是单聊
-                unread_count: 0,  // API 不包含未读数
-                is_pinned: false,
-                is_muted: false,
-                created_at: Date.now(),
-                updated_at: Date.now()
+                // 传递给 DataManager.mapConversationData 的数据格式
+                user_id: secUid,  // ⭐ 使用 secUid 而不是 userId
+                user: {
+                  nickname: userName,
+                  sec_uid: secUid,
+                  uid: userId,
+                  avatar_thumb: userAvatar ? { url_list: [userAvatar] } : null
+                }
               };
 
               conversations.push(conversation);
-              logger.debug(`[extractConversationsList] API User ${userIdx}: ${userName} (ID: ${userId})`);
+              logger.debug(`[extractConversationsList] API User ${userIdx}: ${userName} (secUid: ${secUid})`);
 
             } catch (error) {
               logger.warn(`[extractConversationsList] Error extracting API user ${userIdx}:`, error.message);
@@ -1126,32 +1125,41 @@ async function extractMessagesFromVirtualList(page) {
           const msgContent = props.content || {};
           const textContent = msgContent.text || props.text || '';
 
+          // 🔥 只处理私信消息 (type 7 或 type 1)，过滤通知、系统消息
+          const messageType = msgContent.aweType || props.type || props.msgType;
+          if (messageType && messageType !== 7 && messageType !== 1) {
+            // console.log(`⏭️  跳过非私信消息 type=${messageType}`);
+            return;
+          }
+
           // 添加消息条件
           if (textContent || props.serverId) {
-            // ✅ 关键修复：会话 ID 应该是**对方用户的 ID**，而不是抖音的 props.conversationId
-            // props.conversationId 是会话级别的ID，同一会话中所有消息都相同
-            // 我们需要根据消息方向来确定对方是谁
-            let realConversationId;
-            let recipientId = null;
-
+            // ⭐⭐⭐ conversation_id 存储对方的 secUid
+            // 逻辑：
+            // - 如果是收到的消息 (isFromMe = false) → conversation_id = 发送人的 secUid
+            // - 如果是发出的消息 (isFromMe = true)  → conversation_id = 接收人的 secUid
+            let conversationIdForMessage;
+            
             if (!props.isFromMe) {
-              // inbound 消息：对方是发送者
-              const senderId = props.sender || props.senderId;
-              realConversationId = senderId;  // 会话ID = 对方用户ID
+              // 收到的消息：使用发送人的 secUid
+              conversationIdForMessage = props.secSender || props.secUid || 'unknown';
+            } else {
+              // 发出的消息：使用接收人的 secUid
+              conversationIdForMessage = props.secReceiver || 'unknown';
+            }
+            
+            // 提取 recipientId (接收者ID)
+            let recipientId = null;
+            if (!props.isFromMe) {
+              // inbound 消息：我们是接收者
               recipientId = props.receiver || props.receiverId || null;
             } else {
-              // outbound 消息：对方的 ID 需要从 conversationId 中提取
-              // conversationId 格式可能是 "0:1:ourId:otherUserId"
+              // outbound 消息：对方是接收者,从 conversationId 提取
               if (props.conversationId && props.conversationId.includes(':')) {
                 const parts = props.conversationId.split(':');
-                // 最后一部分通常是对方的用户 ID
-                const otherUserId = parts[parts.length - 1];
-                realConversationId = otherUserId;  // 会话ID = 对方用户ID
-                recipientId = otherUserId;
-              } else {
-                // 如果 conversationId 不是 ":" 分隔格式，直接使用
-                realConversationId = props.conversationId;
-                recipientId = props.conversationId;
+                // 找到不是当前用户的那个 UID
+                const senderId = props.sender || props.senderId;
+                recipientId = parts.find(part => part !== '0' && part !== '1' && part !== String(senderId));
               }
             }
 
@@ -1277,19 +1285,13 @@ async function extractMessagesFromVirtualList(page) {
             // ⭐ 接收者ID（如果可用）
             const platformReceiverId = props.secReceiver || recipientId || 'unknown';
 
-            // ⭐ 会话ID：优先使用加密ID
-            // 对于 inbound 消息：会话ID = 发送者的加密ID
-            // 对于 outbound 消息：会话ID = 接收者的加密ID
-            const standardConversationId = props.isFromMe
-              ? platformReceiverId
-              : platformSenderId;
-
             const message = {
               index: messages.length,
 
               // 标准字段
               platform_message_id: messageId,
-              conversation_id: standardConversationId,
+              // ⭐ conversation_id 存储对方的 secUid (用于关联会话)
+              conversation_id: conversationIdForMessage,
 
               // ⭐ 发送者信息（使用加密ID）
               platform_sender_id: platformSenderId,
