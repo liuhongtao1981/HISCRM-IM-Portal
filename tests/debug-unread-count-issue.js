@@ -1,5 +1,5 @@
 /**
- * 调试未读数跳动问题 - 启动浏览器并观察
+ * 调试未读数跳动问�?- 启动浏览器并观察
  */
 
 const playwright = require('playwright');
@@ -8,8 +8,7 @@ const path = require('path');
 async function main() {
   console.log('启动浏览器用于调试未读数跳动问题...');
 
-  // 使用测试浏览器数据目录
-  const userDataDir = path.join(__dirname, '../test-browser-data-manual');
+  // 使用测试浏览器数据目�?  const userDataDir = path.join(__dirname, '../test-browser-data-manual');
 
   const browser = await playwright.chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -26,27 +25,24 @@ async function main() {
 
   const page = browser.pages()[0];
 
-  // 导航到抖音创作者平台
-  console.log('正在导航到抖音创作者平台...');
+  // 导航到抖音创作者平�?  console.log('正在导航到抖音创作者平�?..');
   await page.goto('https://creator.douyin.com/creator-micro/home');
 
-  console.log('\n✅ 浏览器已启动，请执行以下操作来复现问题：');
-  console.log('1. 点击左侧菜单【互动管理】→【私信】');
-  console.log('2. 观察私信列表中的未读数');
-  console.log('3. 点击不同的会话');
-  console.log('4. 观察未读数是否跳动');
+  console.log('\n�?浏览器已启动，请执行以下操作来复现问题：');
+  console.log('1. 点击左侧菜单【互动管理】→【私信�?);
+  console.log('2. 观察私信列表中的未读�?);
+  console.log('3. 点击不同的会�?);
+  console.log('4. 观察未读数是否跳�?);
   console.log('\n我会在控制台监听并分析网络请求和DOM变化...\n');
 
-  // 监听控制台输出
-  page.on('console', msg => {
+  // 监听控制台输�?  page.on('console', msg => {
     const type = msg.type();
     if (type === 'error' || type === 'warning') {
-      console.log(`[浏览器 ${type}]`, msg.text());
+      console.log(`[浏览�?${type}]`, msg.text());
     }
   });
 
-  // 监听网络请求（抓取私信相关的API调用）
-  page.on('response', async response => {
+  // 监听网络请求（抓取私信相关的API调用�?  page.on('response', async response => {
     const url = response.url();
 
     // 监听私信列表API
@@ -56,7 +52,7 @@ async function main() {
         const data = await response.body();
         console.log('[API] 响应大小:', data.length, 'bytes');
       } catch (e) {
-        console.log('[API] 无法读取响应体');
+        console.log('[API] 无法读取响应�?);
       }
     }
 
@@ -67,13 +63,12 @@ async function main() {
         const data = await response.body();
         console.log('[API] 响应大小:', data.length, 'bytes');
       } catch (e) {
-        console.log('[API] 无法读取响应体');
+        console.log('[API] 无法读取响应�?);
       }
     }
   });
 
-  // 定期检查DOM中的未读数显示
-  const checkInterval = setInterval(async () => {
+  // 定期检查DOM中的未读数显�?  const checkInterval = setInterval(async () => {
     try {
       const unreadBadges = await page.$$eval('[class*="unread"], [class*="badge"]', elements => {
         return elements.map(el => ({
@@ -92,7 +87,7 @@ async function main() {
   }, 5000);
 
   // 等待用户操作
-  console.log('\n按 Ctrl+C 关闭浏览器...\n');
+  console.log('\n�?Ctrl+C 关闭浏览�?..\n');
 
   // 保持浏览器打开
   await new Promise(() => {});

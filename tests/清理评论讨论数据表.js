@@ -13,38 +13,36 @@ function cleanCommentTables() {
   const db = new Database(dbPath);
 
   try {
-    console.log('🗑️  开始清理数据...\n');
+    console.log('🗑�? 开始清理数�?..\n');
 
-    // 1. 清理评论表
-    const commentsResult = db.prepare('DELETE FROM comments').run();
-    console.log(`✅ comments 表: 删除 ${commentsResult.changes} 条记录`);
+    // 1. 清理评论�?    const commentsResult = db.prepare('DELETE FROM comments').run();
+    console.log(`�?comments �? 删除 ${commentsResult.changes} 条记录`);
 
-    // 2. 清理讨论表 (如果存在)
+    // 2. 清理讨论�?(如果存在)
     try {
       const discussionsResult = db.prepare('DELETE FROM discussions').run();
-      console.log(`✅ discussions 表: 删除 ${discussionsResult.changes} 条记录`);
+      console.log(`�?discussions �? 删除 ${discussionsResult.changes} 条记录`);
     } catch (e) {
-      console.log(`⚠️  discussions 表不存在或清理失败: ${e.message}`);
+      console.log(`⚠️  discussions 表不存在或清理失�? ${e.message}`);
     }
 
-    // 3. 清理作品表 (如果需要)
+    // 3. 清理作品�?(如果需�?
     try {
       const worksResult = db.prepare('DELETE FROM contents').run();
-      console.log(`✅ contents 表: 删除 ${worksResult.changes} 条记录`);
+      console.log(`�?contents �? 删除 ${worksResult.changes} 条记录`);
     } catch (e) {
-      console.log(`⚠️  contents 表不存在或清理失败: ${e.message}`);
+      console.log(`⚠️  contents 表不存在或清理失�? ${e.message}`);
     }
 
-    // 4. 清理回复表
-    try {
+    // 4. 清理回复�?    try {
       const repliesResult = db.prepare('DELETE FROM replies').run();
-      console.log(`✅ replies 表: 删除 ${repliesResult.changes} 条记录`);
+      console.log(`�?replies �? 删除 ${repliesResult.changes} 条记录`);
     } catch (e) {
-      console.log(`⚠️  replies 表不存在或清理失败: ${e.message}`);
+      console.log(`⚠️  replies 表不存在或清理失�? ${e.message}`);
     }
 
     console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('✅ 数据清理完成!');
+    console.log('�?数据清理完成!');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // 5. 验证清理结果
@@ -74,10 +72,10 @@ function cleanCommentTables() {
       console.log(`   replies: 表不存在`);
     }
 
-    console.log('\n✅ 数据库已清理,可以重新测试抓取!');
+    console.log('\n�?数据库已清理,可以重新测试抓取!');
 
   } catch (error) {
-    console.error('❌ 清理失败:', error);
+    console.error('�?清理失败:', error);
     throw error;
   } finally {
     db.close();

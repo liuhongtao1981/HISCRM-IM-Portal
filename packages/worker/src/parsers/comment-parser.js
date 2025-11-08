@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Comment Parser
  * T050: 评论解析器
  *
@@ -25,9 +25,6 @@ class CommentParser {
       logger.warn('Invalid rawData: expected array');
       return [];
     }
-
-    logger.debug(`Parsing ${rawData.length} comments`);
-
     // Mock: 数据已经是结构化的,直接返回
     // 真实实现需要从 HTML/JSON 提取字段
     const parsedComments = rawData.map((item) => this.parseComment(item));
@@ -63,22 +60,18 @@ class CommentParser {
         // 检查是否为毫秒级（13位数字）并转换为秒级
         if (timeValue > 9999999999) {
           timeValue = Math.floor(timeValue / 1000);
-          logger.debug(`Comment: converted milliseconds to seconds: ${item.create_time} → ${timeValue}`);
         }
 
         createdAt = timeValue;
-        logger.debug(`Comment: using platform create_time=${createdAt}, detected_at=${detectedAt}`);
       } else if (item.time) {
         // 如果有相对时间字符串，使用时间解析器转换
         const parsedTime = parsePlatformTime(item.time);
         if (parsedTime && parsedTime > 0) {
           createdAt = parsedTime;
-          logger.debug(`Comment: parsed relative time="${item.time}" to created_at=${createdAt}, detected_at=${detectedAt}`);
         } else {
           logger.warn(`Comment: failed to parse relative time="${item.time}", using detected_at as fallback`);
         }
       } else {
-        logger.debug(`Comment: no platform time info, using detected_at=${detectedAt} as created_at`);
       }
 
       return {

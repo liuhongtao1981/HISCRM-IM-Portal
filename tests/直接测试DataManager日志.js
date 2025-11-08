@@ -8,7 +8,7 @@ const fs = require('fs');
 
 // 不改变工作目录，使用绝对路径
 const { AccountDataManager } = require('../packages/worker/src/platforms/base/account-data-manager');
-const { DouyinDataManager } = require('../packages/worker/src/platforms/douyin/douyin-data-manager');
+const { DouyinDataManager } = require('../packages/worker/src/platforms/douyin/data-manager');
 
 console.log('='.repeat(80));
 console.log('测试：DataManager 日志功能');
@@ -20,9 +20,9 @@ const logDir = path.join(__dirname, '../packages/worker/logs');
 console.log(`\n测试账户 ID: ${testAccountId}`);
 console.log(`日志目录: ${logDir}`);
 
-// 检查日志目录
+// 检查日志目�?
 if (!fs.existsSync(logDir)) {
-  console.log(`\n⚠️  日志目录不存在，创建中...`);
+  console.log(`\n⚠️  日志目录不存在，创建�?..`);
   fs.mkdirSync(logDir, { recursive: true});
 }
 
@@ -32,10 +32,10 @@ console.log(`  - data-manager_${testAccountId}-error.log`);
 console.log(`  - douyin-data_${testAccountId}.log`);
 console.log(`  - douyin-data_${testAccountId}-error.log`);
 
-// 创建模拟的 dataPusher
+// 创建模拟�?dataPusher
 const mockDataPusher = {
   async push(data) {
-    console.log(`\n📤 [MockPusher] 推送数据:`, {
+    console.log(`\n📤 [MockPusher] 推送数�?`, {
       conversations: data.conversations?.length || 0,
       messages: data.messages?.length || 0,
       contents: data.contents?.length || 0,
@@ -51,15 +51,15 @@ console.log('='.repeat(80));
 
 const dataManager = new DouyinDataManager(testAccountId, mockDataPusher);
 
-console.log(`✅ DouyinDataManager 已创建`);
+console.log(`�?DouyinDataManager 已创建`);
 
-// 等待一下确保 logger 初始化完成
+// 等待一下确�?logger 初始化完�?
 setTimeout(() => {
   console.log(`\n${'='.repeat(80)}`);
   console.log('步骤 2: 插入测试数据');
   console.log('='.repeat(80));
 
-  // 测试数据：会话
+  // 测试数据：会�?
   const testConversation = {
     user_id: '888888',
     user: {
@@ -70,7 +70,7 @@ setTimeout(() => {
     }
   };
 
-  // 测试数据：消息
+  // 测试数据：消�?
   const testMessage = {
     message_id: 'msg_001',
     conversation_id: '888888',
@@ -78,12 +78,12 @@ setTimeout(() => {
     sender_name: '测试用户A',
     recipient_id: testAccountId,
     type: 'text',
-    content: '这是一条测试消息',
+    content: '这是一条测试消�?,
     direction: 'incoming',
     created_at: Date.now()
   };
 
-  // 测试数据：作品
+  // 测试数据：作�?
   const testContent = {
     aweme_id: 'aweme_001',
     author_user_id: testAccountId,
@@ -91,7 +91,7 @@ setTimeout(() => {
     create_time: Date.now()
   };
 
-  // 测试数据：评论
+  // 测试数据：评�?
   const testComment = {
     cid: 'comment_001',
     aweme_id: 'aweme_001',
@@ -103,32 +103,32 @@ setTimeout(() => {
     create_time: Date.now()
   };
 
-  console.log(`\n📝 插入 1 个会话...`);
+  console.log(`\n📝 插入 1 个会�?..`);
   const mappedConv = dataManager.mapConversationData(testConversation);
   const conversation = dataManager.upsertConversation(mappedConv);
-  console.log(`   ✓ 会话ID: ${conversation.id}`);
+  console.log(`   �?会话ID: ${conversation.id}`);
 
-  console.log(`\n📝 插入 1 条消息...`);
+  console.log(`\n📝 插入 1 条消�?..`);
   const mappedMsg = dataManager.mapMessageData(testMessage);
   const message = dataManager.upsertMessage(mappedMsg);
-  console.log(`   ✓ 消息ID: ${message.id}`);
+  console.log(`   �?消息ID: ${message.id}`);
 
-  console.log(`\n📝 插入 1 个作品...`);
+  console.log(`\n📝 插入 1 个作�?..`);
   const mappedContent = dataManager.mapContentData(testContent);
   const content = dataManager.upsertContent(mappedContent);
-  console.log(`   ✓ 作品ID: ${content.id}`);
+  console.log(`   �?作品ID: ${content.id}`);
 
-  console.log(`\n📝 插入 1 条评论...`);
+  console.log(`\n📝 插入 1 条评�?..`);
   const mappedComment = dataManager.mapCommentData(testComment);
   const comment = dataManager.upsertComment(mappedComment);
-  console.log(`   ✓ 评论ID: ${comment.id}`);
+  console.log(`   �?评论ID: ${comment.id}`);
 
   console.log(`\n📊 当前统计:`);
   const stats = dataManager.getStats();
   console.log(JSON.stringify(stats, null, 2));
 
   // 批量插入测试
-  console.log(`\n📝 批量插入 3 个会话...`);
+  console.log(`\n📝 批量插入 3 个会�?..`);
   const batchConversations = [
     { user_id: '100001', user: { nickname: '用户1' } },
     { user_id: '100002', user: { nickname: '用户2' } },
@@ -136,12 +136,12 @@ setTimeout(() => {
   ].map(c => dataManager.mapConversationData(c));
 
   const conversations = dataManager.batchUpsertConversations(batchConversations);
-  console.log(`   ✓ 批量插入了 ${conversations.length} 个会话`);
+  console.log(`   �?批量插入�?${conversations.length} 个会话`);
 
   // 等待日志写入
   setTimeout(() => {
     console.log(`\n${'='.repeat(80)}`);
-    console.log('步骤 3: 检查日志文件');
+    console.log('步骤 3: 检查日志文�?);
     console.log('='.repeat(80));
 
     const expectedFiles = [
@@ -156,7 +156,7 @@ setTimeout(() => {
       const exists = fs.existsSync(filePath);
 
       console.log(`\n📄 ${filename}`);
-      console.log(`   存在: ${exists ? '✅' : '❌'}`);
+      console.log(`   存在: ${exists ? '�? : '�?}`);
 
       if (exists) {
         const stats = fs.statSync(filePath);
@@ -167,7 +167,7 @@ setTimeout(() => {
           const lines = content.trim().split('\n');
           console.log(`   行数: ${lines.length}`);
 
-          console.log(`\n   前 5 行内容:`);
+          console.log(`\n   �?5 行内�?`);
           lines.slice(0, 5).forEach((line, idx) => {
             try {
               const log = JSON.parse(line);
@@ -191,10 +191,10 @@ setTimeout(() => {
       const filePath = path.join(logDir, filename);
       if (fs.existsSync(filePath)) {
         fs.unlinkSync(filePath);
-        console.log(`🗑️  已删除测试日志文件: ${filename}`);
+        console.log(`🗑�? 已删除测试日志文�? ${filename}`);
       }
     });
 
   }, 2000);  // 等待 2 秒让日志写入
 
-}, 500);  // 等待 0.5 秒让 logger 初始化完成
+}, 500);  // 等待 0.5 秒让 logger 初始化完�?

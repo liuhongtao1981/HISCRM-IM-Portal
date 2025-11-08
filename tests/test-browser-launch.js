@@ -1,5 +1,5 @@
 /**
- * 测试浏览器启动 - 排查 exitCode=21 崩溃问题
+ * 测试浏览器启�?- 排查 exitCode=21 崩溃问题
  */
 
 const { chromium } = require('playwright');
@@ -18,19 +18,18 @@ async function testBrowserLaunch() {
   }
 
   fs.mkdirSync(userDataDir, { recursive: true });
-  console.log(`✅ 创建用户数据目录: ${userDataDir}\n`);
+  console.log(`�?创建用户数据目录: ${userDataDir}\n`);
 
-  // 测试1: 最小参数启动
-  console.log('测试 1: 最小参数启动...');
+  // 测试1: 最小参数启�?  console.log('测试 1: 最小参数启�?..');
   try {
     const context1 = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: ['--no-sandbox', '--disable-setuid-sandbox']
     });
-    console.log('✅ 测试 1 成功: 浏览器启动正常');
+    console.log('�?测试 1 成功: 浏览器启动正�?);
     await context1.close();
   } catch (error) {
-    console.error('❌ 测试 1 失败:', error.message);
+    console.error('�?测试 1 失败:', error.message);
   }
 
   // 清理
@@ -48,18 +47,17 @@ async function testBrowserLaunch() {
         '--disable-dev-shm-usage'
       ]
     });
-    console.log('✅ 测试 2 成功: 浏览器启动正常');
+    console.log('�?测试 2 成功: 浏览器启动正�?);
     await context2.close();
   } catch (error) {
-    console.error('❌ 测试 2 失败:', error.message);
+    console.error('�?测试 2 失败:', error.message);
   }
 
   // 清理
   fs.rmSync(userDataDir, { recursive: true, force: true });
   fs.mkdirSync(userDataDir, { recursive: true });
 
-  // 测试3: 使用完整的 Worker 参数（简化版）
-  console.log('\n测试 3: 使用简化的 Worker 参数...');
+  // 测试3: 使用完整�?Worker 参数（简化版�?  console.log('\n测试 3: 使用简化的 Worker 参数...');
   try {
     const context3 = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
@@ -73,18 +71,17 @@ async function testBrowserLaunch() {
         '--window-position=100,100'
       ]
     });
-    console.log('✅ 测试 3 成功: 浏览器启动正常');
+    console.log('�?测试 3 成功: 浏览器启动正�?);
     await context3.close();
   } catch (error) {
-    console.error('❌ 测试 3 失败:', error.message);
+    console.error('�?测试 3 失败:', error.message);
   }
 
   // 清理
   fs.rmSync(userDataDir, { recursive: true, force: true });
   fs.mkdirSync(userDataDir, { recursive: true });
 
-  // 测试4: 使用 Worker 的完整参数
-  console.log('\n测试 4: 使用 Worker 完整参数...');
+  // 测试4: 使用 Worker 的完整参�?  console.log('\n测试 4: 使用 Worker 完整参数...');
   try {
     const context4 = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
@@ -99,20 +96,18 @@ async function testBrowserLaunch() {
       ],
       ignoreDefaultArgs: ['--enable-automation']
     });
-    console.log('✅ 测试 4 成功: 浏览器启动正常');
+    console.log('�?测试 4 成功: 浏览器启动正�?);
 
-    // 保持浏览器打开3秒
-    console.log('浏览器将保持打开3秒...');
+    // 保持浏览器打开3�?    console.log('浏览器将保持打开3�?..');
     await new Promise(resolve => setTimeout(resolve, 3000));
 
     await context4.close();
   } catch (error) {
-    console.error('❌ 测试 4 失败:', error.message);
-    console.error('完整错误栈:', error.stack);
+    console.error('�?测试 4 失败:', error.message);
+    console.error('完整错误�?', error.stack);
   }
 
-  // 最终清理
-  console.log('\n清理测试目录...');
+  // 最终清�?  console.log('\n清理测试目录...');
   fs.rmSync(userDataDir, { recursive: true, force: true });
 
   console.log('\n=== 测试完成 ===\n');

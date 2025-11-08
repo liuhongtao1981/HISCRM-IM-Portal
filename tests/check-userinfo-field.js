@@ -4,7 +4,7 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath);
 
-console.log('=== 检查 accounts 表的 user_info 字段 ===\n');
+console.log('=== 检�?accounts 表的 user_info 字段 ===\n');
 
 const accounts = db.prepare('SELECT id, account_name, user_info, avatar FROM accounts').all();
 
@@ -25,7 +25,7 @@ accounts.forEach((account, index) => {
       console.log(`    - douyin_id: ${userInfo.douyin_id || 'null'}`);
       console.log(`    - avatar: ${userInfo.avatar ? userInfo.avatar.substring(0, 50) + '...' : 'null'}`);
     } catch (e) {
-      console.log(`  ❌ JSON 解析失败: ${e.message}`);
+      console.log(`  �?JSON 解析失败: ${e.message}`);
     }
   }
   console.log('');

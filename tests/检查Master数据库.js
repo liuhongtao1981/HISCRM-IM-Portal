@@ -1,6 +1,5 @@
 /**
- * 检查 Master 数据库中的数据
- */
+ * 检�?Master 数据库中的数�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -9,17 +8,16 @@ const DB_PATH = path.join(__dirname, '../packages/master/data/master.db');
 const ACCOUNT_ID = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 
 console.log('='.repeat(80));
-console.log('检查 Master 数据库数据');
+console.log('检�?Master 数据库数�?);
 console.log('='.repeat(80));
-console.log(`数据库路径: ${DB_PATH}`);
+console.log(`数据库路�? ${DB_PATH}`);
 console.log(`账户 ID: ${ACCOUNT_ID}`);
 console.log('='.repeat(80));
 
 try {
   const db = new Database(DB_PATH, { readonly: true });
 
-  // 1. 检查账户信息
-  console.log('\n📊 1. 账户信息:');
+  // 1. 检查账户信�?  console.log('\n📊 1. 账户信息:');
   const account = db.prepare(`
     SELECT account_id, platform, account_name, status, login_status, worker_status
     FROM accounts
@@ -29,16 +27,15 @@ try {
   if (account) {
     console.log(`  账户 ID: ${account.account_id}`);
     console.log(`  平台: ${account.platform}`);
-    console.log(`  账户名: ${account.account_name}`);
-    console.log(`  状态: ${account.status}`);
-    console.log(`  登录状态: ${account.login_status}`);
-    console.log(`  Worker 状态: ${account.worker_status}`);
+    console.log(`  账户�? ${account.account_name}`);
+    console.log(`  状�? ${account.status}`);
+    console.log(`  登录状�? ${account.login_status}`);
+    console.log(`  Worker 状�? ${account.worker_status}`);
   } else {
-    console.log('  ❌ 没有找到账户信息');
+    console.log('  �?没有找到账户信息');
   }
 
-  // 2. 检查评论数据
-  console.log('\n📝 2. 评论数据:');
+  // 2. 检查评论数�?  console.log('\n📝 2. 评论数据:');
   const comments = db.prepare(`
     SELECT
       comment_id,
@@ -63,19 +60,18 @@ try {
       console.log(`\n  评论 ${index + 1}:`);
       console.log(`    ID: ${comment.comment_id}`);
       console.log(`    作品 ID: ${comment.work_id}`);
-      console.log(`    作品标题: ${comment.work_title || '无'}`);
-      console.log(`    作者: ${comment.author_name || '未知'}`);
-      console.log(`    内容: ${comment.content || '无'}`);
-      console.log(`    是否作者回复: ${comment.is_author_reply ? '是' : '否'}`);
-      console.log(`    父评论 ID: ${comment.parent_comment_id || '无'}`);
+      console.log(`    作品标题: ${comment.work_title || '�?}`);
+      console.log(`    作�? ${comment.author_name || '未知'}`);
+      console.log(`    内容: ${comment.content || '�?}`);
+      console.log(`    是否作者回�? ${comment.is_author_reply ? '�? : '�?}`);
+      console.log(`    父评�?ID: ${comment.parent_comment_id || '�?}`);
       console.log(`    创建时间: ${new Date(comment.created_at).toLocaleString('zh-CN')}`);
     });
   } else {
     console.log('  ⚠️  没有评论数据');
   }
 
-  // 3. 检查作品数据
-  console.log('\n🎬 3. 作品数据:');
+  // 3. 检查作品数�?  console.log('\n🎬 3. 作品数据:');
   const works = db.prepare(`
     SELECT
       work_id,
@@ -101,17 +97,16 @@ try {
 
       console.log(`\n  作品 ${index + 1}:`);
       console.log(`    ID: ${work.work_id}`);
-      console.log(`    标题: ${work.title || '无'}`);
-      console.log(`    作者: ${work.author_name || '未知'}`);
-      console.log(`    评论数: ${commentCount.count || 0}`);
+      console.log(`    标题: ${work.title || '�?}`);
+      console.log(`    作�? ${work.author_name || '未知'}`);
+      console.log(`    评论�? ${commentCount.count || 0}`);
       console.log(`    创建时间: ${new Date(work.created_at).toLocaleString('zh-CN')}`);
     });
   } else {
     console.log('  ⚠️  没有作品数据');
   }
 
-  // 4. 检查私信会话数据
-  console.log('\n💬 4. 私信会话数据:');
+  // 4. 检查私信会话数�?  console.log('\n💬 4. 私信会话数据:');
   const conversations = db.prepare(`
     SELECT
       conversation_id,
@@ -140,17 +135,16 @@ try {
       console.log(`\n  会话 ${index + 1}:`);
       console.log(`    ID: ${conv.conversation_id}`);
       console.log(`    用户: ${conv.user_name || '未知'}`);
-      console.log(`    最后消息: ${conv.last_message_content || '无'}`);
-      console.log(`    未读数: ${conv.unread_count || 0}`);
-      console.log(`    消息数: ${messageCount.count || 0}`);
-      console.log(`    最后消息时间: ${new Date(conv.last_message_time).toLocaleString('zh-CN')}`);
+      console.log(`    最后消�? ${conv.last_message_content || '�?}`);
+      console.log(`    未读�? ${conv.unread_count || 0}`);
+      console.log(`    消息�? ${messageCount.count || 0}`);
+      console.log(`    最后消息时�? ${new Date(conv.last_message_time).toLocaleString('zh-CN')}`);
     });
   } else {
     console.log('  ⚠️  没有私信会话数据');
   }
 
-  // 5. 检查私信消息数据
-  console.log('\n📩 5. 私信消息数据:');
+  // 5. 检查私信消息数�?  console.log('\n📩 5. 私信消息数据:');
   const messages = db.prepare(`
     SELECT
       message_id,
@@ -172,8 +166,8 @@ try {
       console.log(`\n  消息 ${index + 1}:`);
       console.log(`    ID: ${msg.message_id}`);
       console.log(`    会话 ID: ${msg.conversation_id}`);
-      console.log(`    发送者: ${msg.sender_name || '未知'}`);
-      console.log(`    内容: ${msg.content || '无'}`);
+      console.log(`    发送�? ${msg.sender_name || '未知'}`);
+      console.log(`    内容: ${msg.content || '�?}`);
       console.log(`    方向: ${msg.direction || '未知'}`);
       console.log(`    时间: ${new Date(msg.created_at).toLocaleString('zh-CN')}`);
     });
@@ -184,10 +178,10 @@ try {
   db.close();
 
   console.log('\n' + '='.repeat(80));
-  console.log('数据库检查完成');
+  console.log('数据库检查完�?);
   console.log('='.repeat(80));
 
 } catch (error) {
-  console.error('\n❌ 错误:', error.message);
+  console.error('\n�?错误:', error.message);
   process.exit(1);
 }

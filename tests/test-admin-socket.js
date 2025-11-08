@@ -4,14 +4,14 @@
 
 const io = require('socket.io-client');
 
-console.log('连接到 Master Admin 命名空间...');
+console.log('连接�?Master Admin 命名空间...');
 
 const socket = io('http://localhost:3000/admin', {
   transports: ['websocket', 'polling']
 });
 
 socket.on('connect', () => {
-  console.log('✅ Socket.IO 连接成功');
+  console.log('�?Socket.IO 连接成功');
   console.log('   Socket ID:', socket.id);
 
   // 请求 workers 列表
@@ -20,7 +20,7 @@ socket.on('connect', () => {
 });
 
 socket.on('admin:workers_list', (data) => {
-  console.log('\n✅ 收到 workers 列表:');
+  console.log('\n�?收到 workers 列表:');
   console.log(JSON.stringify(data, null, 2));
 
   setTimeout(() => {
@@ -30,12 +30,12 @@ socket.on('admin:workers_list', (data) => {
 });
 
 socket.on('connect_error', (error) => {
-  console.error('❌ 连接错误:', error.message);
+  console.error('�?连接错误:', error.message);
   process.exit(1);
 });
 
 socket.on('error', (error) => {
-  console.error('❌ Socket 错误:', error);
+  console.error('�?Socket 错误:', error);
 });
 
 setTimeout(() => {

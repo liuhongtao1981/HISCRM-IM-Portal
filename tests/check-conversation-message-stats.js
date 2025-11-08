@@ -1,12 +1,10 @@
 const Database = require('better-sqlite3');
 const db = new Database('packages/master/data/master.db');
 
-// 获取所有会话
-const conversations = db.prepare('SELECT data FROM cache_conversations').all();
+// 获取所有会�?const conversations = db.prepare('SELECT data FROM cache_conversations').all();
 const convs = conversations.map(r => JSON.parse(r.data));
 
-// 获取所有消息
-const messages = db.prepare('SELECT data FROM cache_messages').all();
+// 获取所有消�?const messages = db.prepare('SELECT data FROM cache_messages').all();
 const msgs = messages.map(r => JSON.parse(r.data));
 
 // 统计
@@ -15,7 +13,7 @@ const uniqueMsgConvIds = [...new Set(msgConvIds)];
 
 console.log(`总会话数: ${convs.length}`);
 console.log(`总消息数: ${msgs.length}`);
-console.log(`有消息的会话数: ${uniqueMsgConvIds.length}`);
+console.log(`有消息的会话�? ${uniqueMsgConvIds.length}`);
 console.log(`没有消息的会话数: ${convs.length - uniqueMsgConvIds.length}`);
 console.log('');
 

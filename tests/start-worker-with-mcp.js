@@ -1,5 +1,5 @@
 /**
- * 启动 Worker 并开启 Chrome DevTools MCP 调试
+ * 启动 Worker 并开�?Chrome DevTools MCP 调试
  * 用于验证和重新设计爬虫逻辑
  */
 
@@ -21,17 +21,17 @@ async function startWorkerWithMCP() {
   logger.info(`MCP 端口: ${mcpPort}`);
   logger.info('');
 
-  // 启动 MCP 服务器
+  // 启动 MCP 服务�?
   const mcp = new ChromeDevToolsMCP(mcpPort);
   await mcp.start(workerId);
 
-  logger.info('✅ Chrome DevTools MCP 已启动');
+  logger.info('�?Chrome DevTools MCP 已启�?);
   logger.info('');
   logger.info('📊 调试面板地址:');
   logger.info(`   HTTP:  http://localhost:${mcpPort}/`);
   logger.info(`   WebSocket: ws://localhost:${mcpPort}/`);
   logger.info('');
-  logger.info('🔍 可用的 API 端点:');
+  logger.info('🔍 可用�?API 端点:');
   logger.info(`   GET  http://localhost:${mcpPort}/api/status       - Worker 状态`);
   logger.info(`   GET  http://localhost:${mcpPort}/api/accounts     - 账户信息`);
   logger.info(`   GET  http://localhost:${mcpPort}/api/tasks        - 任务信息`);
@@ -42,9 +42,9 @@ async function startWorkerWithMCP() {
   logger.info('   1. 在浏览器中打开: http://localhost:9222/');
   logger.info('   2. 查看实时监控面板');
   logger.info('   3. 使用 Playwright Inspector 连接到浏览器');
-  logger.info('   4. 按 Ctrl+C 停止调试会话');
+  logger.info('   4. �?Ctrl+C 停止调试会话');
   logger.info('');
-  logger.info('⚡ 现在你可以:');
+  logger.info('�?现在你可�?');
   logger.info('   - 手动运行爬虫测试脚本');
   logger.info('   - 通过 MCP 面板查看实时数据');
   logger.info('   - 验证 API 拦截逻辑');
@@ -54,28 +54,28 @@ async function startWorkerWithMCP() {
   logger.info('MCP 服务器正在运行中...');
   logger.info('====================================');
 
-  // 添加一些测试日志
+  // 添加一些测试日�?
   mcp.addLog('MCP 调试服务器已启动', 'info');
   mcp.addLog(`等待 Worker 连接... (Worker ID: ${workerId})`, 'info');
 
-  // 模拟 Worker 状态
+  // 模拟 Worker 状�?
   mcp.monitoringData.worker.status = 'ready';
   mcp.monitoringData.worker.id = workerId;
 
   // 保持进程运行
   process.on('SIGINT', async () => {
     logger.info('');
-    logger.info('正在关闭 MCP 服务器...');
+    logger.info('正在关闭 MCP 服务�?..');
     await mcp.stop();
-    logger.info('已关闭，再见！');
+    logger.info('已关闭，再见�?);
     process.exit(0);
   });
 
-  // 返回 MCP 实例供外部使用
+  // 返回 MCP 实例供外部使�?
   return mcp;
 }
 
-// 如果直接运行此脚本
+// 如果直接运行此脚�?
 if (require.main === module) {
   startWorkerWithMCP().catch(error => {
     logger.error('启动失败:', error);

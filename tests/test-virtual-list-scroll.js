@@ -2,22 +2,19 @@
  * 测试虚拟列表滚动提取功能
  *
  * 验证点：
- * 1. 能否正确滚动到指定索引
- * 2. 滚动后是否能提取到不同的会话
- * 3. 最终能否提取到全部41个会话
- */
+ * 1. 能否正确滚动到指定索�? * 2. 滚动后是否能提取到不同的会话
+ * 3. 最终能否提取到全部41个会�? */
 
 const { chromium } = require('playwright');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('test-virtual-list-scroll', './logs');
 
 async function testVirtualListScroll() {
-  logger.info('🧪 开始测试虚拟列表滚动提取功能...');
+  logger.info('🧪 开始测试虚拟列表滚动提取功�?..');
 
   let browser;
   try {
-    // 1. 启动浏览器
-    logger.info('启动测试浏览器...');
+    // 1. 启动浏览�?    logger.info('启动测试浏览�?..');
     browser = await chromium.launch({
       headless: false,
       args: ['--disable-blink-features=AutomationControlled']
@@ -30,24 +27,23 @@ async function testVirtualListScroll() {
 
     const page = await context.newPage();
 
-    // 2. 导航到抖音私信页面
-    logger.info('导航到抖音创作者中心...');
+    // 2. 导航到抖音私信页�?    logger.info('导航到抖音创作者中�?..');
     await page.goto('https://creator.douyin.com/');
 
     logger.info('⚠️ 请在浏览器中手动扫码登录...');
     logger.info('登录成功后，请手动导航到"私信管理"页面');
-    logger.info('等待60秒...');
+    logger.info('等待60�?..');
     await page.waitForTimeout(60000);
 
-    logger.info('✅ 假设已登录并在私信页面，开始测试滚动...');
+    logger.info('�?假设已登录并在私信页面，开始测试滚�?..');
 
     // 3. 测试滚动函数
-    logger.info('\n📜 测试1: 滚动到不同索引位置');
+    logger.info('\n📜 测试1: 滚动到不同索引位�?);
 
     const testIndices = [0, 10, 20, 30, 40];
 
     for (const index of testIndices) {
-      logger.info(`\n--- 滚动到索引 ${index} ---`);
+      logger.info(`\n--- 滚动到索�?${index} ---`);
 
       // 滚动
       const scrollResult = await page.evaluate((targetIndex) => {
@@ -55,7 +51,7 @@ async function testVirtualListScroll() {
                             document.querySelector('.ReactVirtualized__List');
 
         if (!virtualList) {
-          return { success: false, reason: '未找到虚拟列表' };
+          return { success: false, reason: '未找到虚拟列�? };
         }
 
         const estimatedItemHeight = 80;
@@ -82,8 +78,7 @@ async function testVirtualListScroll() {
       // 等待渲染
       await page.waitForTimeout(300);
 
-      // 提取当前可见的会话
-      const visible = await page.evaluate(() => {
+      // 提取当前可见的会�?      const visible = await page.evaluate(() => {
         const listItems = document.querySelectorAll('[role="listitem"]');
         const names = [];
 
@@ -97,16 +92,15 @@ async function testVirtualListScroll() {
 
         return {
           totalVisible: listItems.length,
-          names: names.slice(0, 5) // 前5个
-        };
+          names: names.slice(0, 5) // �?�?        };
       });
 
-      logger.info(`可见会话数: ${visible.totalVisible}`);
+      logger.info(`可见会话�? ${visible.totalVisible}`);
       logger.info(`示例: ${visible.names.join(', ')}`);
     }
 
     // 4. 测试完整滚动提取
-    logger.info('\n📜 测试2: 完整滚动提取所有会话');
+    logger.info('\n📜 测试2: 完整滚动提取所有会�?);
 
     const allConversations = new Map();
     const targetCount = 50;
@@ -115,8 +109,7 @@ async function testVirtualListScroll() {
     for (let batchStart = 0; batchStart < targetCount; batchStart += batchSize) {
       logger.info(`\n处理批次 ${batchStart}-${batchStart + batchSize - 1}`);
 
-      // 滚动到批次起始
-      await page.evaluate((index) => {
+      // 滚动到批次起�?      await page.evaluate((index) => {
         const virtualList = document.querySelector('.ReactVirtualized__Grid');
         if (virtualList) {
           virtualList.scrollTop = index * 80;
@@ -152,7 +145,7 @@ async function testVirtualListScroll() {
 
       // 提前结束条件
       if (visible.length === 0) {
-        logger.info('没有更多会话，提前结束');
+        logger.info('没有更多会话，提前结�?);
         break;
       }
     }
@@ -160,7 +153,7 @@ async function testVirtualListScroll() {
     // 5. 结果统计
     logger.info('\n📊 测试结果统计:');
     logger.info(`总共提取: ${allConversations.size} 个唯一会话`);
-    logger.info(`前10个会话: ${Array.from(allConversations.keys()).slice(0, 10).join(', ')}`);
+    logger.info(`�?0个会�? ${Array.from(allConversations.keys()).slice(0, 10).join(', ')}`);
 
     // 6. 验证
     const checks = {
@@ -169,16 +162,16 @@ async function testVirtualListScroll() {
       reachedTarget: allConversations.size >= 40
     };
 
-    logger.info('\n✅ 验证结果:');
-    logger.info(`  - 是否提取到会话: ${checks.hasConversations ? '✅' : '❌'} (${allConversations.size}个)`);
-    logger.info(`  - 是否超过基准(17): ${checks.hasEnoughConversations ? '✅' : '❌'}`);
-    logger.info(`  - 是否接近目标(40+): ${checks.reachedTarget ? '✅' : '❌'}`);
+    logger.info('\n�?验证结果:');
+    logger.info(`  - 是否提取到会�? ${checks.hasConversations ? '�? : '�?} (${allConversations.size}�?`);
+    logger.info(`  - 是否超过基准(17): ${checks.hasEnoughConversations ? '�? : '�?}`);
+    logger.info(`  - 是否接近目标(40+): ${checks.reachedTarget ? '�? : '�?}`);
 
     if (checks.hasEnoughConversations) {
-      logger.info('\n🎉 滚动提取功能正常工作！');
+      logger.info('\n🎉 滚动提取功能正常工作�?);
       return true;
     } else {
-      logger.error('\n❌ 滚动提取功能可能有问题');
+      logger.error('\n�?滚动提取功能可能有问�?);
       return false;
     }
 
@@ -187,7 +180,7 @@ async function testVirtualListScroll() {
     return false;
   } finally {
     if (browser) {
-      logger.info('\n关闭浏览器...');
+      logger.info('\n关闭浏览�?..');
       await browser.close();
     }
   }

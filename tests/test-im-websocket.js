@@ -15,9 +15,9 @@ const colors = {
   blue: '\x1b[34m',
 };
 
-console.log(`${colors.cyan}═══════════════════════════════════════════════════════${colors.reset}`);
+console.log(`${colors.cyan}══════════════════════════════════════════════════════�?{colors.reset}`);
 console.log(`${colors.cyan}  CRM-IM-Server WebSocket 连接测试${colors.reset}`);
-console.log(`${colors.cyan}═══════════════════════════════════════════════════════${colors.reset}\n`);
+console.log(`${colors.cyan}══════════════════════════════════════════════════════�?{colors.reset}\n`);
 
 let testsPassed = 0;
 let testsFailed = 0;
@@ -33,7 +33,7 @@ function testBasicConnection() {
     let timeout;
 
     ws.on('open', () => {
-      console.log(`${colors.green}   ✅ 连接成功${colors.reset}\n`);
+      console.log(`${colors.green}   �?连接成功${colors.reset}\n`);
       testsPassed++;
       results.push({ name: 'WebSocket 基础连接', passed: true });
       clearTimeout(timeout);
@@ -42,7 +42,7 @@ function testBasicConnection() {
     });
 
     ws.on('error', (error) => {
-      console.log(`${colors.red}   ❌ 连接失败: ${error.message}${colors.reset}\n`);
+      console.log(`${colors.red}   �?连接失败: ${error.message}${colors.reset}\n`);
       testsFailed++;
       results.push({ name: 'WebSocket 基础连接', passed: false, error: error.message });
       clearTimeout(timeout);
@@ -50,7 +50,7 @@ function testBasicConnection() {
     });
 
     timeout = setTimeout(() => {
-      console.log(`${colors.red}   ❌ 连接超时${colors.reset}\n`);
+      console.log(`${colors.red}   �?连接超时${colors.reset}\n`);
       testsFailed++;
       results.push({ name: 'WebSocket 基础连接', passed: false, error: '连接超时' });
       ws.close();
@@ -69,8 +69,7 @@ function testLogin() {
     let timeout;
 
     ws.on('open', () => {
-      // 发送登录消息
-      const loginMsg = JSON.stringify({
+      // 发送登录消�?      const loginMsg = JSON.stringify({
         type: 'login',
         data: {
           userId: 'test-user-001',
@@ -81,7 +80,7 @@ function testLogin() {
 
       // 等待登录响应
       timeout = setTimeout(() => {
-        console.log(`${colors.red}   ❌ 登录超时${colors.reset}\n`);
+        console.log(`${colors.red}   �?登录超时${colors.reset}\n`);
         testsFailed++;
         results.push({ name: '用户登录流程', passed: false, error: '登录超时' });
         ws.close();
@@ -93,7 +92,7 @@ function testLogin() {
       try {
         const msg = JSON.parse(data.toString());
         if (msg.type === 'login' && msg.data.success) {
-          console.log(`${colors.green}   ✅ 登录成功${colors.reset}`);
+          console.log(`${colors.green}   �?登录成功${colors.reset}`);
           console.log(`${colors.blue}   响应: ${JSON.stringify(msg.data, null, 2).split('\n').join('\n   ')}${colors.reset}\n`);
           testsPassed++;
           results.push({ name: '用户登录流程', passed: true });
@@ -102,7 +101,7 @@ function testLogin() {
           resolve();
         }
       } catch (error) {
-        console.log(`${colors.red}   ❌ 解析响应失败: ${error.message}${colors.reset}\n`);
+        console.log(`${colors.red}   �?解析响应失败: ${error.message}${colors.reset}\n`);
         testsFailed++;
         results.push({ name: '用户登录流程', passed: false, error: error.message });
         clearTimeout(timeout);
@@ -112,7 +111,7 @@ function testLogin() {
     });
 
     ws.on('error', (error) => {
-      console.log(`${colors.red}   ❌ 连接错误: ${error.message}${colors.reset}\n`);
+      console.log(`${colors.red}   �?连接错误: ${error.message}${colors.reset}\n`);
       testsFailed++;
       results.push({ name: '用户登录流程', passed: false, error: error.message });
       clearTimeout(timeout);
@@ -121,27 +120,25 @@ function testLogin() {
   });
 }
 
-// 测试 3: 消息发送测试
-function testSendMessage() {
+// 测试 3: 消息发送测�?function testSendMessage() {
   return new Promise((resolve) => {
-    console.log(`${colors.cyan}🔍 测试: 消息发送功能${colors.reset}`);
+    console.log(`${colors.cyan}🔍 测试: 消息发送功�?{colors.reset}`);
     console.log(`${colors.blue}   频道: user_0001${colors.reset}`);
 
     const ws = new WebSocket(IM_WS_URL);
     let loginTimeout, messageTimeout;
 
     ws.on('open', () => {
-      // 先登录
-      const loginMsg = JSON.stringify({
+      // 先登�?      const loginMsg = JSON.stringify({
         type: 'login',
         data: { userId: 'test-user-002', userName: 'Test User 2' },
       });
       ws.send(loginMsg);
 
       loginTimeout = setTimeout(() => {
-        console.log(`${colors.red}   ❌ 登录超时${colors.reset}\n`);
+        console.log(`${colors.red}   �?登录超时${colors.reset}\n`);
         testsFailed++;
-        results.push({ name: '消息发送功能', passed: false, error: '登录超时' });
+        results.push({ name: '消息发送功�?, passed: false, error: '登录超时' });
         ws.close();
         resolve();
       }, 3000);
@@ -156,37 +153,36 @@ function testSendMessage() {
           loggedIn = true;
           clearTimeout(loginTimeout);
 
-          // 发送测试消息
-          const testMsg = JSON.stringify({
+          // 发送测试消�?          const testMsg = JSON.stringify({
             type: 'send_message',
             data: {
               channelId: 'user_0001',
-              content: '这是一条测试消息',
+              content: '这是一条测试消�?,
               timestamp: Date.now(),
             },
           });
           ws.send(testMsg);
 
           messageTimeout = setTimeout(() => {
-            console.log(`${colors.green}   ✅ 消息已发送（无响应超时）${colors.reset}\n`);
+            console.log(`${colors.green}   �?消息已发送（无响应超时）${colors.reset}\n`);
             testsPassed++;
-            results.push({ name: '消息发送功能', passed: true });
+            results.push({ name: '消息发送功�?, passed: true });
             ws.close();
             resolve();
           }, 2000);
         } else if (msg.type === 'message_sent' || msg.type === 'new_message') {
-          console.log(`${colors.green}   ✅ 消息发送成功${colors.reset}`);
+          console.log(`${colors.green}   �?消息发送成�?{colors.reset}`);
           console.log(`${colors.blue}   响应类型: ${msg.type}${colors.reset}\n`);
           testsPassed++;
-          results.push({ name: '消息发送功能', passed: true });
+          results.push({ name: '消息发送功�?, passed: true });
           clearTimeout(messageTimeout);
           ws.close();
           resolve();
         }
       } catch (error) {
-        console.log(`${colors.red}   ❌ 解析失败: ${error.message}${colors.reset}\n`);
+        console.log(`${colors.red}   �?解析失败: ${error.message}${colors.reset}\n`);
         testsFailed++;
-        results.push({ name: '消息发送功能', passed: false, error: error.message });
+        results.push({ name: '消息发送功�?, passed: false, error: error.message });
         clearTimeout(loginTimeout);
         clearTimeout(messageTimeout);
         ws.close();
@@ -195,9 +191,9 @@ function testSendMessage() {
     });
 
     ws.on('error', (error) => {
-      console.log(`${colors.red}   ❌ 连接错误: ${error.message}${colors.reset}\n`);
+      console.log(`${colors.red}   �?连接错误: ${error.message}${colors.reset}\n`);
       testsFailed++;
-      results.push({ name: '消息发送功能', passed: false, error: error.message });
+      results.push({ name: '消息发送功�?, passed: false, error: error.message });
       clearTimeout(loginTimeout);
       clearTimeout(messageTimeout);
       resolve();
@@ -205,37 +201,36 @@ function testSendMessage() {
   });
 }
 
-// 运行所有测试
-async function runTests() {
+// 运行所有测�?async function runTests() {
   await testBasicConnection();
   await testLogin();
   await testSendMessage();
 
   // 打印结果
-  console.log(`${colors.cyan}═══════════════════════════════════════════════════════${colors.reset}`);
-  console.log(`${colors.cyan}  测试结果汇总${colors.reset}`);
-  console.log(`${colors.cyan}═══════════════════════════════════════════════════════${colors.reset}\n`);
-  console.log(`${colors.blue}总计: ${testsPassed + testsFailed} 个测试${colors.reset}`);
-  console.log(`${colors.green}通过: ${testsPassed} 个${colors.reset}`);
+  console.log(`${colors.cyan}══════════════════════════════════════════════════════�?{colors.reset}`);
+  console.log(`${colors.cyan}  测试结果汇�?{colors.reset}`);
+  console.log(`${colors.cyan}══════════════════════════════════════════════════════�?{colors.reset}\n`);
+  console.log(`${colors.blue}总计: ${testsPassed + testsFailed} 个测�?{colors.reset}`);
+  console.log(`${colors.green}通过: ${testsPassed} �?{colors.reset}`);
   if (testsFailed > 0) {
-    console.log(`${colors.red}失败: ${testsFailed} 个${colors.reset}`);
+    console.log(`${colors.red}失败: ${testsFailed} �?{colors.reset}`);
   }
 
-  console.log('\n通过的测试:');
+  console.log('\n通过的测�?');
   results
     .filter((r) => r.passed)
-    .forEach((r) => console.log(`${colors.green}  ✅ ${r.name}${colors.reset}`));
+    .forEach((r) => console.log(`${colors.green}  �?${r.name}${colors.reset}`));
 
   if (testsFailed > 0) {
-    console.log('\n失败的测试:');
+    console.log('\n失败的测�?');
     results
       .filter((r) => !r.passed)
       .forEach((r) =>
-        console.log(`${colors.red}  ❌ ${r.name}: ${r.error || '未知错误'}${colors.reset}`)
+        console.log(`${colors.red}  �?${r.name}: ${r.error || '未知错误'}${colors.reset}`)
       );
   }
 
-  console.log(`\n${colors.cyan}═══════════════════════════════════════════════════════${colors.reset}\n`);
+  console.log(`\n${colors.cyan}══════════════════════════════════════════════════════�?{colors.reset}\n`);
 
   process.exit(testsFailed > 0 ? 1 : 0);
 }

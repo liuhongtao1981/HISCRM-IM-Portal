@@ -11,17 +11,16 @@ const DB_PATH = path.join(__dirname, '../packages/master/data/master.db');
 
 async function cleanTestData() {
   console.log('==========================================');
-  console.log('开始清理测试数据...');
+  console.log('开始清理测试数�?..');
   console.log('==========================================\n');
 
-  // 1. 连接数据库
-  console.log('📁 连接数据库:', DB_PATH);
+  // 1. 连接数据�?  console.log('📁 连接数据�?', DB_PATH);
   const db = new Database(DB_PATH);
   db.pragma('journal_mode = WAL');
 
   try {
     // 2. 显示清理前的数据统计
-    console.log('\n📊 清理前数据统计:');
+    console.log('\n📊 清理前数据统�?');
     const beforeStats = {
       direct_messages: db.prepare('SELECT COUNT(*) as count FROM direct_messages').get().count,
       conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get().count,
@@ -37,42 +36,40 @@ async function cleanTestData() {
 
     console.table(beforeStats);
 
-    // 3. 清理数据表
-    console.log('\n🧹 开始清理数据表...\n');
+    // 3. 清理数据�?    console.log('\n🧹 开始清理数据表...\n');
 
     db.transaction(() => {
       // 清理私信相关
-      console.log('  ✓ 清理私信 (direct_messages)');
+      console.log('  �?清理私信 (direct_messages)');
       db.prepare('DELETE FROM direct_messages').run();
 
-      console.log('  ✓ 清理会话 (conversations)');
+      console.log('  �?清理会话 (conversations)');
       db.prepare('DELETE FROM conversations').run();
 
       // 清理评论相关
-      console.log('  ✓ 清理评论 (comments)');
+      console.log('  �?清理评论 (comments)');
       db.prepare('DELETE FROM comments').run();
 
-      console.log('  ✓ 清理讨论 (discussions)');
+      console.log('  �?清理讨论 (discussions)');
       db.prepare('DELETE FROM discussions').run();
 
       // 清理作品
-      console.log('  ✓ 清理作品 (contents)');
+      console.log('  �?清理作品 (contents)');
       db.prepare('DELETE FROM contents').run();
 
       // 清理回复记录
-      console.log('  ✓ 清理回复记录 (replies)');
+      console.log('  �?清理回复记录 (replies)');
       db.prepare('DELETE FROM replies').run();
 
       // 清理通知
-      console.log('  ✓ 清理通知 (notifications)');
+      console.log('  �?清理通知 (notifications)');
       db.prepare('DELETE FROM notifications').run();
 
       // 清理 Worker 日志
-      console.log('  ✓ 清理 Worker 日志 (worker_logs)');
+      console.log('  �?清理 Worker 日志 (worker_logs)');
       db.prepare('DELETE FROM worker_logs').run();
 
-      // 清理 Worker 运行时状态（保留 Worker 注册信息）
-      console.log('  ✓ 重置 Worker 运行时状态 (worker_runtime)');
+      // 清理 Worker 运行时状态（保留 Worker 注册信息�?      console.log('  �?重置 Worker 运行时状�?(worker_runtime)');
       db.prepare(`
         UPDATE worker_runtime
         SET last_heartbeat = NULL,
@@ -81,8 +78,7 @@ async function cleanTestData() {
             active_tasks = 0
       `).run();
 
-      // 重置账户状态
-      console.log('  ✓ 重置账户爬取统计 (accounts)');
+      // 重置账户状�?      console.log('  �?重置账户爬取统计 (accounts)');
       db.prepare(`
         UPDATE accounts
         SET recent_comments_count = 0,
@@ -92,7 +88,7 @@ async function cleanTestData() {
     })();
 
     // 4. 显示清理后的数据统计
-    console.log('\n📊 清理后数据统计:');
+    console.log('\n📊 清理后数据统�?');
     const afterStats = {
       direct_messages: db.prepare('SELECT COUNT(*) as count FROM direct_messages').get().count,
       conversations: db.prepare('SELECT COUNT(*) as count FROM conversations').get().count,
@@ -129,19 +125,18 @@ async function cleanTestData() {
               fs.unlinkSync(filePath);
               cleaned++;
             } catch (err) {
-              console.warn(`    ⚠ 无法删除 ${file}: ${err.message}`);
+              console.warn(`    �?无法删除 ${file}: ${err.message}`);
             }
           }
         }
 
         if (cleaned > 0) {
-          console.log(`  ✓ 清理 ${logDir}: ${cleaned} 个日志文件`);
+          console.log(`  �?清理 ${logDir}: ${cleaned} 个日志文件`);
         }
       }
     }
 
-    // 6. 保留的数据说明
-    console.log('\n💾 保留的数据:');
+    // 6. 保留的数据说�?    console.log('\n💾 保留的数�?');
     const preservedData = {
       '账户 (accounts)': db.prepare('SELECT COUNT(*) as count FROM accounts').get().count,
       'Worker (workers)': db.prepare('SELECT COUNT(*) as count FROM workers').get().count,
@@ -152,23 +147,23 @@ async function cleanTestData() {
     console.table(preservedData);
 
     console.log('\n==========================================');
-    console.log('✅ 数据清理完成!');
+    console.log('�?数据清理完成!');
     console.log('==========================================\n');
 
     console.log('📋 清理总结:');
-    console.log(`  ✓ 私信: ${beforeStats.direct_messages} → ${afterStats.direct_messages}`);
-    console.log(`  ✓ 会话: ${beforeStats.conversations} → ${afterStats.conversations}`);
-    console.log(`  ✓ 评论: ${beforeStats.comments} → ${afterStats.comments}`);
-    console.log(`  ✓ 讨论: ${beforeStats.discussions} → ${afterStats.discussions}`);
-    console.log(`  ✓ 作品: ${beforeStats.contents} → ${afterStats.contents}`);
-    console.log(`  ✓ 回复: ${beforeStats.replies} → ${afterStats.replies}`);
-    console.log(`  ✓ 通知: ${beforeStats.notifications} → ${afterStats.notifications}`);
-    console.log(`  ✓ 日志: ${beforeStats.worker_logs} → ${afterStats.worker_logs}`);
+    console.log(`  �?私信: ${beforeStats.direct_messages} �?${afterStats.direct_messages}`);
+    console.log(`  �?会话: ${beforeStats.conversations} �?${afterStats.conversations}`);
+    console.log(`  �?评论: ${beforeStats.comments} �?${afterStats.comments}`);
+    console.log(`  �?讨论: ${beforeStats.discussions} �?${afterStats.discussions}`);
+    console.log(`  �?作品: ${beforeStats.contents} �?${afterStats.contents}`);
+    console.log(`  �?回复: ${beforeStats.replies} �?${afterStats.replies}`);
+    console.log(`  �?通知: ${beforeStats.notifications} �?${afterStats.notifications}`);
+    console.log(`  �?日志: ${beforeStats.worker_logs} �?${afterStats.worker_logs}`);
 
     console.log('\n🚀 现在可以开始整体测试了!\n');
 
   } catch (error) {
-    console.error('❌ 清理失败:', error);
+    console.error('�?清理失败:', error);
     throw error;
   } finally {
     db.close();

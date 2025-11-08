@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Monitor Task
  * T052: 监控任务处理器 - 管理账户监控任务
  */
@@ -48,21 +48,26 @@ class MonitorTask {
 
   /**
    * 解析监控配置
-   * 从 account.monitoring_config 读取配置，支持动态调整爬虫间隔
+   * 优先从环境变量读取，支持 account.monitoring_config 覆盖
    */
   parseMonitoringConfig() {
-    // 默认间隔: 5-10分钟 (改为辅助爬虫)
-    let minInterval = 5 * 60;  // 5分钟 = 300秒
-    let maxInterval = 10 * 60; // 10分钟 = 600秒
+    // 从环境变量读取默认间隔（分钟）
+    const envMinInterval = parseFloat(process.env.CRAWL_INTERVAL_MIN) || 0.5;
+    const envMaxInterval = parseFloat(process.env.CRAWL_INTERVAL_MAX) || 0.5;
+    
+    let minInterval = envMinInterval * 60;  // 分钟转秒
+    let maxInterval = envMaxInterval * 60;  // 分钟转秒
 
-    // 从 account.monitoring_config 读取配置
+    logger.info(`📋 从环境变量加载爬虫间隔默认值: ${envMinInterval}-${envMaxInterval}分钟`);
+
+    // 从 account.monitoring_config 读取配置（可选覆盖）
     if (this.account.monitoring_config) {
       try {
         const config = typeof this.account.monitoring_config === 'string'
           ? JSON.parse(this.account.monitoring_config)
           : this.account.monitoring_config;
 
-        // 读取爬虫间隔配置
+        // 读取爬虫间隔配置（覆盖环境变量默认值）
         if (config.crawlIntervalMin !== undefined) {
           minInterval = config.crawlIntervalMin * 60; // 分钟转秒
         }
@@ -70,12 +75,12 @@ class MonitorTask {
           maxInterval = config.crawlIntervalMax * 60; // 分钟转秒
         }
 
-        logger.info(`✅ 从配置加载爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
+        logger.info(`✅ 从 monitoring_config 覆盖爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
       } catch (error) {
-        logger.warn(`⚠️  解析 monitoring_config 失败，使用默认值: ${error.message}`);
+        logger.warn(`⚠️  解析 monitoring_config 失败，使用环境变量默认值: ${error.message}`);
       }
     } else {
-      logger.info(`使用默认爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
+      logger.info(`使用环境变量默认爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
     }
 
     // 保存间隔配置
@@ -190,7 +195,7 @@ class MonitorTask {
   }
 
   /**
-   * 执行一次监控
+   * 执行一次监控（已移除登录检测逻辑，由LoginDetectionTask负责）
    */
   async execute() {
     if (!this.isRunning) {
@@ -202,98 +207,9 @@ class MonitorTask {
     logger.info(`Executing monitor task for account ${this.account.id} (count: ${this.executionCount})`);
 
     try {
-      // 0. Debug 模式：检查是否是被跳过的账户（无浏览器）
-      if (debugConfig.enabled && debugConfig.singleAccount.enabled) {
-        // 检查浏览器是否存在
-        const browserContext = this.platformInstance?.browserContext;
-        if (!browserContext) {
-          logger.debug(`Debug 模式：账号 ${this.account.id} 没有浏览器，跳过本次爬取`);
-          // 不报错，仅跳过本次执行，下次继续尝试
-          return;
-        }
-      }
-
-      // 1. 实时检查登录状态 - 在每次爬取前验证
-      logger.info(`Checking real-time login status for account ${this.account.id}...`);
-
-      let loginCheckTabId = null;
-      let loginCheckPage = null;
-
-      try {
-        // ⭐ 使用 TabManager 获取登录检测窗口
-        // 登录检测规则:
-        // ⭐ 复用默认页（PLACEHOLDER）进行登录检测，避免创建额外 Tab
-        const { TabTag } = require('../browser/tab-manager');
-        const { tabId, page, shouldClose } = await this.browserManager.tabManager.getPageForTask(this.account.id, {
-          tag: TabTag.PLACEHOLDER,  // 使用默认占位页
-          persistent: true,          // 保持打开
-          shareable: true,           // 可共享
-          forceNew: false            // 优先复用
-        });
-
-        loginCheckTabId = tabId;
-        loginCheckPage = page;
-
-        // 默认页已在浏览器启动时导航到创作者中心，直接检测
-        logger.info('Using default tab (creator center) for login check...');
-
-        // 调用平台的登录状态检测方法
-        const loginStatus = await this.platformInstance.checkLoginStatus(page);
-
-        if (!loginStatus.isLoggedIn) {
-          logger.warn(`✗ Account ${this.account.id} is NOT logged in (real-time check), skipping crawl`);
-
-          // 记录到状态报告器并更新为离线
-          if (this.accountStatusReporter) {
-            this.accountStatusReporter.recordError(this.account.id, 'Not logged in - login required');
-            this.accountStatusReporter.updateAccountStatus(this.account.id, {
-              worker_status: 'offline',
-              login_status: 'not_logged_in'
-            });
-          }
-
-          // ⭐ 不关闭 PLACEHOLDER Tab（持久化，供下次检测复用）
-          // shouldClose 为 false，因为 persistent: true
-          if (loginCheckTabId && shouldClose) {
-            await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
-          }
-
-          return;  // 跳过本次执行,等待下次调度
-        }
-
-        logger.info(`✓ Account ${this.account.id} is logged in, starting crawl...`);
-
-        // 确保登录状态被正确设置
-        if (this.accountStatusReporter) {
-          this.accountStatusReporter.updateAccountStatus(this.account.id, {
-            login_status: 'logged_in'
-          });
-        }
-
-        // ⭐ 不关闭 PLACEHOLDER Tab（持久化，供下次检测复用）
-        // shouldClose 为 false，因为 persistent: true
-        if (loginCheckTabId && shouldClose) {
-          await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
-        }
-      } catch (error) {
-        logger.error(`Failed to check login status for account ${this.account.id}:`, error);
-
-        // 检查失败也跳过本次爬取
-        if (this.accountStatusReporter) {
-          this.accountStatusReporter.recordError(this.account.id, `Login check failed: ${error.message}`);
-        }
-
-        // ⭐ 关闭登录检测窗口（如果不是登录任务窗口）
-        if (loginCheckTabId) {
-          try {
-            await this.browserManager.tabManager.closeTab(this.account.id, loginCheckTabId);
-          } catch (e) {
-            logger.warn('Failed to close login check tab:', e.message);
-          }
-        }
-
-        return;
-      }
+      // 注意：登录检测逻辑已移除，现在直接开始爬取
+      // 登录状态由独立的LoginDetectionTask管理
+      logger.info(`Starting crawl for account ${this.account.id} (login status managed by LoginDetectionTask)...`);
 
       // ⭐ 关键改进: 并行执行评论和私信爬取 (使用 Promise.all)
       // 现在评论爬虫 (spider2) 和私信爬虫 (spider1) 可以独立运行，互不干扰

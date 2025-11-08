@@ -6,7 +6,7 @@
 const fs = require('fs');
 const path = require('path');
 
-// 读取最新快照
+// 读取最新快�?
 const snapshotsDir = path.join(__dirname, '../packages/worker/data/snapshots');
 const files = fs.readdirSync(snapshotsDir)
   .filter(f => f.startsWith('snapshot-') && f.endsWith('.json'))
@@ -52,11 +52,11 @@ const orphanContentIds = new Set();
 
 comments.forEach((comment, index) => {
   const matched = contentIds.has(comment.contentId);
-  const status = matched ? '✅' : '❌';
+  const status = matched ? '�? : '�?;
 
   console.log(`${index + 1}. ${status} ${comment.content.substring(0, 30)}...`);
   console.log(`   作品ID: ${comment.contentId}`);
-  console.log(`   匹配状态: ${matched ? '成功' : '失败 - 作品不存在'}`);
+  console.log(`   匹配状�? ${matched ? '成功' : '失败 - 作品不存�?}`);
   console.log();
 
   if (matched) {
@@ -68,15 +68,15 @@ comments.forEach((comment, index) => {
 });
 
 console.log('='.repeat(80));
-console.log(`✅ 成功匹配: ${matchedCount} 条`);
-console.log(`❌ 孤儿评论: ${orphanCount} 条`);
+console.log(`�?成功匹配: ${matchedCount} 条`);
+console.log(`�?孤儿评论: ${orphanCount} 条`);
 console.log();
 
 if (orphanContentIds.size > 0) {
-  console.log(`孤儿评论涉及的作品ID (${orphanContentIds.size} 个):`);
+  console.log(`孤儿评论涉及的作品ID (${orphanContentIds.size} �?:`);
   orphanContentIds.forEach(id => {
     const commentsForThisId = comments.filter(c => c.contentId === id);
-    console.log(`  - ${id} (${commentsForThisId.length} 条评论)`);
+    console.log(`  - ${id} (${commentsForThisId.length} 条评�?`);
   });
   console.log();
 }
@@ -85,17 +85,17 @@ console.log('💡 分析结论:');
 console.log('='.repeat(80));
 
 if (orphanCount === 0) {
-  console.log('✅ 所有评论都成功匹配到作品！');
+  console.log('�?所有评论都成功匹配到作品！');
 } else {
-  console.log(`⚠️  有 ${orphanCount} 条评论无法匹配到作品`);
+  console.log(`⚠️  �?${orphanCount} 条评论无法匹配到作品`);
   console.log();
-  console.log('可能的原因:');
-  console.log('1. 这些评论来自更早期的视频（不在当前作品列表中）');
-  console.log('2. 作品 API 只返回最近的视频（如最新20个）');
-  console.log('3. 评论 API 返回了所有历史评论');
+  console.log('可能的原�?');
+  console.log('1. 这些评论来自更早期的视频（不在当前作品列表中�?);
+  console.log('2. 作品 API 只返回最近的视频（如最�?0个）');
+  console.log('3. 评论 API 返回了所有历史评�?);
   console.log();
   console.log('解决方案:');
   console.log('1. 增加作品爬取范围（翻页）');
-  console.log('2. 或者只保留能匹配到作品的评论');
-  console.log('3. 或者为孤儿评论单独爬取对应的作品详情');
+  console.log('2. 或者只保留能匹配到作品的评�?);
+  console.log('3. 或者为孤儿评论单独爬取对应的作品详�?);
 }

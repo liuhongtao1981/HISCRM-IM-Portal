@@ -1,6 +1,6 @@
 /**
  * 分析数据 ID 映射关系
- * 找出评论 API 中的 aweme_id 与作品列表中的 sec_item_id 的对应关系
+ * 找出评论 API 中的 aweme_id 与作品列表中�?sec_item_id 的对应关�?
  */
 
 const fs = require('fs');
@@ -38,7 +38,7 @@ console.log('='.repeat(80));
 const commentContentIds = [...new Set(data.comments?.map(c => c.contentId) || [])];
 commentContentIds.forEach((id, index) => {
   const comments = data.comments.filter(c => c.contentId === id);
-  console.log(`${index + 1}. ${id} (${comments.length} 条评论)`);
+  console.log(`${index + 1}. ${id} (${comments.length} 条评�?`);
 });
 
 // 分析作品中的 contentId (sec_item_id)
@@ -49,23 +49,23 @@ contentIds.forEach((id, index) => {
   const content = data.contents[index];
   console.log(`${index + 1}. ${id.substring(0, 60)}...`);
   console.log(`   标题: ${content.title.substring(0, 50)}...`);
-  console.log(`   评论数: ${content.commentCount}`);
+  console.log(`   评论�? ${content.commentCount}`);
 });
 
 console.log('\n🔍 问题分析:');
 console.log('='.repeat(80));
-console.log('⚠️  评论使用 aweme_id（纯数字）');
-console.log('⚠️  作品使用 sec_item_id（Base64 编码）');
-console.log('⚠️  这两种 ID 无法直接匹配！\n');
+console.log('⚠️  评论使用 aweme_id（纯数字�?);
+console.log('⚠️  作品使用 sec_item_id（Base64 编码�?);
+console.log('⚠️  这两�?ID 无法直接匹配！\n');
 
 console.log('💡 解决方案:');
 console.log('='.repeat(80));
-console.log('需要在数据收集时同时保存两种 ID：');
-console.log('1. 作品 API 响应中查找 aweme_id 或 item_id');
-console.log('2. 评论 API 响应中查找 sec_item_id（如果有）');
+console.log('需要在数据收集时同时保存两�?ID�?);
+console.log('1. 作品 API 响应中查�?aweme_id �?item_id');
+console.log('2. 评论 API 响应中查�?sec_item_id（如果有�?);
 console.log('3. 或者通过其他字段（如标题、发布时间）进行匹配\n');
 
-// 尝试通过评论数匹配
+// 尝试通过评论数匹�?
 console.log('🧪 尝试通过评论数量匹配:');
 console.log('='.repeat(80));
 
@@ -86,24 +86,24 @@ Object.entries(commentCounts).forEach(([awemeId, count]) => {
       commentCount: count,
       title: matchingContents[0].title
     });
-    console.log(`✅ 可能的匹配:`);
+    console.log(`�?可能的匹�?`);
     console.log(`   aweme_id: ${awemeId}`);
     console.log(`   sec_item_id: ${matchingContents[0].contentId.substring(0, 40)}...`);
-    console.log(`   评论数: ${count}`);
+    console.log(`   评论�? ${count}`);
     console.log(`   标题: ${matchingContents[0].title.substring(0, 50)}...\n`);
   } else if (matchingContents.length > 1) {
     console.log(`⚠️  无法匹配（多个作品有 ${count} 条评论）:`);
     console.log(`   aweme_id: ${awemeId}\n`);
   } else {
-    console.log(`❌ 无法匹配（没有作品有 ${count} 条评论）:`);
+    console.log(`�?无法匹配（没有作品有 ${count} 条评论）:`);
     console.log(`   aweme_id: ${awemeId}\n`);
   }
 });
 
 console.log(`\n📊 匹配结果: ${matches.length} / ${Object.keys(commentCounts).length} 个成功匹配\n`);
 
-// 检查原始 API 日志
-console.log('🔍 检查爬取日志中的原始 API 数据:');
+// 检查原�?API 日志
+console.log('🔍 检查爬取日志中的原�?API 数据:');
 console.log('='.repeat(80));
 
 // 读取评论爬取日志
@@ -123,18 +123,18 @@ if (fs.existsSync(commentLogPath)) {
     })
     .filter(log => log !== null);
 
-  console.log(`找到 ${apiTriggers.length} 次评论 API 触发记录\n`);
+  console.log(`找到 ${apiTriggers.length} 次评�?API 触发记录\n`);
 
   if (apiTriggers.length > 0) {
-    console.log('建议: 需要检查评论 API 的原始响应数据，看看是否包含 sec_item_id');
-    console.log('      或者作品 API 的原始响应数据，看看是否包含 aweme_id\n');
+    console.log('建议: 需要检查评�?API 的原始响应数据，看看是否包含 sec_item_id');
+    console.log('      或者作�?API 的原始响应数据，看看是否包含 aweme_id\n');
   }
 }
 
-console.log('📋 下一步操作建议:');
+console.log('📋 下一步操作建�?');
 console.log('='.repeat(80));
-console.log('1. 检查评论 API 原始响应（从 HAR 文件或日志）');
-console.log('2. 检查作品 API 原始响应（从日志）');
-console.log('3. 找出包含两种 ID 的 API 响应');
-console.log('4. 修改数据收集逻辑，同时保存两种 ID');
+console.log('1. 检查评�?API 原始响应（从 HAR 文件或日志）');
+console.log('2. 检查作�?API 原始响应（从日志�?);
+console.log('3. 找出包含两种 ID �?API 响应');
+console.log('4. 修改数据收集逻辑，同时保存两�?ID');
 console.log('5. 重新运行爬虫验证修复效果\n');

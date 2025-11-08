@@ -1,9 +1,10 @@
-/**
+﻿/**
  * 账号初始化器
  * 负责为每个账号启动浏览器进程并加载 Cookie、指纹等配置
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
+const { TabTag } = require('../browser/tab-manager');
 const debugConfig = require('../config/debug-config');
 
 const logger = createLogger('account-initializer');
@@ -209,10 +210,10 @@ class AccountInitializer {
         return;
       }
 
-      // 确定要加载的 URL（优先使用 home URL，否则使用 login URL）
-      const homepageUrl = platform.config.urls.home || platform.config.urls.login;
-      if (!homepageUrl) {
-        logger.warn(`No homepage URL configured for platform ${account.platform}`);
+      // ⭐ 初始化时加载创作中心（用于登录检测），而不是首页
+      const creatorCenterUrl = platform.config.urls.creatorCenter;
+      if (!creatorCenterUrl) {
+        logger.warn(`No creatorCenter URL configured for platform ${account.platform}`);
         return;
       }
 
@@ -221,48 +222,59 @@ class AccountInitializer {
       const navigationTimeout = isDebugMode ? 10000 : 30000;  // Debug模式: 10秒，否则 30秒
       const waitUntilOption = isDebugMode ? 'domcontentloaded' : 'networkidle';  // Debug模式：DOM加载即可
 
-      logger.info(`Loading homepage for account ${account.id}: ${homepageUrl}`, {
+      logger.info(`Loading creator center for account ${account.id}: ${creatorCenterUrl}`, {
         debugMode: isDebugMode,
         timeout: navigationTimeout,
         waitUntil: waitUntilOption
       });
 
-      // ⭐ 获取 Spider1 (Tab 1) 来加载首页
-      // 这样充分利用默认标签页，而不是创建新页面
-      let page = null;
-      try {
-        page = await this.browserManager.getSpiderPage(account.id, 'spider1');
-        if (!page || page.isClosed()) {
-          logger.warn(`Spider1 page not available, falling back to creating new page`);
-          page = await context.newPage();
-        } else {
-          logger.info(`📌 Using Spider1 (Tab 1) to load homepage for account ${account.id}`);
-        }
-      } catch (error) {
-        logger.warn(`Failed to get Spider1 page: ${error.message}, falling back to creating new page`);
-        page = await context.newPage();
+      // ⭐ 使用浏览器启动时自动创建的默认 tab（spider1）
+      // 不创建新 tab，直接使用已有的默认 tab
+      const defaultPage = await this.browserManager.getSpiderPage(account.id, 'spider1');
+      if (!defaultPage) {
+        logger.error(`Default page (spider1) not found for account ${account.id}`);
+        return;
       }
 
+      logger.info(`📌 Using default browser tab (spider1) to load creator center for account ${account.id}`);
+
       try {
-        // 导航到首页，设置合理的超时时间
-        await page.goto(homepageUrl, {
+        // 导航到创作中心，设置合理的超时时间
+        await defaultPage.goto(creatorCenterUrl, {
           waitUntil: waitUntilOption,  // Debug模式用 domcontentloaded，否则 networkidle
           timeout: navigationTimeout,   // Debug模式用 10秒，否则 30秒
         });
 
-        logger.info(`✓ Loaded homepage for account ${account.id}`);
+        logger.info(`✓ Loaded creator center for account ${account.id}`);
+
+        // ⭐ 将这个默认 tab 注册到 TabManager 作为 PLACEHOLDER
+        // 这样登录检测任务可以找到并复用它
+        await this.browserManager.tabManager.registerExistingPage(
+          account.id,
+          defaultPage,
+          TabTag.PLACEHOLDER,
+          true  // persistent
+        );
+
+        logger.info(`✓ Registered default tab as PLACEHOLDER for account ${account.id}`);
 
         // 保存页面到浏览器管理器的页面池（这样其他操作可以复用）
-        this.browserManager.savePageForAccount(account.id, page);
+        this.browserManager.savePageForAccount(account.id, defaultPage);
 
       } catch (error) {
-        logger.warn(`Failed to navigate to homepage for account ${account.id}: ${error.message}`);
-        // 即使导航失败，也不关闭页面，让它保持打开状态
-        this.browserManager.savePageForAccount(account.id, page);
+        logger.warn(`Failed to navigate to creator center for account ${account.id}: ${error.message}`);
+        // 即使导航失败，也注册这个 tab
+        await this.browserManager.tabManager.registerExistingPage(
+          account.id,
+          defaultPage,
+          TabTag.PLACEHOLDER,
+          true
+        );
+        this.browserManager.savePageForAccount(account.id, defaultPage);
       }
 
     } catch (error) {
-      logger.error(`Failed to load homepage for account ${account.id}:`, error);
+      logger.error(`Failed to load creator center for account ${account.id}:`, error);
       // 不抛出异常，初始化继续
     }
   }

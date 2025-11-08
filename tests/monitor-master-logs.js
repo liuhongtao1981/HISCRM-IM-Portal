@@ -1,38 +1,34 @@
 /**
  * 监控 Master 服务器的 WebSocket 通信日志
- * 用于诊断未读数跳动问题
- */
+ * 用于诊断未读数跳动问�? */
 
 const io = require('socket.io-client');
 
 async function main() {
-  console.log('连接到 Master 服务器 (localhost:3000)...\n');
+  console.log('连接�?Master 服务�?(localhost:3000)...\n');
 
-  // 连接到 Master 的根命名空间（IM WebSocket）
-  const socket = io('http://localhost:3000', {
+  // 连接�?Master 的根命名空间（IM WebSocket�?  const socket = io('http://localhost:3000', {
     transports: ['websocket'],
     reconnection: true
   });
 
   socket.on('connect', () => {
-    console.log('✅ 已连接到 Master 服务器\n');
-    console.log('监听 IM 客户端事件...\n');
+    console.log('�?已连接到 Master 服务器\n');
+    console.log('监听 IM 客户端事�?..\n');
     console.log('=' .repeat(80));
   });
 
   socket.on('disconnect', () => {
-    console.log('\n❌ 与 Master 服务器断开连接\n');
+    console.log('\n�?�?Master 服务器断开连接\n');
   });
 
-  // 监听所有事件
-  const originalOnevent = socket.onevent;
+  // 监听所有事�?  const originalOnevent = socket.onevent;
   socket.onevent = function(packet) {
     const args = packet.data || [];
     const eventName = args[0];
     const eventData = args[1];
 
-    // 过滤我们关心的事件
-    const relevantEvents = [
+    // 过滤我们关心的事�?    const relevantEvents = [
       'monitor:topics',
       'monitor:request_topics',
       'monitor:messages',
@@ -48,8 +44,7 @@ async function main() {
         console.log('  账户:', eventData.channelId);
         console.log('  主题数量:', eventData.topics.length);
 
-        // 统计未读数
-        const unreadTopics = eventData.topics.filter(t => t.unreadCount > 0);
+        // 统计未读�?        const unreadTopics = eventData.topics.filter(t => t.unreadCount > 0);
         if (unreadTopics.length > 0) {
           console.log('  有未读的主题:');
           unreadTopics.forEach(t => {
@@ -75,13 +70,12 @@ async function main() {
     originalOnevent.call(this, packet);
   };
 
-  // 模拟客户端注册
-  socket.emit('monitor:register', {
+  // 模拟客户端注�?  socket.emit('monitor:register', {
     clientId: 'debug-monitor-' + Date.now()
   });
 
   // 保持运行
-  console.log('\n按 Ctrl+C 停止监控...\n');
+  console.log('\n�?Ctrl+C 停止监控...\n');
   await new Promise(() => {});
 }
 

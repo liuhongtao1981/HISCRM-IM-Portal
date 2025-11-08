@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Direct Message Parser
  * T051: 私信解析器
  *
@@ -25,9 +25,6 @@ class DMParser {
       logger.warn('Invalid rawData: expected array');
       return [];
     }
-
-    logger.debug(`Parsing ${rawData.length} direct messages`);
-
     // Mock: 数据已经是结构化的,直接返回
     // 真实实现需要从 HTML/JSON 提取字段
     const parsedMessages = rawData.map((item) => this.parseMessage(item));
@@ -74,11 +71,6 @@ class DMParser {
         logger.warn(`DM created_at is too old: ${createdAt}, using detected_at`);
         createdAt = detectedAt;
       }
-
-      logger.debug(
-        `DM parsed: sender=${item.sender_name}, created_at=${createdAt}, detected_at=${detectedAt}, diff=${detectedAt - createdAt}s`
-      );
-
       return {
         platform_message_id: item.platform_message_id || null,
         content: item.content,

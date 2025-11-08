@@ -13,7 +13,7 @@ console.log('━━━━━━━━━━━━━━━━━━━━━━�
 console.log('📈 数据统计');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-// 统计各表数据量
+// 统计各表数据�?
 const tables = {
   'contents': '作品',
   'comments': '评论',
@@ -27,13 +27,13 @@ Object.entries(tables).forEach(([table, name]) => {
     const count = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get().count;
     console.log(`${name} (${table}): ${count} 条`);
   } catch (e) {
-    console.log(`${name} (${table}): ❌ 查询失败`);
+    console.log(`${name} (${table}): �?查询失败`);
   }
 });
 
 // 查看作品数据
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('🎬 作品数据 (最新5条)');
+console.log('🎬 作品数据 (最�?�?');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
@@ -48,19 +48,19 @@ try {
     console.log('暂无作品数据\n');
   } else {
     contents.forEach((work, i) => {
-      console.log(`${i + 1}. ${work.title || '(无标题)'}`);
+      console.log(`${i + 1}. ${work.title || '(无标�?'}`);
       console.log(`   URL: ${work.url || 'N/A'}`);
-      console.log(`   评论数: ${work.stats_comment_count || 0}`);
+      console.log(`   评论�? ${work.stats_comment_count || 0}`);
       console.log(`   时间: ${new Date(work.created_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
 } catch (e) {
-  console.log('❌ 查询失败:', e.message, '\n');
+  console.log('�?查询失败:', e.message, '\n');
 }
 
 // 查看评论数据
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('💬 评论数据 (最新10条)');
+console.log('💬 评论数据 (最�?0�?');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
@@ -76,17 +76,17 @@ try {
   } else {
     comments.forEach((comment, i) => {
       console.log(`${i + 1}. ${comment.author_name || '匿名'}: ${comment.content}`);
-      console.log(`   回复数: ${comment.reply_count || 0}`);
+      console.log(`   回复�? ${comment.reply_count || 0}`);
       console.log(`   时间: ${new Date(comment.created_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
 } catch (e) {
-  console.log('❌ 查询失败:', e.message, '\n');
+  console.log('�?查询失败:', e.message, '\n');
 }
 
 // 查看讨论数据
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('💭 讨论数据 (最新10条)');
+console.log('💭 讨论数据 (最�?0�?');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
@@ -107,12 +107,12 @@ try {
     });
   }
 } catch (e) {
-  console.log('❌ 查询失败:', e.message, '\n');
+  console.log('�?查询失败:', e.message, '\n');
 }
 
 // 查看会话数据
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('💬 会话数据 (最新10条)');
+console.log('💬 会话数据 (最�?0�?');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
@@ -128,18 +128,18 @@ try {
   } else {
     conversations.forEach((conv, i) => {
       console.log(`${i + 1}. ${conv.platform_user_name || '(未知用户)'}`);
-      console.log(`   最后消息: ${conv.last_message_content || 'N/A'}`);
-      console.log(`   未读数: ${conv.unread_count || 0}`);
+      console.log(`   最后消�? ${conv.last_message_content || 'N/A'}`);
+      console.log(`   未读�? ${conv.unread_count || 0}`);
       console.log(`   更新时间: ${new Date(conv.updated_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
 } catch (e) {
-  console.log('❌ 查询失败:', e.message, '\n');
+  console.log('�?查询失败:', e.message, '\n');
 }
 
 // 查看私信数据
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('✉️  私信数据 (最新20条)');
+console.log('✉️  私信数据 (最�?0�?');
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 try {
@@ -154,16 +154,16 @@ try {
     console.log('暂无私信数据\n');
   } else {
     messages.forEach((msg, i) => {
-      const directionText = msg.direction === 'sent' ? '➡️ 我发送' : '⬅️ 收到';
+      const directionText = msg.direction === 'sent' ? '➡️ 我发�? : '⬅️ 收到';
       console.log(`${i + 1}. ${directionText} [${msg.message_type || 'unknown'}] - ${msg.sender_name || '未知'}`);
-      console.log(`   内容: ${msg.content || '(无文本内容)'}`);
+      console.log(`   内容: ${msg.content || '(无文本内�?'}`);
       console.log(`   会话ID: ${msg.conversation_id || 'N/A'}`);
       console.log(`   时间: ${new Date(msg.created_at * 1000).toLocaleString('zh-CN')}\n`);
     });
   }
 } catch (e) {
-  console.log('❌ 查询失败:', e.message, '\n');
+  console.log('�?查询失败:', e.message, '\n');
 }
 
 db.close();
-console.log('✅ 查询完成');
+console.log('�?查询完成');

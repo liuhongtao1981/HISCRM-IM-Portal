@@ -1,8 +1,7 @@
 /**
  * 调试DOM提取0会话问题
  *
- * 目的：验证extractVisibleConversations()使用的选择器是否正确
- */
+ * 目的：验证extractVisibleConversations()使用的选择器是否正�? */
 
 const { chromium } = require('playwright');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -13,8 +12,7 @@ async function debugDOMExtraction() {
 
   let browser;
   try {
-    // 1. 启动浏览器
-    logger.info('启动浏览器...');
+    // 1. 启动浏览�?    logger.info('启动浏览�?..');
     browser = await chromium.launch({
       headless: false,
       args: ['--disable-blink-features=AutomationControlled']
@@ -27,19 +25,17 @@ async function debugDOMExtraction() {
 
     const page = await context.newPage();
 
-    // 2. 导航到抖音私信页面
-    logger.info('导航到抖音创作者中心...');
+    // 2. 导航到抖音私信页�?    logger.info('导航到抖音创作者中�?..');
     await page.goto('https://creator.douyin.com/');
 
     logger.info('⚠️ 请在浏览器中手动扫码登录...');
     logger.info('登录成功后，请手动导航到"私信管理"页面');
-    logger.info('等待60秒...');
+    logger.info('等待60�?..');
     await page.waitForTimeout(60000);
 
-    logger.info('✅ 假设已登录并在私信页面，开始诊断...');
+    logger.info('�?假设已登录并在私信页面，开始诊�?..');
 
-    // 3. 测试原始选择器
-    logger.info('\n📋 测试1: 原始选择器');
+    // 3. 测试原始选择�?    logger.info('\n📋 测试1: 原始选择�?);
     const originalTest = await page.evaluate(() => {
       const listItems = document.querySelectorAll('[role="listitem"]');
       const cursorPointers = document.querySelectorAll('[cursor="pointer"]');
@@ -54,13 +50,11 @@ async function debugDOMExtraction() {
     logger.info(`[role="listitem"] 找到: ${originalTest.listItemsCount} 个`);
     logger.info(`[cursor="pointer"] 找到: ${originalTest.cursorPointersCount} 个`);
 
-    // 4. 查找可能的替代选择器
-    logger.info('\n📋 测试2: 查找替代选择器');
+    // 4. 查找可能的替代选择�?    logger.info('\n📋 测试2: 查找替代选择�?);
     const alternatives = await page.evaluate(() => {
       const results = {};
 
-      // 测试各种可能的选择器
-      const selectors = [
+      // 测试各种可能的选择�?      const selectors = [
         '[role="listitem"]',
         '.ReactVirtualized__Grid__innerScrollContainer > div',
         '[class*="conversation"]',
@@ -87,17 +81,16 @@ async function debugDOMExtraction() {
       return results;
     });
 
-    logger.info('选择器测试结果:');
+    logger.info('选择器测试结�?');
     Object.entries(alternatives).forEach(([selector, result]) => {
       if (result.error) {
-        logger.error(`  ${selector}: ❌ ${result.error}`);
+        logger.error(`  ${selector}: �?${result.error}`);
       } else {
-        logger.info(`  ${selector}: ${result.count} 个 (示例class: ${result.sample})`);
+        logger.info(`  ${selector}: ${result.count} �?(示例class: ${result.sample})`);
       }
     });
 
-    // 5. 检查虚拟列表容器
-    logger.info('\n📋 测试3: 虚拟列表容器');
+    // 5. 检查虚拟列表容�?    logger.info('\n📋 测试3: 虚拟列表容器');
     const virtualListInfo = await page.evaluate(() => {
       const grid = document.querySelector('.ReactVirtualized__Grid');
       const list = document.querySelector('.ReactVirtualized__List');
@@ -119,11 +112,10 @@ async function debugDOMExtraction() {
       logger.info(`  ${key}: ${value}`);
     });
 
-    // 6. 提取实际的会话元素结构
-    logger.info('\n📋 测试4: 分析会话元素结构');
+    // 6. 提取实际的会话元素结�?    logger.info('\n📋 测试4: 分析会话元素结构');
     const structure = await page.evaluate(() => {
       const grid = document.querySelector('.ReactVirtualized__Grid');
-      if (!grid) return { error: '未找到虚拟列表' };
+      if (!grid) return { error: '未找到虚拟列�? };
 
       const innerContainer = grid.querySelector('.ReactVirtualized__Grid__innerScrollContainer');
       if (!innerContainer) return { error: '未找到innerScrollContainer' };
@@ -150,8 +142,7 @@ async function debugDOMExtraction() {
     logger.info('会话元素结构:');
     logger.info(JSON.stringify(structure, null, 2));
 
-    // 7. 尝试使用新选择器提取会话
-    logger.info('\n📋 测试5: 尝试新选择器提取会话');
+    // 7. 尝试使用新选择器提取会�?    logger.info('\n📋 测试5: 尝试新选择器提取会�?);
     const newExtractionTest = await page.evaluate(() => {
       const conversations = [];
 
@@ -185,14 +176,14 @@ async function debugDOMExtraction() {
       };
     });
 
-    logger.info('新选择器提取测试:');
+    logger.info('新选择器提取测�?');
     logger.info(`  提取数量: ${newExtractionTest.method1Count}`);
     logger.info(`  示例: ${JSON.stringify(newExtractionTest.method1Sample, null, 2)}`);
 
     // 8. 滚动测试
-    logger.info('\n📋 测试6: 滚动后重新测试');
+    logger.info('\n📋 测试6: 滚动后重新测�?);
 
-    // 滚动到索引10
+    // 滚动到索�?0
     await page.evaluate(() => {
       const grid = document.querySelector('.ReactVirtualized__Grid');
       if (grid) {
@@ -213,17 +204,17 @@ async function debugDOMExtraction() {
       };
     });
 
-    logger.info(`滚动后 [role="listitem"]: ${afterScrollTest.listItemsCount} 个`);
-    logger.info(`滚动后 innerContainer.children: ${afterScrollTest.innerChildrenCount} 个`);
+    logger.info(`滚动�?[role="listitem"]: ${afterScrollTest.listItemsCount} 个`);
+    logger.info(`滚动�?innerContainer.children: ${afterScrollTest.innerChildrenCount} 个`);
 
     // 9. 总结
     logger.info('\n📊 诊断总结:');
-    logger.info(`  - 原始选择器可用性: ${originalTest.listItemsExist ? '✅' : '❌'}`);
-    logger.info(`  - 虚拟列表存在: ${virtualListInfo.hasGrid ? '✅' : '❌'}`);
+    logger.info(`  - 原始选择器可用�? ${originalTest.listItemsExist ? '�? : '�?}`);
+    logger.info(`  - 虚拟列表存在: ${virtualListInfo.hasGrid ? '�? : '�?}`);
     logger.info(`  - 会话元素总数: ${structure.totalChildren || 0}`);
-    logger.info(`  - 新选择器提取成功: ${newExtractionTest.method1Count > 0 ? '✅' : '❌'}`);
+    logger.info(`  - 新选择器提取成�? ${newExtractionTest.method1Count > 0 ? '�? : '�?}`);
 
-    logger.info('\n✅ 诊断完成！请查看上述输出找出问题根源');
+    logger.info('\n�?诊断完成！请查看上述输出找出问题根源');
 
   } catch (error) {
     logger.error('诊断失败:', error);

@@ -1,6 +1,5 @@
 /**
- * 检查作品的 publishTime 和 lastCrawlTime 时间戳格式
- */
+ * 检查作品的 publishTime �?lastCrawlTime 时间戳格�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -8,8 +7,8 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath, { readonly: true });
 
-console.log('\n╔═══════════════════════════════════════════════════════╗');
-console.log('║  检查作品的时间戳格式                                ║');
+console.log('\n╔═══════════════════════════════════════════════════════�?);
+console.log('�? 检查作品的时间戳格�?                               �?);
 console.log('╚═══════════════════════════════════════════════════════╝\n');
 
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
@@ -40,19 +39,19 @@ if (contents.length > 0) {
     const isPublishMilliseconds = publishTime >= 10000000000 && publishTime < 10000000000000;
     const isCrawlMilliseconds = lastCrawlTime >= 10000000000 && lastCrawlTime < 10000000000000;
 
-    const publishStatus = isPublishMilliseconds ? '✅' : '❌';
-    const crawlStatus = isCrawlMilliseconds ? '✅' : '❌';
+    const publishStatus = isPublishMilliseconds ? '�? : '�?;
+    const crawlStatus = isCrawlMilliseconds ? '�? : '�?;
 
-    console.log(`${index + 1}. 作品: ${content.title?.substring(0, 30) || '无标题'}...`);
+    console.log(`${index + 1}. 作品: ${content.title?.substring(0, 30) || '无标�?}...`);
     console.log(`   contentId: ${content.content_id}`);
     console.log('');
     console.log(`   ${publishStatus} publishTime: ${publishTime}`);
-    console.log(`      格式: ${isPublishMilliseconds ? '毫秒级 (13位)' : publishTime < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-    console.log(`      转换为日期: ${new Date(publishTime).toLocaleString('zh-CN')}`);
+    console.log(`      格式: ${isPublishMilliseconds ? '毫秒�?(13�?' : publishTime < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+    console.log(`      转换为日�? ${new Date(publishTime).toLocaleString('zh-CN')}`);
     console.log('');
     console.log(`   ${crawlStatus} lastCrawlTime: ${lastCrawlTime}`);
-    console.log(`      格式: ${isCrawlMilliseconds ? '毫秒级 (13位)' : lastCrawlTime < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-    console.log(`      转换为日期: ${new Date(lastCrawlTime).toLocaleString('zh-CN')}`);
+    console.log(`      格式: ${isCrawlMilliseconds ? '毫秒�?(13�?' : lastCrawlTime < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+    console.log(`      转换为日�? ${new Date(lastCrawlTime).toLocaleString('zh-CN')}`);
     console.log('');
     console.log('─────────────────────────────────────────────────────');
     console.log('');

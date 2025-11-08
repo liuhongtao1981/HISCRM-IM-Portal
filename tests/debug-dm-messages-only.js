@@ -20,49 +20,44 @@ async function debugMessages() {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
-    console.log('✅ 浏览器已启动');
+    console.log('�?浏览器已启动');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    // 导航到私信页面
-    console.log('\n导航到私信页面...');
+    // 导航到私信页�?    console.log('\n导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(3000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
-    // 点击第一个会话
-    console.log('点击第一个会话...');
+    // 点击第一个会�?    console.log('点击第一个会�?..');
     const conversations = await page.$$('li[class*="item"]');
     if (conversations.length > 0) {
-      // 跳过导航项，找到实际的会话列表
-      let clicked = false;
+      // 跳过导航项，找到实际的会话列�?      let clicked = false;
       for (let i = 0; i < Math.min(conversations.length, 30); i++) {
         const text = await conversations[i].textContent();
-        // 跳过导航项（通常文本很短）
-        if (text && text.length > 10 && !text.includes('首页') && !text.includes('管理')) {
+        // 跳过导航项（通常文本很短�?        if (text && text.length > 10 && !text.includes('首页') && !text.includes('管理')) {
           await conversations[i].click();
-          console.log(`✅ 已点击会话 #${i}: ${text.substring(0, 30)}...\n`);
+          console.log(`�?已点击会�?#${i}: ${text.substring(0, 30)}...\n`);
           clicked = true;
           break;
         }
       }
 
       if (!clicked && conversations.length > 20) {
-        // 如果前30个都是导航，尝试点击第21个（可能是会话列表开始的地方）
-        await conversations[20].click();
-        console.log('✅ 已点击会话 #20\n');
+        // 如果�?0个都是导航，尝试点击�?1个（可能是会话列表开始的地方�?        await conversations[20].click();
+        console.log('�?已点击会�?#20\n');
       }
     }
 
     await page.waitForTimeout(2000);
 
     console.log('='.repeat(70));
-    console.log('开始分析消息虚拟列表');
+    console.log('开始分析消息虚拟列�?);
     console.log('='.repeat(70) + '\n');
 
     // 步骤 1: 找到消息容器
@@ -79,9 +74,9 @@ async function debugMessages() {
     });
 
     if (containerInfo.error) {
-      console.log(`❌ ${containerInfo.error}`);
+      console.log(`�?${containerInfo.error}`);
     } else {
-      console.log('✅ 找到消息容器:');
+      console.log('�?找到消息容器:');
       console.log(`   标签: ${containerInfo.tagName}`);
       console.log(`   类名: ${containerInfo.className}`);
       console.log(`   子元素数: ${containerInfo.childCount}`);
@@ -120,17 +115,17 @@ async function debugMessages() {
     });
 
     if (messageAnalysis.error) {
-      console.log(`❌ ${messageAnalysis.error}`);
+      console.log(`�?${messageAnalysis.error}`);
     } else {
       console.log(`📊 消息容器内有 ${messageAnalysis.totalChildren} 个子元素\n`);
-      console.log('前 10 个子元素分析:\n');
+      console.log('�?10 个子元素分析:\n');
 
       messageAnalysis.samples.forEach(sample => {
         console.log(`元素 #${sample.index}:`);
         console.log(`  标签: ${sample.tagName}`);
-        console.log(`  类名: ${sample.className || '(无)'}`);
-        console.log(`  文本: ${sample.textPreview || '(无)'}`);
-        console.log(`  React Fiber: ${sample.hasFiber ? '✅' : '❌'}`);
+        console.log(`  类名: ${sample.className || '(�?'}`);
+        console.log(`  文本: ${sample.textPreview || '(�?'}`);
+        console.log(`  React Fiber: ${sample.hasFiber ? '�? : '�?}`);
 
         if (sample.hasFiber && sample.propsKeys.length > 0) {
           const messageKeys = sample.propsKeys.filter(k =>
@@ -138,10 +133,10 @@ async function debugMessages() {
           );
 
           if (messageKeys.length > 0) {
-            console.log(`  🔍 消息相关键 (${messageKeys.length}个): ${messageKeys.join(', ')}`);
+            console.log(`  🔍 消息相关�?(${messageKeys.length}�?: ${messageKeys.join(', ')}`);
           }
 
-          console.log(`  总Props数: ${sample.propsKeys.length}`);
+          console.log(`  总Props�? ${sample.propsKeys.length}`);
         }
         console.log('');
       });
@@ -190,8 +185,7 @@ async function debugMessages() {
           }
         }
 
-        // 递归子节点
-        if (fiber.child) {
+        // 递归子节�?        if (fiber.child) {
           findings.push(...searchFiberTree(fiber.child, depth + 1, maxDepth, path + '.child'));
         }
 
@@ -225,11 +219,11 @@ async function debugMessages() {
     });
 
     if (deepSearch.error) {
-      console.log(`❌ ${deepSearch.error}`);
+      console.log(`�?${deepSearch.error}`);
     } else if (deepSearch.findings.length === 0) {
-      console.log('❌ 没有在 React Fiber 树中找到消息数据');
+      console.log('�?没有�?React Fiber 树中找到消息数据');
     } else {
-      console.log(`✅ 找到 ${deepSearch.findings.length} 个包含消息数据的节点:\n`);
+      console.log(`�?找到 ${deepSearch.findings.length} 个包含消息数据的节点:\n`);
 
       deepSearch.findings.forEach((finding, index) => {
         console.log(`发现 #${index + 1}:`);
@@ -245,15 +239,15 @@ async function debugMessages() {
     }
 
     console.log('='.repeat(70));
-    console.log('浏览器将保持打开 60 秒，请手动检查...');
+    console.log('浏览器将保持打开 60 秒，请手动检�?..');
     console.log('='.repeat(70));
 
     await page.waitForTimeout(60000);
     await context.close();
-    console.log('\n✅ 调试完成');
+    console.log('\n�?调试完成');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
   }
 }

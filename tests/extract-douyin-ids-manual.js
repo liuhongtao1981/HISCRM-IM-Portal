@@ -1,6 +1,5 @@
 /**
- * 手动提取抖音私信ID（等待用户手动操作后提取）
- */
+ * 手动提取抖音私信ID（等待用户手动操作后提取�? */
 
 const { chromium } = require('playwright');
 const path = require('path');
@@ -38,7 +37,7 @@ async function main() {
   let context;
 
   try {
-    console.log('【步骤 1】启动浏览器...\n');
+    console.log('【步�?1】启动浏览器...\n');
 
     context = await chromium.launchPersistentContext(USER_DATA_DIR, {
       headless: false,
@@ -50,28 +49,27 @@ async function main() {
     });
 
     const page = context.pages()[0] || await context.newPage();
-    console.log('  ✅ 浏览器已启动\n');
+    console.log('  �?浏览器已启动\n');
 
-    console.log('【步骤 2】导航到私信页面...\n');
+    console.log('【步�?2】导航到私信页面...\n');
     const dmUrl = 'https://www.douyin.com/falcon/webcast_openpc/pages/im/index.html';
 
     await page.goto(dmUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-    console.log('  ✅ 页面已导航\n');
+    console.log('  �?页面已导航\n');
 
     console.log('='.repeat(80));
-    console.log('请在浏览器中完成以下操作：');
+    console.log('请在浏览器中完成以下操作�?);
     console.log('  1. 确保已经登录');
-    console.log('  2. 确保私信列表已加载');
+    console.log('  2. 确保私信列表已加�?);
     console.log('  3. 点击任意一个会话，查看消息');
     console.log('  4. 等待消息加载完成');
     console.log('='.repeat(80) + '\n');
 
     await askUser('完成上述操作后，按回车键继续...');
 
-    console.log('\n【步骤 3】开始提取数据...\n');
+    console.log('\n【步�?3】开始提取数�?..\n');
 
-    // 提取完整的页面数据
-    const extractedData = await page.evaluate(() => {
+    // 提取完整的页面数�?    const extractedData = await page.evaluate(() => {
       const results = {
         conversations: [],
         messages: [],
@@ -81,8 +79,7 @@ async function main() {
         }
       };
 
-      // 查找所有包含 React Fiber 的元素
-      const allElements = document.querySelectorAll('*');
+      // 查找所有包�?React Fiber 的元�?      const allElements = document.querySelectorAll('*');
 
       allElements.forEach((el, index) => {
         const fiberKey = Object.keys(el).find(key => key.startsWith('__reactFiber$'));
@@ -158,10 +155,10 @@ async function main() {
       return results;
     });
 
-    console.log('  ✅ 数据提取完成\n');
+    console.log('  �?数据提取完成\n');
 
     // 分析结果
-    console.log('【步骤 4】分析提取的数据...\n');
+    console.log('【步�?4】分析提取的数据...\n');
 
     console.log(`  会话总数: ${extractedData.conversations.length}`);
     console.log(`  消息总数: ${extractedData.messages.length}`);
@@ -187,7 +184,7 @@ async function main() {
                       /^\d+$/.test(conv.user_id) ? '纯数字ID' : '其他';
         console.log(`    ${idx + 1}. ${conv.nickname || '未知'}`);
         console.log(`       user_id: ${conv.user_id}`);
-        console.log(`       conversation_id: ${conv.conversation_id || '(无)'}`);
+        console.log(`       conversation_id: ${conv.conversation_id || '(�?'}`);
         console.log(`       ID格式: ${format}`);
         console.log('');
       });
@@ -216,7 +213,7 @@ async function main() {
                       !msg.conversation_id ? '(缺少)' : '其他';
         console.log(`    ${idx + 1}. ${msg.sender_name || '未知'}`);
         console.log(`       message_id: ${msg.message_id}`);
-        console.log(`       conversation_id: ${msg.conversation_id || '(无)'}`);
+        console.log(`       conversation_id: ${msg.conversation_id || '(�?'}`);
         console.log(`       ID格式: ${format}`);
         console.log(`       内容: ${msg.content}...`);
         console.log('');
@@ -225,7 +222,7 @@ async function main() {
 
     // 匹配分析
     if (extractedData.conversations.length > 0 && extractedData.messages.length > 0) {
-      console.log('【步骤 5】匹配分析...\n');
+      console.log('【步�?5】匹配分�?..\n');
 
       let matched = 0;
       let unmatched = [];
@@ -248,10 +245,10 @@ async function main() {
       console.log('');
 
       if (unmatched.length > 0) {
-        console.log('  无法匹配的消息（前5条）:\n');
+        console.log('  无法匹配的消息（�?条）:\n');
         unmatched.slice(0, 5).forEach((msg, idx) => {
           console.log(`    ${idx + 1}. conversation_id: ${msg.conversation_id}`);
-          console.log(`       发送者: ${msg.sender_name}`);
+          console.log(`       发送�? ${msg.sender_name}`);
           console.log(`       内容: ${msg.content}...`);
           console.log('');
         });
@@ -259,7 +256,7 @@ async function main() {
     }
 
     // 保存数据
-    console.log('【步骤 6】保存数据...\n');
+    console.log('【步�?6】保存数�?..\n');
 
     const fs = require('fs');
     const outputPath = path.join(__dirname, 'douyin-id-analysis.json');
@@ -275,19 +272,19 @@ async function main() {
       rawHtml: extractedData.rawHtml,
     }, null, 2));
 
-    console.log(`  ✅ 数据已保存到: ${outputPath}\n`);
+    console.log(`  �?数据已保存到: ${outputPath}\n`);
 
     console.log('='.repeat(80));
-    console.log('数据提取完成！');
+    console.log('数据提取完成�?);
     console.log('='.repeat(80) + '\n');
 
-    await askUser('按回车键关闭浏览器...');
+    await askUser('按回车键关闭浏览�?..');
 
     await context.close();
-    console.log('\n✅ 浏览器已关闭');
+    console.log('\n�?浏览器已关闭');
 
   } catch (error) {
-    console.error('\n❌ 错误:', error.message);
+    console.error('\n�?错误:', error.message);
     console.error(error.stack);
   } finally {
     rl.close();

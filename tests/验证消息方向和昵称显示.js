@@ -1,8 +1,7 @@
 /**
- * 验证消息方向和昵称显示修复
- * 测试两个修复点：
- * 1. 消息昵称从 "未知用户" 正确显示为实际用户名
- * 2. 消息方向正确区分"我发的"和"客户回的"
+ * 验证消息方向和昵称显示修�? * 测试两个修复点：
+ * 1. 消息昵称�?"未知用户" 正确显示为实际用户名
+ * 2. 消息方向正确区分"我发�?�?客户回的"
  */
 
 const io = require('socket.io-client');
@@ -11,7 +10,7 @@ const MASTER_URL = 'http://localhost:3000';
 
 async function testMessageDirectionAndNames() {
   console.log('========================================');
-  console.log('验证消息方向和昵称显示修复');
+  console.log('验证消息方向和昵称显示修�?);
   console.log('========================================\n');
 
   return new Promise((resolve, reject) => {
@@ -30,27 +29,26 @@ async function testMessageDirectionAndNames() {
     };
 
     socket.on('connect', () => {
-      console.log('✓ 已连接到 Master IM WebSocket\n');
+      console.log('�?已连接到 Master IM WebSocket\n');
 
-      // 注册监控客户端
-      socket.emit('monitor:register', {
+      // 注册监控客户�?      socket.emit('monitor:register', {
         clientId: 'test-direction-names',
         clientType: 'monitor',
       });
     });
 
     socket.on('monitor:registered', (data) => {
-      console.log(`✓ 监控客户端注册成功，频道数: ${data.channelCount}\n`);
+      console.log(`�?监控客户端注册成功，频道�? ${data.channelCount}\n`);
       socket.emit('monitor:request_channels');
     });
 
     socket.on('monitor:channels', (data) => {
       const { channels } = data;
-      console.log(`✓ 收到 ${channels.length} 个频道\n`);
+      console.log(`�?收到 ${channels.length} 个频道\n`);
 
       if (channels.length > 0) {
         const channelId = channels[0].id;
-        console.log(`正在请求频道 "${channelId}" 的主题...\n`);
+        console.log(`正在请求频道 "${channelId}" 的主�?..\n`);
         socket.emit('monitor:request_topics', { channelId });
       } else {
         console.log('⚠️  没有找到频道\n');
@@ -61,7 +59,7 @@ async function testMessageDirectionAndNames() {
 
     socket.on('monitor:topics', (data) => {
       const { topics } = data;
-      console.log(`✓ 收到 ${topics.length} 个主题\n`);
+      console.log(`�?收到 ${topics.length} 个主题\n`);
 
       if (topics.length === 0) {
         console.log('⚠️  没有找到主题\n');
@@ -76,7 +74,7 @@ async function testMessageDirectionAndNames() {
 
       if (topicsWithMessages.length > 0) {
         const topic = topicsWithMessages[0];
-        console.log(`正在请求主题 "${topic.title.substring(0, 50)}..." 的消息...`);
+        console.log(`正在请求主题 "${topic.title.substring(0, 50)}..." 的消�?..`);
         console.log(`主题 ID: ${topic.id}\n`);
         socket.emit('monitor:request_messages', { topicId: topic.id });
       } else {
@@ -90,7 +88,7 @@ async function testMessageDirectionAndNames() {
       const { messages } = data;
       testResults.totalMessages = messages.length;
 
-      console.log(`✓ 收到 ${messages.length} 条消息\n`);
+      console.log(`�?收到 ${messages.length} 条消息\n`);
 
       if (messages.length > 0) {
         console.log('消息详情分析:\n');
@@ -111,28 +109,26 @@ async function testMessageDirectionAndNames() {
             testResults.messagesWithNames++;
           }
 
-          // 统计作者回复
-          if (msg.isAuthorReply) {
+          // 统计作者回�?          if (msg.isAuthorReply) {
             testResults.authorReplyCount++;
           }
 
-          // 判断消息是"我发的"还是"客户回的"
+          // 判断消息�?我发�?还是"客户回的"
           const isMyMessage = msg.fromId === 'monitor_client' || msg.fromName === '客服';
-          const directionText = isMyMessage ? '我发的 (outgoing)' : '客户回的 (incoming)';
+          const directionText = isMyMessage ? '我发�?(outgoing)' : '客户回的 (incoming)';
 
           console.log(`[${index + 1}] ${directionText}`);
-          console.log(`    发送者: ${msg.fromName}`);
+          console.log(`    发送�? ${msg.fromName}`);
           console.log(`    发送者ID: ${msg.fromId}`);
           console.log(`    内容: ${msg.content.substring(0, 50)}${msg.content.length > 50 ? '...' : ''}`);
           console.log(`    时间: ${new Date(msg.timestamp).toLocaleString('zh-CN')}`);
-          console.log(`    direction字段: ${msg.direction || '未设置'}`);
+          console.log(`    direction字段: ${msg.direction || '未设�?}`);
 
           if (msg.isAuthorReply !== undefined) {
             console.log(`    isAuthorReply: ${msg.isAuthorReply}`);
           }
 
-          // 验证一致性
-          if (msg.direction === 'outgoing' && !isMyMessage) {
+          // 验证一致�?          if (msg.direction === 'outgoing' && !isMyMessage) {
             console.log(`    ⚠️  警告: direction是outgoing但fromId/fromName不是客服`);
           }
           if (msg.direction === 'incoming' && isMyMessage) {
@@ -153,66 +149,65 @@ async function testMessageDirectionAndNames() {
     });
 
     function printSummary() {
-      console.log('验证结果汇总');
+      console.log('验证结果汇�?);
       console.log('========================================\n');
 
-      console.log('✅ 消息统计:');
+      console.log('�?消息统计:');
       console.log(`   总消息数: ${testResults.totalMessages}`);
       console.log(`   incoming (客户回的): ${testResults.incomingMessages} (${((testResults.incomingMessages / testResults.totalMessages) * 100).toFixed(1)}%)`);
-      console.log(`   outgoing (我发的): ${testResults.outgoingMessages} (${((testResults.outgoingMessages / testResults.totalMessages) * 100).toFixed(1)}%)`);
+      console.log(`   outgoing (我发�?: ${testResults.outgoingMessages} (${((testResults.outgoingMessages / testResults.totalMessages) * 100).toFixed(1)}%)`);
 
-      console.log('\n✅ 昵称显示:');
-      console.log(`   有真实昵称: ${testResults.messagesWithNames} (${((testResults.messagesWithNames / testResults.totalMessages) * 100).toFixed(1)}%)`);
+      console.log('\n�?昵称显示:');
+      console.log(`   有真实昵�? ${testResults.messagesWithNames} (${((testResults.messagesWithNames / testResults.totalMessages) * 100).toFixed(1)}%)`);
       console.log(`   显示"未知用户": ${testResults.messagesWithUnknown} (${((testResults.messagesWithUnknown / testResults.totalMessages) * 100).toFixed(1)}%)`);
 
       if (testResults.authorReplyCount > 0) {
-        console.log('\n✅ 作者回复 (评论):');
+        console.log('\n�?作者回�?(评论):');
         console.log(`   作者回复数: ${testResults.authorReplyCount}`);
       }
 
-      console.log('\n✅ 修复验证:');
+      console.log('\n�?修复验证:');
 
       // 验证1: 昵称显示修复
       if (testResults.messagesWithUnknown === 0 && testResults.messagesWithNames > 0) {
-        console.log(`   ✅ 昵称显示修复成功 - 0 个消息显示"未知用户"`);
+        console.log(`   �?昵称显示修复成功 - 0 个消息显�?未知用户"`);
       } else if (testResults.messagesWithUnknown > 0) {
-        console.log(`   ⚠️  昵称显示部分修复 - 还有 ${testResults.messagesWithUnknown} 个消息显示"未知用户"`);
+        console.log(`   ⚠️  昵称显示部分修复 - 还有 ${testResults.messagesWithUnknown} 个消息显�?未知用户"`);
       } else {
-        console.log(`   ❓ 无法验证昵称显示 - 没有消息数据`);
+        console.log(`   �?无法验证昵称显示 - 没有消息数据`);
       }
 
       // 验证2: 消息方向修复
       if (testResults.incomingMessages > 0 || testResults.outgoingMessages > 0) {
-        console.log(`   ✅ 消息方向修复成功 - 可以区分incoming和outgoing`);
+        console.log(`   �?消息方向修复成功 - 可以区分incoming和outgoing`);
       } else {
-        console.log(`   ❓ 无法验证消息方向 - 没有设置direction字段`);
+        console.log(`   �?无法验证消息方向 - 没有设置direction字段`);
       }
 
-      // 验证3: 客户端识别修复
-      const hasMonitorClient = testResults.outgoingMessages > 0;
+      // 验证3: 客户端识别修�?      const hasMonitorClient = testResults.outgoingMessages > 0;
       if (hasMonitorClient) {
-        console.log(`   ✅ 客户端识别修复成功 - outgoing消息的fromId/fromName正确设置为monitor_client/客服`);
+        console.log(`   �?客户端识别修复成�?- outgoing消息的fromId/fromName正确设置为monitor_client/客服`);
       } else {
-        console.log(`   ❓ 无法验证客户端识别 - 没有outgoing消息`);
+        console.log(`   �?无法验证客户端识�?- 没有outgoing消息`);
       }
 
       console.log('\n========================================');
-      console.log('验证完成！');
+      console.log('验证完成�?);
       console.log('========================================\n');
     }
 
     socket.on('disconnect', () => {
-      console.log('✓ 已断开连接\n');
+      console.log('�?已断开连接\n');
     });
 
     socket.on('error', (error) => {
-      console.error('❌ Socket 连接错误:', error);
+      console.error('�?Socket 连接错误:', error);
       reject(error);
     });
 
     // 超时处理
     setTimeout(() => {
-      console.log('\n⚠️  测试超时（20秒）\n');
+      console.log('\n⚠️  测试超时�?0秒）\n');
       socket.disconnect();
       reject(new Error('Test timeout'));
     }, 20000);
@@ -225,6 +220,6 @@ testMessageDirectionAndNames()
     process.exit(0);
   })
   .catch((error) => {
-    console.error('❌ 测试失败:', error.message);
+    console.error('�?测试失败:', error.message);
     process.exit(1);
   });

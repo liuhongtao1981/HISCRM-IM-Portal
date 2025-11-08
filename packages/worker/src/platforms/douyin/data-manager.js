@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 抖音平台数据管理器
  * 实现抖音特定的数据映射逻辑
  */
@@ -9,15 +9,9 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 
 class DouyinDataManager extends AccountDataManager {
   constructor(accountId, dataPusher) {
-    console.log('[DouyinDataManager] 🏗️ 构造函数被调用');
-    console.log('[DouyinDataManager] accountId:', accountId);
-    console.log('[DouyinDataManager] dataPusher 存在:', !!dataPusher);
-    console.log('[DouyinDataManager] dataPusher 类型:', dataPusher ? dataPusher.constructor.name : 'null');
 
     super(accountId, 'douyin', dataPusher);
     this.logger = createLogger(`douyin-data:${accountId}`);
-
-    console.log('[DouyinDataManager] ✅ 构造函数完成');
   }
 
   // ==================== 会话数据映射 ====================
@@ -168,7 +162,6 @@ class DouyinDataManager extends AccountDataManager {
     }
 
     // 🔍 强制输出日志用于调试
-    console.log(`[DEBUG mapContentData] awemeId=${awemeId}, secItemId=${secItemId?.substring(0, 30)}..., share_url=${douyinData.share_url || 'N/A'}`);
     this.logger.info(`[mapContentData] 最终 awemeId=${awemeId}, secItemId=${secItemId?.substring(0, 30)}...`);
 
     // 如果还是没有，尝试从生成的 URL 提取（使用 item_id 作为 aweme_id）

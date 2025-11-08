@@ -1,11 +1,11 @@
 /**
- * 检查 IM 客户端收到的 WebSocket 数据
+ * 检�?IM 客户端收到的 WebSocket 数据
  */
 const io = require('socket.io-client');
 
 const MASTER_URL = 'http://localhost:3000';
 
-console.log('=== 连接到 Master IM WebSocket (/client) ===\n');
+console.log('=== 连接�?Master IM WebSocket (/client) ===\n');
 
 const socket = io(`${MASTER_URL}/client`, {
   transports: ['websocket'],
@@ -13,15 +13,14 @@ const socket = io(`${MASTER_URL}/client`, {
 });
 
 socket.on('connect', () => {
-  console.log('✅ 已连接到 Master /client\n');
-  console.log('发送 client:sync 请求...\n');
+  console.log('�?已连接到 Master /client\n');
+  console.log('发�?client:sync 请求...\n');
 
   // 请求同步数据
   socket.emit('client:sync', {});
 });
 
-// 监听所有事件
-socket.onAny((eventName, ...args) => {
+// 监听所有事�?socket.onAny((eventName, ...args) => {
   console.log(`📨 收到事件: ${eventName}`);
 
   if (eventName === 'monitor:channels') {
@@ -37,18 +36,18 @@ socket.onAny((eventName, ...args) => {
       console.log(`  avatar: ${channel.avatar?.substring(0, 50) || 'null'}`);
       console.log(`  platform: ${channel.platform || 'null'}`);
       console.log(`  userInfo 类型: ${typeof channel.userInfo}`);
-      console.log(`  userInfo 值: ${channel.userInfo || 'null'}`);
+      console.log(`  userInfo �? ${channel.userInfo || 'null'}`);
 
       if (channel.userInfo) {
         console.log(`  userInfo 长度: ${channel.userInfo.length}`);
         try {
           const parsed = JSON.parse(channel.userInfo);
-          console.log(`  ✅ 解析成功:`);
+          console.log(`  �?解析成功:`);
           console.log(`     - nickname: ${parsed.nickname || 'null'}`);
           console.log(`     - douyin_id: ${parsed.douyin_id || 'null'}`);
           console.log(`     - avatar: ${parsed.avatar?.substring(0, 50) || 'null'}`);
         } catch (e) {
-          console.log(`  ❌ JSON 解析失败: ${e.message}`);
+          console.log(`  �?JSON 解析失败: ${e.message}`);
         }
       }
       console.log('');
@@ -59,7 +58,7 @@ socket.onAny((eventName, ...args) => {
 });
 
 socket.on('connect_error', (error) => {
-  console.error('❌ 连接失败:', error.message);
+  console.error('�?连接失败:', error.message);
   process.exit(1);
 });
 

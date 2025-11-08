@@ -1,6 +1,6 @@
 /**
  * 简化版：假设浏览器已经打开并且在私信详情页
- * 直接连接并提取数据
+ * 直接连接并提取数�?
  */
 
 const { chromium } = require('playwright');
@@ -16,7 +16,7 @@ async function manualCheckMessageProperties() {
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ?').get('douyin');
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     return;
   }
@@ -37,7 +37,7 @@ async function manualCheckMessageProperties() {
     process.stdin.once('data', resolve);
   });
 
-  console.log('\n🌐 启动浏览器...');
+  console.log('\n🌐 启动浏览�?..');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     viewport: { width: 1280, height: 720 },
@@ -49,28 +49,28 @@ async function manualCheckMessageProperties() {
   try {
     console.log(`📍 当前 URL: ${page.url()}\n`);
 
-    console.log('⏳ 请手动完成以下操作（60秒内）：');
-    console.log('  1. 导航到抖音私信页面');
-    console.log('  2. 点击任意一个有消息的会话');
+    console.log('�?请手动完成以下操作（60秒内）：');
+    console.log('  1. 导航到抖音私信页�?);
+    console.log('  2. 点击任意一个有消息的会�?);
     console.log('  3. 等待消息列表加载完成\n');
 
     // 等待60秒让用户操作
     for (let i = 60; i > 0; i--) {
-      process.stdout.write(`\r倒计时: ${i} 秒 (按 Ctrl+C 提前开始提取)`);
+      process.stdout.write(`\r倒计�? ${i} �?(�?Ctrl+C 提前开始提�?`);
       await page.waitForTimeout(1000);
     }
 
     console.log('\n\n' + '='.repeat(60));
-    console.log('📋 开始提取消息元素的所有属性');
+    console.log('📋 开始提取消息元素的所有属�?);
     console.log('='.repeat(60) + '\n');
 
-    console.log(`📍 最终 URL: ${page.url()}\n`);
+    console.log(`📍 最�?URL: ${page.url()}\n`);
 
-    // 提取消息属性
+    // 提取消息属�?
     const result = await page.evaluate(() => {
-      console.log('=== 浏览器环境开始执行 ===\n');
+      console.log('=== 浏览器环境开始执�?===\n');
 
-      // 测试选择器
+      // 测试选择�?
       const selectors = [
         '[class*="message"]',
         '[class*="item"]',
@@ -82,11 +82,11 @@ async function manualCheckMessageProperties() {
         count: document.querySelectorAll(sel).length
       }));
 
-      console.log('选择器匹配统计:');
+      console.log('选择器匹配统�?');
       matchCounts.forEach(m => console.log(`  ${m.selector}: ${m.count} 个`));
 
       const allElements = document.querySelectorAll('[class*="message"], [class*="item"], [role*="article"]');
-      console.log(`\n使用组合选择器找到: ${allElements.length} 个元素\n`);
+      console.log(`\n使用组合选择器找�? ${allElements.length} 个元素\n`);
 
       const messages = [];
       let analyzed = 0;
@@ -116,7 +116,7 @@ async function manualCheckMessageProperties() {
 
               if (analyzed <= 5) {
                 console.log(`\n消息 ${analyzed} (元素 ${index}, 深度 ${depth}):`);
-                console.log('  Props 键:', Object.keys(props).join(', '));
+                console.log('  Props �?', Object.keys(props).join(', '));
               }
 
               const messageData = {
@@ -170,7 +170,7 @@ async function manualCheckMessageProperties() {
         }
       });
 
-      console.log(`\n分析完成: ${allElements.length} 个元素, ${analyzed} 条消息\n`);
+      console.log(`\n分析完成: ${allElements.length} 个元�? ${analyzed} 条消息\n`);
 
       return {
         url: window.location.href,
@@ -182,23 +182,23 @@ async function manualCheckMessageProperties() {
 
     console.log(`URL: ${result.url}`);
     console.log(`总元素数: ${result.totalElements}`);
-    console.log(`有效消息数: ${result.analyzedMessages}\n`);
+    console.log(`有效消息�? ${result.analyzedMessages}\n`);
 
     if (result.messages.length === 0) {
-      console.log('❌ 未提取到任何消息数据\n');
-      console.log('可能原因：');
-      console.log('  1. 页面还没有完全加载');
+      console.log('�?未提取到任何消息数据\n');
+      console.log('可能原因�?);
+      console.log('  1. 页面还没有完全加�?);
       console.log('  2. 没有点击会话显示消息列表');
       console.log('  3. 选择器不匹配');
       console.log('  4. React Fiber 结构发生变化\n');
 
       await page.screenshot({ path: 'tests/debug-manual-check.png' });
-      console.log('📸 已保存截图: tests/debug-manual-check.png');
+      console.log('📸 已保存截�? tests/debug-manual-check.png');
 
     } else {
-      console.log('✅ 成功提取消息数据\n');
+      console.log('�?成功提取消息数据\n');
 
-      // 详细输出前 5 条
+      // 详细输出�?5 �?
       result.messages.slice(0, 5).forEach((msg, i) => {
         console.log(`\n${'='.repeat(60)}`);
         console.log(`📝 消息 ${i + 1}`);
@@ -218,7 +218,7 @@ async function manualCheckMessageProperties() {
         if (msg.toUser) console.log(`  toUser:`, JSON.stringify(msg.toUser, null, 2));
         if (msg.userInfo) console.log(`  userInfo:`, JSON.stringify(msg.userInfo, null, 2));
         if (!msg.user && !msg.sender && !msg.senderInfo && !msg.fromUser && !msg.toUser && !msg.userInfo) {
-          console.log(`  ❌ 无用户信息`);
+          console.log(`  �?无用户信息`);
         }
 
         console.log(`\n【头像】`);
@@ -236,7 +236,7 @@ async function manualCheckMessageProperties() {
         console.log(`  displayName: ${msg.displayName}`);
         console.log(`  nickName: ${msg.nickName}`);
 
-        console.log(`\n【所有属性键】 (${msg.allPropsKeys.length} 个)`);
+        console.log(`\n【所有属性键�?(${msg.allPropsKeys.length} �?`);
         console.log(`  ${msg.allPropsKeys.join(', ')}`);
       });
 
@@ -255,9 +255,9 @@ async function manualCheckMessageProperties() {
         m.nickname || m.senderNickname || m.userName || m.name || m.displayName || m.nickName
       ).length;
 
-      console.log(`包含用户信息的消息: ${hasUser}/${result.messages.length} ${hasUser > 0 ? '✅' : '❌'}`);
-      console.log(`包含头像的消息: ${hasAvatar}/${result.messages.length} ${hasAvatar > 0 ? '✅' : '❌'}`);
-      console.log(`包含昵称的消息: ${hasNickname}/${result.messages.length} ${hasNickname > 0 ? '✅' : '❌'}`);
+      console.log(`包含用户信息的消�? ${hasUser}/${result.messages.length} ${hasUser > 0 ? '�? : '�?}`);
+      console.log(`包含头像的消�? ${hasAvatar}/${result.messages.length} ${hasAvatar > 0 ? '�? : '�?}`);
+      console.log(`包含昵称的消�? ${hasNickname}/${result.messages.length} ${hasNickname > 0 ? '�? : '�?}`);
 
       // 保存结果
       const outputPath = path.join(__dirname, 'message-properties-result.json');
@@ -266,13 +266,13 @@ async function manualCheckMessageProperties() {
     }
 
   } catch (error) {
-    console.error('\n❌ 错误:', error.message);
+    console.error('\n�?错误:', error.message);
     console.error(error.stack);
   } finally {
-    console.log('\n\n⏳ 保持浏览器打开 15 秒，请查看结果...');
+    console.log('\n\n�?保持浏览器打开 15 秒，请查看结�?..');
     await page.waitForTimeout(15000);
 
-    console.log('🔒 关闭浏览器...');
+    console.log('🔒 关闭浏览�?..');
     await context.close();
     db.close();
   }

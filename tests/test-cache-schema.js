@@ -23,9 +23,9 @@ try {
   console.log(`📋 Found ${tables.length} cache tables:\n`);
 
   for (const table of tables) {
-    console.log(`\n✅ ${table.name}`);
+    console.log(`\n�?${table.name}`);
 
-    // 获取表信息
+    // 获取表信�?
     const columns = db.prepare(`PRAGMA table_info(${table.name})`).all();
     console.log(`   Columns (${columns.length}):`);
     columns.forEach(col => {
@@ -48,10 +48,10 @@ try {
   }
 
   console.log('\n' + '='.repeat(80));
-  console.log('✅ Cache schema test passed!\n');
+  console.log('�?Cache schema test passed!\n');
 
 } catch (error) {
-  console.error('\n❌ Test failed:', error);
+  console.error('\n�?Test failed:', error);
   process.exit(1);
 } finally {
   db.close();

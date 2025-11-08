@@ -25,8 +25,7 @@ async function analyze() {
 
     console.log('连接到已打开的浏览器页面...\n');
 
-    // 直接分析当前页面的虚拟列表
-    const analysis = await page.evaluate(() => {
+    // 直接分析当前页面的虚拟列�?    const analysis = await page.evaluate(() => {
       const grid = document.querySelector('.ReactVirtualized__Grid');
       if (!grid) return { error: '没有找到虚拟列表' };
 
@@ -88,8 +87,7 @@ async function analyze() {
               }
             }
 
-            // 递归子节点
-            if (f.child) {
+            // 递归子节�?            if (f.child) {
               const result = searchDeep(f.child, depth + 1, maxDepth);
               if (result) return result;
             }
@@ -119,26 +117,26 @@ async function analyze() {
     });
 
     if (analysis.error) {
-      console.log(`❌ ${analysis.error}`);
+      console.log(`�?${analysis.error}`);
       await context.close();
       return;
     }
 
-    console.log(`📊 innerScrollContainer 有 ${analysis.totalChildren} 个子元素\n`);
+    console.log(`📊 innerScrollContainer �?${analysis.totalChildren} 个子元素\n`);
     console.log('='.repeat(80));
-    console.log('前 15 个子元素详细分析:');
+    console.log('�?15 个子元素详细分析:');
     console.log('='.repeat(80) + '\n');
 
     let messageCount = 0;
 
     analysis.samples.forEach(sample => {
-      console.log(`【元素 #${sample.index}】`);
+      console.log(`【元�?#${sample.index}】`);
       console.log(`  标签: ${sample.tagName}`);
-      console.log(`  类名: ${sample.className || '(无)'}`);
+      console.log(`  类名: ${sample.className || '(�?'}`);
       console.log(`  定位: position=${sample.style.position}, top=${sample.style.top}, left=${sample.style.left}`);
       console.log(`  尺寸: ${sample.style.width} × ${sample.style.height}`);
-      console.log(`  文本: ${sample.textPreview || '(无)'}`);
-      console.log(`  React Fiber: ${sample.hasFiber ? '✅' : '❌'}`);
+      console.log(`  文本: ${sample.textPreview || '(�?'}`);
+      console.log(`  React Fiber: ${sample.hasFiber ? '�? : '�?}`);
 
       if (sample.fiberInfo) {
         console.log(`  Props数量: ${sample.fiberInfo.propsKeys.length}`);
@@ -149,14 +147,14 @@ async function analyze() {
         );
 
         if (msgKeys.length > 0) {
-          console.log(`  🔍 消息相关键: ${msgKeys.join(', ')}`);
+          console.log(`  🔍 消息相关�? ${msgKeys.join(', ')}`);
         }
       }
 
       if (sample.messageData) {
         messageCount++;
-        console.log(`  ✅ 找到消息数据！（深度: ${sample.messageData.depth}）`);
-        console.log(`  所有Props (${sample.messageData.allPropsKeys.length}个): ${sample.messageData.allPropsKeys.join(', ')}`);
+        console.log(`  �?找到消息数据！（深度: ${sample.messageData.depth}）`);
+        console.log(`  所有Props (${sample.messageData.allPropsKeys.length}�?: ${sample.messageData.allPropsKeys.join(', ')}`);
         console.log(`  消息字段:`);
         Object.entries(sample.messageData.messageFields).forEach(([key, value]) => {
           console.log(`    ${key}: ${value}`);
@@ -167,17 +165,17 @@ async function analyze() {
     });
 
     console.log('='.repeat(80));
-    console.log(`总结: 在 ${analysis.samples.length} 个元素中找到 ${messageCount} 个包含消息数据的元素`);
+    console.log(`总结: �?${analysis.samples.length} 个元素中找到 ${messageCount} 个包含消息数据的元素`);
     console.log('='.repeat(80));
 
-    console.log('\n浏览器将保持打开 60 秒...\n');
+    console.log('\n浏览器将保持打开 60 �?..\n');
     await page.waitForTimeout(60000);
 
     await context.close();
-    console.log('✅ 完成');
+    console.log('�?完成');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
   }
 }

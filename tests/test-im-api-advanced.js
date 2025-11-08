@@ -1,6 +1,6 @@
 /**
  * IM HTTP API 高级验证测试
- * 包含性能测试、并发测试、边界测试
+ * 包含性能测试、并发测试、边界测�?
  */
 
 const axios = require('axios');
@@ -16,7 +16,7 @@ const COLORS = {
   cyan: '\x1b[36m',
 };
 
-// 测试计数器
+// 测试计数�?
 let totalTests = 0;
 let passedTests = 0;
 let failedTests = 0;
@@ -38,7 +38,7 @@ function assert(condition, message) {
     return true;
   } else {
     failedTests++;
-    log(`   ❌ ${message}`, 'red');
+    log(`   �?${message}`, 'red');
     return false;
   }
 }
@@ -53,18 +53,18 @@ async function test(name, fn) {
     // 记录响应时间
     performanceMetrics.responseTimes.push({ name, duration });
 
-    // 标记慢查询（>500ms）
+    // 标记慢查询（>500ms�?
     if (duration > 500) {
       performanceMetrics.slowQueries.push({ name, duration });
-      log(`   ⚠️  慢查询: ${duration.toFixed(2)}ms`, 'yellow');
+      log(`   ⚠️  慢查�? ${duration.toFixed(2)}ms`, 'yellow');
     } else {
       log(`   ⏱️  响应时间: ${duration.toFixed(2)}ms`, 'blue');
     }
 
-    log(`✅ ${name}`, 'green');
+    log(`�?${name}`, 'green');
   } catch (error) {
     failedTests++;
-    log(`❌ ${name}`, 'red');
+    log(`�?${name}`, 'red');
     log(`   错误: ${error.message}`, 'red');
     if (error.response) {
       log(`   响应: ${JSON.stringify(error.response.data)}`, 'red');
@@ -74,7 +74,7 @@ async function test(name, fn) {
 
 async function main() {
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
-  log('开始 IM HTTP API 高级验证测试...', 'cyan');
+  log('开�?IM HTTP API 高级验证测试...', 'cyan');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
   // ============================================
@@ -100,12 +100,12 @@ async function main() {
 
     testMessageId = msgResponse.data.data.messages[0]?.msg_id;
 
-    assert(testAccountId, '账户ID应存在');
-    assert(testConversationId, '会话ID应存在');
-    assert(testMessageId, '消息ID应存在');
+    assert(testAccountId, '账户ID应存�?);
+    assert(testConversationId, '会话ID应存�?);
+    assert(testMessageId, '消息ID应存�?);
   });
 
-  await test('性能: 获取会话列表 (100ms内)', async () => {
+  await test('性能: 获取会话列表 (100ms�?', async () => {
     const start = performance.now();
     const response = await axios.get(`${API_BASE}/conversations`, {
       params: { account_id: testAccountId, count: 20 }
@@ -113,10 +113,10 @@ async function main() {
     const duration = performance.now() - start;
 
     assert(response.status === 200, '状态码应为 200');
-    assert(duration < 100, `响应时间应 < 100ms (实际: ${duration.toFixed(2)}ms)`);
+    assert(duration < 100, `响应时间�?< 100ms (实际: ${duration.toFixed(2)}ms)`);
   });
 
-  await test('性能: 获取消息列表 (100ms内)', async () => {
+  await test('性能: 获取消息列表 (100ms�?', async () => {
     const start = performance.now();
     const response = await axios.get(`${API_BASE}/messages`, {
       params: { conversation_id: testConversationId, count: 50 }
@@ -124,25 +124,25 @@ async function main() {
     const duration = performance.now() - start;
 
     assert(response.status === 200, '状态码应为 200');
-    assert(duration < 100, `响应时间应 < 100ms (实际: ${duration.toFixed(2)}ms)`);
+    assert(duration < 100, `响应时间�?< 100ms (实际: ${duration.toFixed(2)}ms)`);
   });
 
-  await test('性能: 获取单条消息 (50ms内)', async () => {
+  await test('性能: 获取单条消息 (50ms�?', async () => {
     const start = performance.now();
     const response = await axios.get(`${API_BASE}/messages/${testMessageId}`);
     const duration = performance.now() - start;
 
     assert(response.status === 200, '状态码应为 200');
-    assert(duration < 50, `响应时间应 < 50ms (实际: ${duration.toFixed(2)}ms)`);
+    assert(duration < 50, `响应时间�?< 50ms (实际: ${duration.toFixed(2)}ms)`);
   });
 
   // ============================================
   // 2. 并发测试
   // ============================================
-  log('\n⚡ 测试 2: 并发请求处理', 'yellow');
+  log('\n�?测试 2: 并发请求处理', 'yellow');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
-  await test('并发: 10个同时获取会话请求', async () => {
+  await test('并发: 10个同时获取会话请�?, async () => {
     const requests = Array(10).fill(null).map(() =>
       axios.get(`${API_BASE}/conversations`, {
         params: { account_id: testAccountId, count: 10 }
@@ -153,9 +153,9 @@ async function main() {
     const responses = await Promise.all(requests);
     const duration = performance.now() - start;
 
-    assert(responses.length === 10, '应返回10个响应');
+    assert(responses.length === 10, '应返�?0个响�?);
     assert(responses.every(r => r.status === 200), '所有请求应成功');
-    assert(duration < 500, `并发响应时间应 < 500ms (实际: ${duration.toFixed(2)}ms)`);
+    assert(duration < 500, `并发响应时间�?< 500ms (实际: ${duration.toFixed(2)}ms)`);
 
     log(`   📈 平均响应时间: ${(duration / 10).toFixed(2)}ms`, 'blue');
   });
@@ -173,9 +173,9 @@ async function main() {
     const responses = await Promise.all(requests);
     const duration = performance.now() - start;
 
-    assert(responses.length === 5, '应返回5个响应');
+    assert(responses.length === 5, '应返�?个响�?);
     assert(responses.every(r => r.status === 200), '所有请求应成功');
-    log(`   📈 总响应时间: ${duration.toFixed(2)}ms`, 'blue');
+    log(`   📈 总响应时�? ${duration.toFixed(2)}ms`, 'blue');
   });
 
   // ============================================
@@ -187,9 +187,9 @@ async function main() {
   await test('边界: 不存在的会话ID (404)', async () => {
     try {
       await axios.get(`${API_BASE}/conversations/non-existent-conversation-id`);
-      assert(false, '应返回404错误');
+      assert(false, '应返�?04错误');
     } catch (error) {
-      assert(error.response.status === 404, '应返回404');
+      assert(error.response.status === 404, '应返�?04');
       assert(error.response.data.status_code === 404, 'status_code应为404');
     }
   });
@@ -197,9 +197,9 @@ async function main() {
   await test('边界: 不存在的消息ID (404)', async () => {
     try {
       await axios.get(`${API_BASE}/messages/non-existent-message-id`);
-      assert(false, '应返回404错误');
+      assert(false, '应返�?04错误');
     } catch (error) {
-      assert(error.response.status === 404, '应返回404');
+      assert(error.response.status === 404, '应返�?04');
       assert(error.response.data.status_code === 404, 'status_code应为404');
     }
   });
@@ -207,23 +207,23 @@ async function main() {
   await test('边界: 缺少必需参数 account_id (400)', async () => {
     try {
       await axios.get(`${API_BASE}/conversations`);
-      assert(false, '应返回400错误');
+      assert(false, '应返�?00错误');
     } catch (error) {
-      assert(error.response.status === 400, '应返回400');
+      assert(error.response.status === 400, '应返�?00');
       assert(error.response.data.status_code === 400, 'status_code应为400');
     }
   });
 
-  await test('边界: 无效的消息状态 (400)', async () => {
+  await test('边界: 无效的消息状�?(400)', async () => {
     try {
       await axios.put(`${API_BASE}/messages/${testMessageId}/status`, {
         status: 'invalid-status'
       });
-      // 注意：这个测试可能通过，因为API可能不验证状态值
-      // 如果通过了，说明需要加强验证
+      // 注意：这个测试可能通过，因为API可能不验证状态�?
+      // 如果通过了，说明需要加强验�?
     } catch (error) {
       if (error.response && error.response.status === 400) {
-        assert(true, '正确拒绝无效状态');
+        assert(true, '正确拒绝无效状�?);
       }
     }
   });
@@ -235,7 +235,7 @@ async function main() {
 
     assert(response.status === 200, '状态码应为 200');
     assert(Array.isArray(response.data.data.conversations), 'conversations应为数组');
-    // API应该限制最大返回数量或处理大参数
+    // API应该限制最大返回数量或处理大参�?
   });
 
   await test('边界: cursor=999999 (超出范围)', async () => {
@@ -248,32 +248,32 @@ async function main() {
   });
 
   // ============================================
-  // 4. 数据完整性测试
+  // 4. 数据完整性测�?
   // ============================================
-  log('\n🔐 测试 4: 数据完整性验证', 'yellow');
+  log('\n🔐 测试 4: 数据完整性验�?, 'yellow');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
-  await test('完整性: 置顶后立即查询验证', async () => {
-    // 先置顶
+  await test('完整�? 置顶后立即查询验�?, async () => {
+    // 先置�?
     await axios.put(`${API_BASE}/conversations/${testConversationId}/pin`);
 
     // 立即查询
     const response = await axios.get(`${API_BASE}/conversations/${testConversationId}`);
 
-    assert(response.data.data.is_pinned === true, '应立即反映置顶状态');
+    assert(response.data.data.is_pinned === true, '应立即反映置顶状�?);
   });
 
-  await test('完整性: 取消置顶后立即查询验证', async () => {
+  await test('完整�? 取消置顶后立即查询验�?, async () => {
     // 取消置顶
     await axios.delete(`${API_BASE}/conversations/${testConversationId}/pin`);
 
     // 立即查询
     const response = await axios.get(`${API_BASE}/conversations/${testConversationId}`);
 
-    assert(response.data.data.is_pinned === false, '应立即反映取消置顶状态');
+    assert(response.data.data.is_pinned === false, '应立即反映取消置顶状�?);
   });
 
-  await test('完整性: 消息状态更新验证', async () => {
+  await test('完整�? 消息状态更新验�?, async () => {
     // 更新状态为 delivered
     await axios.put(`${API_BASE}/messages/${testMessageId}/status`, {
       status: 'delivered'
@@ -282,25 +282,25 @@ async function main() {
     // 立即查询
     const response = await axios.get(`${API_BASE}/messages/${testMessageId}`);
 
-    assert(response.data.data.status === 'delivered', '状态应立即更新为 delivered');
+    assert(response.data.data.status === 'delivered', '状态应立即更新�?delivered');
   });
 
-  await test('完整性: 撤回消息后字段验证', async () => {
+  await test('完整�? 撤回消息后字段验�?, async () => {
     // 撤回消息
     const recallResponse = await axios.put(`${API_BASE}/messages/${testMessageId}/recall`);
 
     assert(recallResponse.data.data.is_recalled === true, 'is_recalled应为true');
-    assert(recallResponse.data.data.recalled_at !== null, 'recalled_at应有值');
-    assert(typeof recallResponse.data.data.recalled_at === 'number', 'recalled_at应为时间戳');
+    assert(recallResponse.data.data.recalled_at !== null, 'recalled_at应有�?);
+    assert(typeof recallResponse.data.data.recalled_at === 'number', 'recalled_at应为时间�?);
   });
 
   // ============================================
-  // 5. 响应格式一致性测试
+  // 5. 响应格式一致性测�?
   // ============================================
-  log('\n📋 测试 5: 响应格式一致性', 'yellow');
+  log('\n📋 测试 5: 响应格式一致�?, 'yellow');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
-  await test('格式: 成功响应的一致性', async () => {
+  await test('格式: 成功响应的一致�?, async () => {
     const responses = await Promise.all([
       axios.get(`${API_BASE}/conversations`, { params: { account_id: testAccountId } }),
       axios.get(`${API_BASE}/conversations/${testConversationId}`),
@@ -308,7 +308,7 @@ async function main() {
       axios.get(`${API_BASE}/messages/${testMessageId}`),
     ]);
 
-    // 所有成功响应都应有 data 和 status_code 字段
+    // 所有成功响应都应有 data �?status_code 字段
     responses.forEach((response, index) => {
       assert(response.data.hasOwnProperty('data'), `响应${index + 1}应有data字段`);
       assert(response.data.hasOwnProperty('status_code'), `响应${index + 1}应有status_code字段`);
@@ -316,7 +316,7 @@ async function main() {
     });
   });
 
-  await test('格式: 错误响应的一致性', async () => {
+  await test('格式: 错误响应的一致�?, async () => {
     try {
       await axios.get(`${API_BASE}/conversations/invalid-id`);
     } catch (error) {
@@ -329,13 +329,13 @@ async function main() {
   });
 
   // ============================================
-  // 6. 幂等性测试
+  // 6. 幂等性测�?
   // ============================================
-  log('\n🔄 测试 6: 操作幂等性', 'yellow');
+  log('\n🔄 测试 6: 操作幂等�?, 'yellow');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
-  await test('幂等性: 多次置顶同一会话', async () => {
-    // 连续置顶3次
+  await test('幂等�? 多次置顶同一会话', async () => {
+    // 连续置顶3�?
     const responses = await Promise.all([
       axios.put(`${API_BASE}/conversations/${testConversationId}/pin`),
       axios.put(`${API_BASE}/conversations/${testConversationId}/pin`),
@@ -343,11 +343,11 @@ async function main() {
     ]);
 
     assert(responses.every(r => r.status === 200), '所有请求应成功');
-    assert(responses.every(r => r.data.data.is_pinned === true), '所有响应应显示已置顶');
+    assert(responses.every(r => r.data.data.is_pinned === true), '所有响应应显示已置�?);
   });
 
-  await test('幂等性: 多次撤回同一消息', async () => {
-    // 连续撤回3次
+  await test('幂等�? 多次撤回同一消息', async () => {
+    // 连续撤回3�?
     const responses = await Promise.all([
       axios.put(`${API_BASE}/messages/${testMessageId}/recall`),
       axios.put(`${API_BASE}/messages/${testMessageId}/recall`),
@@ -355,21 +355,21 @@ async function main() {
     ]);
 
     assert(responses.every(r => r.status === 200), '所有请求应成功');
-    assert(responses.every(r => r.data.data.is_recalled === true), '所有响应应显示已撤回');
+    assert(responses.every(r => r.data.data.is_recalled === true), '所有响应应显示已撤�?);
   });
 
   // ============================================
   // 测试报告
   // ============================================
   log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
-  log('📊 高级验证测试完成！', 'cyan');
+  log('📊 高级验证测试完成�?, 'cyan');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
   const successRate = ((passedTests / totalTests) * 100).toFixed(1);
 
-  log(`\n✅ 通过: ${passedTests} 个`, 'green');
-  log(`❌ 失败: ${failedTests} 个`, failedTests > 0 ? 'red' : 'green');
-  log(`📈 成功率: ${successRate}%`, successRate === '100.0' ? 'green' : 'yellow');
+  log(`\n�?通过: ${passedTests} 个`, 'green');
+  log(`�?失败: ${failedTests} 个`, failedTests > 0 ? 'red' : 'green');
+  log(`📈 成功�? ${successRate}%`, successRate === '100.0' ? 'green' : 'yellow');
 
   // 性能统计
   log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
@@ -381,35 +381,35 @@ async function main() {
   const minResponseTime = Math.min(...performanceMetrics.responseTimes.map(item => item.duration));
 
   log(`平均响应时间: ${avgResponseTime.toFixed(2)}ms`, 'blue');
-  log(`最快响应: ${minResponseTime.toFixed(2)}ms`, 'green');
-  log(`最慢响应: ${maxResponseTime.toFixed(2)}ms`, maxResponseTime > 500 ? 'red' : 'yellow');
+  log(`最快响�? ${minResponseTime.toFixed(2)}ms`, 'green');
+  log(`最慢响�? ${maxResponseTime.toFixed(2)}ms`, maxResponseTime > 500 ? 'red' : 'yellow');
 
   if (performanceMetrics.slowQueries.length > 0) {
-    log(`\n⚠️  慢查询 (>500ms): ${performanceMetrics.slowQueries.length} 个`, 'yellow');
+    log(`\n⚠️  慢查�?(>500ms): ${performanceMetrics.slowQueries.length} 个`, 'yellow');
     performanceMetrics.slowQueries.forEach(query => {
       log(`   - ${query.name}: ${query.duration.toFixed(2)}ms`, 'yellow');
     });
   } else {
-    log(`\n✅ 无慢查询`, 'green');
+    log(`\n�?无慢查询`, 'green');
   }
 
-  // 最终评估
+  // 最终评�?
   log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
-  log('🎯 最终评估', 'yellow');
+  log('🎯 最终评�?, 'yellow');
   log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'cyan');
 
-  const performance_score = avgResponseTime < 100 ? '⭐⭐⭐⭐⭐' : avgResponseTime < 200 ? '⭐⭐⭐⭐' : '⭐⭐⭐';
-  const reliability_score = successRate === '100.0' ? '⭐⭐⭐⭐⭐' : successRate >= '95.0' ? '⭐⭐⭐⭐' : '⭐⭐⭐';
+  const performance_score = avgResponseTime < 100 ? '⭐⭐⭐⭐�? : avgResponseTime < 200 ? '⭐⭐⭐⭐' : '⭐⭐�?;
+  const reliability_score = successRate === '100.0' ? '⭐⭐⭐⭐�? : successRate >= '95.0' ? '⭐⭐⭐⭐' : '⭐⭐�?;
 
   log(`性能评分: ${performance_score} (平均 ${avgResponseTime.toFixed(2)}ms)`, 'blue');
-  log(`可靠性评分: ${reliability_score} (${successRate}% 通过率)`, 'blue');
+  log(`可靠性评�? ${reliability_score} (${successRate}% 通过�?`, 'blue');
 
   if (successRate === '100.0' && avgResponseTime < 100 && performanceMetrics.slowQueries.length === 0) {
-    log('\n🎉 系统状态: 优秀！已准备好投入生产使用', 'green');
+    log('\n🎉 系统状�? 优秀！已准备好投入生产使�?, 'green');
   } else if (successRate >= '95.0' && avgResponseTime < 200) {
-    log('\n✅ 系统状态: 良好，可以投入生产使用', 'green');
+    log('\n�?系统状�? 良好，可以投入生产使�?, 'green');
   } else {
-    log('\n⚠️  系统状态: 需要优化', 'yellow');
+    log('\n⚠️  系统状�? 需要优�?, 'yellow');
   }
 
   process.exit(failedTests > 0 ? 1 : 0);
@@ -417,7 +417,7 @@ async function main() {
 
 // 运行测试
 main().catch(error => {
-  log(`\n❌ 测试运行失败: ${error.message}`, 'red');
+  log(`\n�?测试运行失败: ${error.message}`, 'red');
   console.error(error);
   process.exit(1);
 });

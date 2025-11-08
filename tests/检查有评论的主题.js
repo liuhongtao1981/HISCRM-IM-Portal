@@ -1,13 +1,12 @@
 /**
- * 检查有评论的主题数据
- */
+ * 检查有评论的主题数�? */
 
 const io = require('socket.io-client');
 
 const MASTER_URL = 'http://localhost:3000';
 
 console.log('='.repeat(80));
-console.log('检查有评论的主题数据');
+console.log('检查有评论的主题数�?);
 console.log('='.repeat(80));
 
 const socket = io(MASTER_URL, {
@@ -15,7 +14,7 @@ const socket = io(MASTER_URL, {
 });
 
 socket.on('connect', () => {
-  console.log('\n✅ 已连接到 Master');
+  console.log('\n�?已连接到 Master');
   socket.emit('monitor:register', {
     clientType: 'monitor',
     clientId: `test_${Date.now()}`
@@ -23,7 +22,7 @@ socket.on('connect', () => {
 });
 
 socket.on('monitor:registered', () => {
-  console.log('✅ 注册成功');
+  console.log('�?注册成功');
   socket.emit('monitor:request_channels');
 });
 
@@ -38,8 +37,7 @@ socket.on('monitor:topics', (data) => {
   console.log('\n📋 查找有消息的主题...\n');
 
   if (data.topics && data.topics.length > 0) {
-    // 找到所有有消息的主题
-    const topicsWithMessages = data.topics.filter(t => t.messageCount > 0);
+    // 找到所有有消息的主�?    const topicsWithMessages = data.topics.filter(t => t.messageCount > 0);
 
     console.log(`有消息的主题: ${topicsWithMessages.length} 个\n`);
 
@@ -47,15 +45,14 @@ socket.on('monitor:topics', (data) => {
       console.log(`主题 ${index + 1}:`);
       console.log(`  ID: ${topic.id}`);
       console.log(`  标题: ${topic.title}`);
-      console.log(`  消息数: ${topic.messageCount}`);
+      console.log(`  消息�? ${topic.messageCount}`);
       console.log(`  isPrivate: ${topic.isPrivate || false}`);
       console.log('');
     });
 
     if (topicsWithMessages.length > 0) {
-      // 请求第一个有消息的主题
-      const topic = topicsWithMessages[0];
-      console.log(`\n📡 请求主题 "${topic.title}" 的消息...`);
+      // 请求第一个有消息的主�?      const topic = topicsWithMessages[0];
+      console.log(`\n📡 请求主题 "${topic.title}" 的消�?..`);
       socket.emit('monitor:request_messages', {
         channelId: topic.channelId,
         topicId: topic.id
@@ -73,11 +70,11 @@ socket.on('monitor:messages', (data) => {
   if (data.messages && data.messages.length > 0) {
     data.messages.forEach((msg, index) => {
       console.log(`消息 ${index + 1}:`);
-      console.log(`  发送者: ${msg.fromName}`);
+      console.log(`  发送�? ${msg.fromName}`);
       console.log(`  内容: ${msg.content}`);
       console.log(`  类型: ${msg.type}`);
-      console.log(`  分类: ${msg.messageCategory || '未设置'} ✅`);
-      console.log(`  已处理: ${msg.isHandled !== undefined ? msg.isHandled : '未设置'} ✅`);
+      console.log(`  分类: ${msg.messageCategory || '未设�?} ✅`);
+      console.log(`  已处�? ${msg.isHandled !== undefined ? msg.isHandled : '未设�?} ✅`);
       console.log(`  方向: ${msg.direction}`);
       console.log(`  时间: ${new Date(msg.timestamp).toLocaleString('zh-CN')}`);
       console.log('');
@@ -85,13 +82,13 @@ socket.on('monitor:messages', (data) => {
   }
 
   console.log('='.repeat(80));
-  console.log('检查完成');
+  console.log('检查完�?);
   console.log('='.repeat(80));
   process.exit(0);
 });
 
 socket.on('error', (error) => {
-  console.error('❌ 错误:', error);
+  console.error('�?错误:', error);
   process.exit(1);
 });
 

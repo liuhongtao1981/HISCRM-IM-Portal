@@ -1,6 +1,6 @@
 /**
  * 辅助工具 - 分析页面中所有可能的"查看回复"按钮
- * 帮助找到正确的选择器
+ * 帮助找到正确的选择�?
  */
 
 const path = require('path');
@@ -14,7 +14,7 @@ async function findReplyButtons() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
@@ -28,8 +28,8 @@ async function findReplyButtons() {
   const page = await context.newPage();
 
   try {
-    // 1. 导航到评论页面
-    console.log('📍 导航到评论管理页面...');
+    // 1. 导航到评论页�?
+    console.log('📍 导航到评论管理页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -44,7 +44,7 @@ async function findReplyButtons() {
     } catch (e) {}
 
     // 3. 选择视频
-    console.log('📍 选择第一个视频...\n');
+    console.log('📍 选择第一个视�?..\n');
     await page.evaluate(() => {
       const containers = document.querySelectorAll('.container-Lkxos9');
       if (containers.length > 0) {
@@ -54,21 +54,21 @@ async function findReplyButtons() {
 
     await page.waitForTimeout(3000);
 
-    // 4. 分析所有可能包含"查看回复"文本的元素
+    // 4. 分析所有可能包�?查看回复"文本的元�?
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔍 分析所有包含"回复"文本的元素');
+    console.log('🔍 分析所有包�?回复"文本的元�?);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const allElements = await page.evaluate(() => {
       const results = [];
 
-      // 查找所有包含"回复"文本的元素
+      // 查找所有包�?回复"文本的元�?
       document.querySelectorAll('*').forEach(el => {
         const text = (el.textContent || '').trim();
 
         if (text.includes('回复') || text.includes('查看')) {
-          // 检查是否精确匹配 "查看X条回复"
-          const exactMatch = text.match(/^查看\d+条回复$/);
+          // 检查是否精确匹�?"查看X条回�?
+          const exactMatch = text.match(/^查看\d+条回�?/);
 
           if (exactMatch) {
             results.push({
@@ -105,15 +105,15 @@ async function findReplyButtons() {
     });
 
     if (allElements.length === 0) {
-      console.log('❌ 未找到匹配"查看X条回复"的元素!');
+      console.log('�?未找到匹�?查看X条回�?的元�?');
       console.log('\n可能原因:');
-      console.log('  1. 当前视频的评论没有回复');
-      console.log('  2. 需要滚动才能看到回复按钮');
+      console.log('  1. 当前视频的评论没有回�?);
+      console.log('  2. 需要滚动才能看到回复按�?);
       console.log('  3. 按钮使用了不同的文本格式\n');
 
-      // 查找所有包含"回复"的元素
+      // 查找所有包�?回复"的元�?
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📋 所有包含"回复"的元素 (前10个):');
+      console.log('📋 所有包�?回复"的元�?(�?0�?:');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       const allReplyElements = await page.evaluate(() => {
@@ -141,7 +141,7 @@ async function findReplyButtons() {
       });
 
     } else {
-      console.log(`✅ 找到 ${allElements.length} 个精确匹配的元素!\n`);
+      console.log(`�?找到 ${allElements.length} 个精确匹配的元素!\n`);
 
       allElements.forEach((el, i) => {
         console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -150,10 +150,10 @@ async function findReplyButtons() {
 
         console.log(`标签: <${el.tagName}>`);
         console.log(`类名: ${el.className}`);
-        console.log(`ID: ${el.id || '(无)'}`);
+        console.log(`ID: ${el.id || '(�?'}`);
         console.log('');
 
-        console.log('父元素:');
+        console.log('父元�?');
         console.log(`  标签: <${el.parent.tagName}>`);
         console.log(`  类名: ${el.parent.className}`);
         console.log('');
@@ -165,7 +165,7 @@ async function findReplyButtons() {
         console.log(`  opacity: ${el.style.opacity}`);
         console.log('');
 
-        console.log(`可见性: ${el.isVisible ? '✅ 可见' : '❌ 不可见'}`);
+        console.log(`可见�? ${el.isVisible ? '�?可见' : '�?不可�?}`);
         console.log(`位置: (${Math.round(el.position.x)}, ${Math.round(el.position.y)})`);
         console.log(`大小: ${Math.round(el.position.width)}x${Math.round(el.position.height)}`);
         console.log('');
@@ -176,47 +176,47 @@ async function findReplyButtons() {
       });
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('📋 推荐的选择器');
+      console.log('📋 推荐的选择�?);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-      // 分析最佳选择器
+      // 分析最佳选择�?
       if (allElements.length > 0) {
         const first = allElements[0];
 
-        console.log('方案1 - 类名选择器:');
+        console.log('方案1 - 类名选择�?');
         if (first.className) {
           const classes = first.className.split(' ');
           const mainClass = classes[0];
           console.log(`  document.querySelector('.${mainClass}')`);
-          console.log(`  或: document.querySelectorAll('[class*="${mainClass.split('-')[0]}"]')`);
+          console.log(`  �? document.querySelectorAll('[class*="${mainClass.split('-')[0]}"]')`);
         } else {
           console.log('  (元素没有class)');
         }
         console.log('');
 
-        console.log('方案2 - 标签+文本选择器 (Playwright):');
+        console.log('方案2 - 标签+文本选择�?(Playwright):');
         console.log(`  page.getByText('${first.text}')`);
         console.log('');
 
-        console.log('方案3 - CSS选择器:');
+        console.log('方案3 - CSS选择�?');
         console.log(`  ${first.tagName.toLowerCase()}${first.className ? '.' + first.className.split(' ').join('.') : ''}`);
         console.log('');
       }
     }
 
   } catch (error) {
-    console.error('❌ 测试失败:', error);
+    console.error('�?测试失败:', error);
   } finally {
-    console.log('\n⏸️  等待30秒,可以手动检查页面...');
+    console.log('\n⏸️  等待30�?可以手动检查页�?..');
     await page.waitForTimeout(30000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 测试完成');
+    console.log('\n�?测试完成');
   }
 }
 
 findReplyButtons().catch(error => {
-  console.error('❌ 测试脚本执行失败:', error);
+  console.error('�?测试脚本执行失败:', error);
   process.exit(1);
 });

@@ -19,11 +19,10 @@ const socket = io(MASTER_URL, {
   transports: ['websocket', 'polling']
 });
 
-// 存储所有私信
-let allMessages = [];
+// 存储所有私�?let allMessages = [];
 
 socket.on('connect', () => {
-  console.log('\n✅ 已连接到 Master');
+  console.log('\n�?已连接到 Master');
 
   socket.emit('monitor:register', {
     clientType: 'monitor',
@@ -32,14 +31,14 @@ socket.on('connect', () => {
 });
 
 socket.on('monitor:registered', () => {
-  console.log('✅ 注册成功');
+  console.log('�?注册成功');
 
   // 请求主题列表（包含私信会话）
   socket.emit('monitor:request_topics', { channelId: ACCOUNT_ID });
 });
 
 socket.on('monitor:topics', (data) => {
-  console.log(`\n✅ 收到主题列表: ${data.topics?.length || 0} 个主题`);
+  console.log(`\n�?收到主题列表: ${data.topics?.length || 0} 个主题`);
 
   if (!data.topics || data.topics.length === 0) {
     console.log('\n⚠️  没有主题数据');
@@ -48,7 +47,7 @@ socket.on('monitor:topics', (data) => {
 
   // 筛选出私信主题
   const privateTopics = data.topics.filter(t => t.isPrivate && t.messageCount > 0);
-  console.log(`私信主题（有消息）: ${privateTopics.length} 个`);
+  console.log(`私信主题（有消息�? ${privateTopics.length} 个`);
 
   if (privateTopics.length === 0) {
     console.log('\n⚠️  没有私信主题');
@@ -80,17 +79,14 @@ socket.on('monitor:topics', (data) => {
       allMessages = allMessages.concat(data.messages);
     }
 
-    // 继续请求下一个主题
-    if (receivedCount < privateTopics.length) {
+    // 继续请求下一个主�?    if (receivedCount < privateTopics.length) {
       setTimeout(() => requestNextTopic(receivedCount), 200);
     } else {
-      // 所有消息都收到了，开始分析
-      setTimeout(() => analyzeMessages(), 500);
+      // 所有消息都收到了，开始分�?      setTimeout(() => analyzeMessages(), 500);
     }
   });
 
-  // 开始请求第一个主题
-  requestNextTopic(0);
+  // 开始请求第一个主�?  requestNextTopic(0);
 });
 
 function analyzeMessages() {
@@ -104,7 +100,7 @@ function analyzeMessages() {
     process.exit(0);
   }
 
-  // 按 topicId (即 conversationId) 分组
+  // �?topicId (�?conversationId) 分组
   const conversationGroups = new Map();
 
   allMessages.forEach(msg => {
@@ -115,14 +111,13 @@ function analyzeMessages() {
     conversationGroups.get(convId).push(msg);
   });
 
-  console.log(`\n按会话分组: ${conversationGroups.size} 个会话`);
-  console.log(`\n逐个检查每个会话的消息发送者...`);
+  console.log(`\n按会话分�? ${conversationGroups.size} 个会话`);
+  console.log(`\n逐个检查每个会话的消息发送�?..`);
 
   let problemCount = 0;
 
   conversationGroups.forEach((msgs, convId) => {
-    // 统计发送者
-    const senders = new Map();
+    // 统计发送�?    const senders = new Map();
 
     msgs.forEach(msg => {
       const senderName = msg.fromName || 'Unknown';
@@ -132,35 +127,34 @@ function analyzeMessages() {
       senders.set(senderName, senders.get(senderName) + 1);
     });
 
-    // 找出非客服的发送者
-    const nonClientSenders = Array.from(senders.keys()).filter(s => s !== '客服' && s !== 'Me' && s !== 'Unknown');
+    // 找出非客服的发送�?    const nonClientSenders = Array.from(senders.keys()).filter(s => s !== '客服' && s !== 'Me' && s !== 'Unknown');
 
     console.log(`\n会话 ID: ${convId.substring(0, 40)}...`);
-    console.log(`  消息数: ${msgs.length}`);
-    console.log(`  发送者统计:`);
+    console.log(`  消息�? ${msgs.length}`);
+    console.log(`  发送者统�?`);
     senders.forEach((count, sender) => {
       console.log(`    - ${sender}: ${count} 条`);
     });
 
     if (nonClientSenders.length > 1) {
       problemCount++;
-      console.log(`  ❌ 问题：有 ${nonClientSenders.length} 个不同的用户发送者！`);
-      console.log(`  发送者列表: ${nonClientSenders.join(', ')}`);
+      console.log(`  �?问题：有 ${nonClientSenders.length} 个不同的用户发送者！`);
+      console.log(`  发送者列�? ${nonClientSenders.join(', ')}`);
 
-      // 显示前 3 条消息的详细信息
-      console.log(`\n  前 3 条消息详情:`);
+      // 显示�?3 条消息的详细信息
+      console.log(`\n  �?3 条消息详�?`);
       msgs.slice(0, 3).forEach((msg, index) => {
         console.log(`    消息 ${index + 1}:`);
         console.log(`      id: ${msg.id}`);
         console.log(`      topicId (conversationId): ${msg.topicId}`);
         console.log(`      fromId: ${msg.fromId}`);
         console.log(`      fromName: ${msg.fromName}`);
-        console.log(`      toId: ${msg.toId || '(无)'}`);
+        console.log(`      toId: ${msg.toId || '(�?'}`);
         console.log(`      direction: ${msg.direction}`);
         console.log(`      content: ${msg.content?.substring(0, 30)}...`);
       });
     } else if (nonClientSenders.length === 1) {
-      console.log(`  ✅ 正确：只有一个用户发送者（${nonClientSenders[0]}）`);
+      console.log(`  �?正确：只有一个用户发送者（${nonClientSenders[0]}）`);
     } else {
       console.log(`  ⚠️  警告：没有非客服发送者（可能是测试数据）`);
     }
@@ -170,35 +164,34 @@ function analyzeMessages() {
   console.log('📊 分析总结');
   console.log('='.repeat(80));
   console.log(`总会话数: ${conversationGroups.size}`);
-  console.log(`有问题的会话数: ${problemCount}`);
-  console.log(`正确率: ${((conversationGroups.size - problemCount) / conversationGroups.size * 100).toFixed(1)}%`);
+  console.log(`有问题的会话�? ${problemCount}`);
+  console.log(`正确�? ${((conversationGroups.size - problemCount) / conversationGroups.size * 100).toFixed(1)}%`);
 
   if (problemCount > 0) {
-    console.log('\n❌ Master DataStore 中的会话 ID 映射有问题！');
+    console.log('\n�?Master DataStore 中的会话 ID 映射有问题！');
     console.log('这可能是因为:');
     console.log('1. Worker 发送给 Master 的数据本身就有问题（conversationId 不正确）');
     console.log('2. Master 在转换数据时出错');
     console.log('\n建议检查:');
-    console.log('- Worker 的 douyin-data-manager.js 中的 mapMessageData() 方法');
+    console.log('- Worker 的 data-manager.js 中的 mapMessageData() 方法');
     console.log('- Master 的 im-websocket-server.js 中的数据转换逻辑');
   } else {
-    console.log('\n✅ Master DataStore 中的会话 ID 映射正确！');
+    console.log('\n�?Master DataStore 中的会话 ID 映射正确�?);
   }
 
   process.exit(problemCount > 0 ? 1 : 0);
 }
 
 socket.on('disconnect', () => {
-  console.log('\n❌ 连接断开');
+  console.log('\n�?连接断开');
 });
 
 socket.on('error', (error) => {
-  console.error('\n❌ 错误:', error);
+  console.error('\n�?错误:', error);
   process.exit(1);
 });
 
-// 60 秒超时
-setTimeout(() => {
+// 60 秒超�?setTimeout(() => {
   console.log('\n⏱️  超时 - 60秒内没有完成分析');
   process.exit(1);
 }, 60000);

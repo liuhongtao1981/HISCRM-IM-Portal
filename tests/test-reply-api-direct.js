@@ -61,7 +61,7 @@ function makeRequest(method, path, body) {
     console.log('Response Body:', JSON.stringify(response.body, null, 2));
     
     if (response.body.success && response.body.reply_id) {
-      console.log('\n‚úÖ Reply created successfully!');
+      console.log('\n‚ú?Reply created successfully!');
       console.log('Reply ID:', response.body.reply_id);
       
       // Check if reply was saved to database
@@ -72,7 +72,7 @@ function makeRequest(method, path, body) {
         console.log('GET Reply Body:', JSON.stringify(getResponse.body, null, 2));
       }, 1000);
     } else {
-      console.log('\n‚ùå Reply creation failed');
+      console.log('\n‚ù?Reply creation failed');
     }
   } catch (error) {
     console.error('Error:', error);

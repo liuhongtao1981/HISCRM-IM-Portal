@@ -1,10 +1,15 @@
-/**
+﻿/**
  * 监控任务执行器
  * T052: 管理多个账户的监控任务
+ * 
+ * 重构说明：
+ * - 分离登录检测任务和爬虫任务
+ * - 登录检测任务独立运行，控制爬虫任务的启停
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const MonitorTask = require('./monitor-task');
+const LoginDetectionTask = require('./login-detection-task');
 const ReplyExecutor = require('./reply-executor');
 const { getCacheManager } = require('../services/cache-manager');
 
@@ -18,7 +23,10 @@ class TaskRunner {
     this.platformManager = platformManager;
     this.accountStatusReporter = accountStatusReporter;
     this.browserManager = browserManager;
-    this.tasks = new Map(); // accountId -> MonitorTask
+    
+    // 登录检测任务和爬虫任务分离
+    this.loginDetectionTasks = new Map(); // accountId -> LoginDetectionTask
+    this.monitorTasks = new Map();        // accountId -> MonitorTask
     this.running = false;
 
     // 初始化回复执行器
@@ -43,13 +51,18 @@ class TaskRunner {
     logger.info('Stopping task runner');
     this.running = false;
 
-    // 停止所有监控任务
-    for (const [accountId, monitorTask] of this.tasks.entries()) {
-      await monitorTask.stop();
-      logger.debug(`Stopped task for account ${accountId}`);
+    // 停止所有登录检测任务
+    for (const [accountId, loginDetectionTask] of this.loginDetectionTasks.entries()) {
+      await loginDetectionTask.stop();
     }
 
-    this.tasks.clear();
+    // 停止所有爬虫任务
+    for (const [accountId, monitorTask] of this.monitorTasks.entries()) {
+      await monitorTask.stop();
+    }
+
+    this.loginDetectionTasks.clear();
+    this.monitorTasks.clear();
     logger.info('Task runner stopped');
   }
 
@@ -98,20 +111,24 @@ class TaskRunner {
   }
 
   /**
-   * 添加监控任务
+   * 添加账户任务（分离登录检测和爬虫任务）
    * @param {object} account - 账户对象
+   * @param {object} options - 选项
+   * @param {boolean} options.startLoginDetection - 是否立即启动登录检测任务，默认true
    */
-  async addTask(account) {
+  async addTask(account, options = {}) {
+    const { startLoginDetection = true } = options;
     const { id } = account;
 
-    if (this.tasks.has(id)) {
-      logger.warn(`Task for account ${id} already exists, updating`);
+    if (this.loginDetectionTasks.has(id)) {
+      logger.warn(`Tasks for account ${id} already exist, updating`);
       await this.removeTask(id);
     }
 
-    logger.info(`Adding monitoring task for account ${id}`, {
+    logger.info(`Adding tasks for account ${id}`, {
       platform: account.platform,
       interval: account.monitor_interval,
+      startLoginDetection
     });
 
     // 🔥 预加载缓存（异步执行，不阻塞任务启动）
@@ -119,32 +136,77 @@ class TaskRunner {
       logger.warn(`Cache preload failed for account ${id}, will continue without cache:`, err);
     });
 
-    // 创建并启动监控任务（传入 platformManager, accountStatusReporter 和 browserManager）
+    // 1. 创建登录检测任务（独立运行）
+    const loginDetectionTask = new LoginDetectionTask(
+      account,
+      this.platformManager,
+      this.browserManager,
+      this.accountStatusReporter,
+      this  // 传递TaskRunner实例用于控制爬虫任务
+    );
+
+    // 2. 创建爬虫任务（但不立即启动，由登录检测任务控制）
     const monitorTask = new MonitorTask(
       account,
       this.socketClient,
       this.platformManager,
       this.accountStatusReporter,
-      this.browserManager  // 传递 browserManager 以便检查登录状态
+      this.browserManager
     );
-    await monitorTask.start();
 
-    this.tasks.set(id, monitorTask);
+    // 保存任务实例
+    this.loginDetectionTasks.set(id, loginDetectionTask);
+    this.monitorTasks.set(id, monitorTask);
 
-    logger.info(`Task added and started for account ${id}`);
+    // 根据选项决定是否立即启动登录检测任务
+    if (startLoginDetection) {
+      await loginDetectionTask.start();
+      logger.info(`Tasks added for account ${id} (login detection started)`);
+    } else {
+      logger.info(`Tasks added for account ${id} (login detection NOT started, call startLoginDetection() manually)`);
+    }
   }
 
   /**
-   * 移除监控任务
+   * 手动启动账户的登录检测任务
+   * @param {string} accountId - 账户ID
+   */
+  async startLoginDetection(accountId) {
+    const loginDetectionTask = this.loginDetectionTasks.get(accountId);
+    if (!loginDetectionTask) {
+      logger.warn(`No login detection task found for account ${accountId}`);
+      return;
+    }
+
+    if (loginDetectionTask.isRunning) {
+      logger.warn(`Login detection task for account ${accountId} is already running`);
+      return;
+    }
+
+    await loginDetectionTask.start();
+    logger.info(`✓ Login detection started for account ${accountId}`);
+  }
+
+  /**
+   * 移除账户的所有任务
    * @param {string} accountId - 账户ID
    */
   async removeTask(accountId) {
-    const monitorTask = this.tasks.get(accountId);
+    // 停止登录检测任务
+    const loginDetectionTask = this.loginDetectionTasks.get(accountId);
+    if (loginDetectionTask) {
+      await loginDetectionTask.stop();
+      this.loginDetectionTasks.delete(accountId);
+    }
+
+    // 停止爬虫任务
+    const monitorTask = this.monitorTasks.get(accountId);
     if (monitorTask) {
       await monitorTask.stop();
-      this.tasks.delete(accountId);
-      logger.info(`Removed task for account ${accountId}`);
+      this.monitorTasks.delete(accountId);
     }
+
+    logger.info(`Removed all tasks for account ${accountId}`);
   }
 
   /**
@@ -153,12 +215,54 @@ class TaskRunner {
    * @param {object} updates - 更新的配置
    */
   updateTask(accountId, updates) {
-    const monitorTask = this.tasks.get(accountId);
+    const monitorTask = this.monitorTasks.get(accountId);
     if (monitorTask) {
       monitorTask.updateAccount(updates);
-      logger.info(`Updated task for account ${accountId}`);
+      logger.info(`Updated monitor task for account ${accountId}`);
+    }
+
+    const loginDetectionTask = this.loginDetectionTasks.get(accountId);
+    if (loginDetectionTask) {
+      loginDetectionTask.account = { ...loginDetectionTask.account, ...updates };
+      logger.info(`Updated login detection task for account ${accountId}`);
+    }
+
+    if (!monitorTask && !loginDetectionTask) {
+      logger.warn(`No tasks found for account ${accountId}`);
+    }
+  }
+
+  /**
+   * 启动爬虫任务（由登录检测任务调用）
+   * @param {string} accountId - 账户ID
+   */
+  async startMonitoringTask(accountId) {
+    const monitorTask = this.monitorTasks.get(accountId);
+    if (monitorTask) {
+      if (!monitorTask.isRunning) {
+        await monitorTask.start();
+        logger.info(`✓ Started monitoring task for account ${accountId}`);
+      } else {
+      }
     } else {
-      logger.warn(`Task not found for account ${accountId}`);
+      logger.warn(`No monitoring task found for account ${accountId}`);
+    }
+  }
+
+  /**
+   * 停止爬虫任务（由登录检测任务调用）
+   * @param {string} accountId - 账户ID
+   */
+  async stopMonitoringTask(accountId) {
+    const monitorTask = this.monitorTasks.get(accountId);
+    if (monitorTask) {
+      if (monitorTask.isRunning) {
+        await monitorTask.stop();
+        logger.info(`✓ Stopped monitoring task for account ${accountId}`);
+      } else {
+      }
+    } else {
+      logger.warn(`No monitoring task found for account ${accountId}`);
     }
   }
 
@@ -203,12 +307,25 @@ class TaskRunner {
    */
   getStats() {
     const stats = {
-      total_tasks: this.tasks.size,
-      tasks: [],
+      total_accounts: this.loginDetectionTasks.size,
+      login_detection_tasks: [],
+      monitor_tasks: [],
     };
 
-    for (const [accountId, monitorTask] of this.tasks.entries()) {
-      stats.tasks.push(monitorTask.getStats());
+    // 登录检测任务统计
+    for (const [accountId, loginDetectionTask] of this.loginDetectionTasks.entries()) {
+      stats.login_detection_tasks.push({
+        accountId,
+        ...loginDetectionTask.getStatus()
+      });
+    }
+
+    // 爬虫任务统计
+    for (const [accountId, monitorTask] of this.monitorTasks.entries()) {
+      stats.monitor_tasks.push({
+        accountId,
+        ...monitorTask.getStats()
+      });
     }
 
     return stats;
@@ -221,13 +338,22 @@ class TaskRunner {
    */
   updateAccountConfig(accountId, updatedAccount) {
     try {
-      const monitorTask = this.tasks.get(accountId);
+      const monitorTask = this.monitorTasks.get(accountId);
       if (monitorTask) {
         // 更新MonitorTask中的账户配置
         monitorTask.account = updatedAccount;
         logger.info(`✅ Updated account config in MonitorTask for ${accountId}`);
-      } else {
-        logger.warn(`No MonitorTask found for account ${accountId}, cannot update config`);
+      }
+
+      const loginDetectionTask = this.loginDetectionTasks.get(accountId);
+      if (loginDetectionTask) {
+        // 更新LoginDetectionTask中的账户配置
+        loginDetectionTask.account = updatedAccount;
+        logger.info(`✅ Updated account config in LoginDetectionTask for ${accountId}`);
+      }
+
+      if (!monitorTask && !loginDetectionTask) {
+        logger.warn(`No tasks found for account ${accountId}, cannot update config`);
       }
     } catch (error) {
       logger.error(`Failed to update account config for ${accountId}:`, error);

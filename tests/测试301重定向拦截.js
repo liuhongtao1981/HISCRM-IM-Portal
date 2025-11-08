@@ -1,5 +1,5 @@
 /**
- * 测试 API 拦截器是否能正确处理 301 重定向
+ * 测试 API 拦截器是否能正确处理 301 重定�?
  */
 
 const { chromium } = require('playwright');
@@ -15,12 +15,12 @@ async function test301Redirect() {
   const capturedAPIs = [];
   const redirects = [];
 
-  // 创建拦截器
+  // 创建拦截�?
   const manager = new APIInterceptorManager(page);
 
-  // 注册评论 API 处理器
+  // 注册评论 API 处理�?
   manager.register('**/comment/list/select/**', async (body, response) => {
-    console.log(`✅ [评论 API] 捕获成功！`);
+    console.log(`�?[评论 API] 捕获成功！`);
     console.log(`   URL: ${response.url()}`);
     console.log(`   状态码: ${response.status()}`);
     capturedAPIs.push({
@@ -30,9 +30,9 @@ async function test301Redirect() {
     });
   });
 
-  // 注册作品 API 处理器
+  // 注册作品 API 处理�?
   manager.register('**/aweme/v1/creator/item/list/**', async (body, response) => {
-    console.log(`✅ [作品 API] 捕获成功！`);
+    console.log(`�?[作品 API] 捕获成功！`);
     console.log(`   URL: ${response.url()}`);
     console.log(`   状态码: ${response.status()}`);
     capturedAPIs.push({
@@ -42,7 +42,7 @@ async function test301Redirect() {
     });
   });
 
-  // 监听所有响应以捕获重定向
+  // 监听所有响应以捕获重定�?
   page.on('response', async (response) => {
     const status = response.status();
     if (status === 301 || status === 302) {
@@ -58,15 +58,15 @@ async function test301Redirect() {
 
   await manager.enable();
 
-  // 导航到评论管理页面
-  console.log('\n🌐 导航到抖音创作中心...');
+  // 导航到评论管理页�?
+  console.log('\n🌐 导航到抖音创作中�?..');
   await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
     waitUntil: 'networkidle'
   });
 
   console.log('\n📝 请手动操作：');
   console.log('1. 点击"选择作品"按钮');
-  console.log('2. 选择一个有评论的视频');
+  console.log('2. 选择一个有评论的视�?);
   console.log('3. 等待评论列表加载');
   console.log('4. 观察控制台输出\n');
 
@@ -74,28 +74,28 @@ async function test301Redirect() {
   await page.waitForTimeout(120000);
 
   // 输出统计
-  console.log('\n\n📊 测试结果统计：');
+  console.log('\n\n📊 测试结果统计�?);
   console.log('='.repeat(80));
-  console.log(`捕获的 API 请求: ${capturedAPIs.length} 个`);
+  console.log(`捕获�?API 请求: ${capturedAPIs.length} 个`);
   console.log(`检测到的重定向: ${redirects.length} 个\n`);
 
   if (capturedAPIs.length > 0) {
-    console.log('✅ 捕获的 API 列表：');
+    console.log('�?捕获�?API 列表�?);
     capturedAPIs.forEach((api, i) => {
       console.log(`${i + 1}. [${api.type}] ${api.status} - ${api.url}`);
     });
   } else {
-    console.log('❌ 未捕获任何 API 请求');
+    console.log('�?未捕获任�?API 请求');
   }
 
   if (redirects.length > 0) {
-    console.log('\n🔄 检测到的重定向：');
+    console.log('\n🔄 检测到的重定向�?);
     redirects.forEach((r, i) => {
       console.log(`${i + 1}. [${r.status}] ${r.from}`);
       console.log(`   -> ${r.to}`);
     });
   } else {
-    console.log('\n✅ 未检测到 301/302 重定向');
+    console.log('\n�?未检测到 301/302 重定�?);
   }
 
   await manager.cleanup();

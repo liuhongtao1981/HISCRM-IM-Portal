@@ -1,20 +1,19 @@
 /**
- * 打开浏览器，等待60秒供手动操作，然后自动分析
- */
+ * 打开浏览器，等待60秒供手动操作，然后自动分�? */
 
 const { chromium } = require('playwright');
 const path = require('path');
 
 async function openAndWait() {
   console.log('\n' + '='.repeat(80));
-  console.log('打开浏览器供手动登录和分析');
+  console.log('打开浏览器供手动登录和分�?);
   console.log('='.repeat(80) + '\n');
 
   const userDataDir = path.join(__dirname, '../test-browser-data-manual');
 
   let context;
   try {
-    console.log('启动浏览器...');
+    console.log('启动浏览�?..');
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: [
@@ -24,34 +23,33 @@ async function openAndWait() {
       ]
     });
 
-    console.log('✅ 浏览器已启动\n');
+    console.log('�?浏览器已启动\n');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    console.log('导航到抖音私信页面...');
+    console.log('导航到抖音私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(2000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
     console.log('='.repeat(80));
-    console.log('请在接下来的 60 秒内完成以下操作：');
+    console.log('请在接下来的 60 秒内完成以下操作�?);
     console.log('  1. 扫码登录抖音创作者平台（如果需要）');
-    console.log('  2. 点击左侧的一个会话');
-    console.log('  3. 确保右侧显示了消息列表');
+    console.log('  2. 点击左侧的一个会�?);
+    console.log('  3. 确保右侧显示了消息列�?);
     console.log('='.repeat(80) + '\n');
 
-    // 倒计时
-    for (let i = 60; i > 0; i -= 10) {
-      console.log(`还剩 ${i} 秒...`);
+    // 倒计�?    for (let i = 60; i > 0; i -= 10) {
+      console.log(`还剩 ${i} �?..`);
       await page.waitForTimeout(10000);
     }
 
-    console.log('\n开始分析...\n');
+    console.log('\n开始分�?..\n');
 
     // 查找虚拟列表容器
     console.log('='.repeat(80));
@@ -89,9 +87,9 @@ async function openAndWait() {
     console.log(`找到 ${containers.length} 个虚拟列表容器\n`);
 
     if (containers.length === 0) {
-      console.log('❌ 没有找到虚拟列表容器\n');
-      console.log('可能原因：');
-      console.log('  - 还没有点击会话');
+      console.log('�?没有找到虚拟列表容器\n');
+      console.log('可能原因�?);
+      console.log('  - 还没有点击会�?);
       console.log('  - 页面结构已改变\n');
     } else {
       containers.forEach(c => {
@@ -110,14 +108,14 @@ async function openAndWait() {
       console.log('='.repeat(80) + '\n');
 
       for (let containerIdx = 0; containerIdx < containers.length; containerIdx++) {
-        console.log(`\n【容器 #${containerIdx}】\n`);
+        console.log(`\n【容�?#${containerIdx}】\n`);
 
         const analysis = await page.evaluate((idx) => {
           const grids = document.querySelectorAll('[role="grid"]');
           const grid = grids[idx];
 
           if (!grid || !grid.children[0]) {
-            return { error: '容器不存在' };
+            return { error: '容器不存�? };
           }
 
           const innerContainer = grid.children[0];
@@ -201,24 +199,24 @@ async function openAndWait() {
         }, containerIdx);
 
         if (analysis.error) {
-          console.log(`  ❌ ${analysis.error}\n`);
+          console.log(`  �?${analysis.error}\n`);
           continue;
         }
 
         console.log(`  子元素总数: ${analysis.totalChildren}`);
-        console.log(`  包含数据的元素: ${analysis.elementsWithData}\n`);
+        console.log(`  包含数据的元�? ${analysis.elementsWithData}\n`);
 
         if (analysis.elementsWithData > 0) {
-          console.log(`  ✅✅✅ 找到消息数据！\n`);
+          console.log(`  ✅✅�?找到消息数据！\n`);
 
           analysis.allFindings.forEach(elem => {
             console.log(`  元素 #${elem.elementIndex}:`);
 
             elem.findings.forEach((finding, idx) => {
               console.log(`    发现 #${idx + 1} (深度 ${finding.depth}):`);
-              console.log(`      总Props数: ${finding.totalKeys}`);
-              console.log(`      所有Props键 (前30个): ${finding.allKeys.join(', ')}`);
-              console.log(`      消息相关键 (${finding.msgKeys.length}个): ${finding.msgKeys.join(', ')}`);
+              console.log(`      总Props�? ${finding.totalKeys}`);
+              console.log(`      所有Props�?(�?0�?: ${finding.allKeys.join(', ')}`);
+              console.log(`      消息相关�?(${finding.msgKeys.length}�?: ${finding.msgKeys.join(', ')}`);
               console.log(`      数据样本:`);
               Object.entries(finding.sample).forEach(([k, v]) => {
                 console.log(`        📌 ${k}: ${v}`);
@@ -227,22 +225,22 @@ async function openAndWait() {
             });
           });
         } else {
-          console.log(`  ❌ 未找到消息数据\n`);
+          console.log(`  �?未找到消息数据\n`);
         }
       }
     }
 
     console.log('='.repeat(80));
-    console.log('分析完成！浏览器将保持打开 120 秒');
+    console.log('分析完成！浏览器将保持打开 120 �?);
     console.log('='.repeat(80) + '\n');
 
     await page.waitForTimeout(120000);
 
     await context.close();
-    console.log('✅ 完成\n');
+    console.log('�?完成\n');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
     if (context) {
       await context.close().catch(() => {});

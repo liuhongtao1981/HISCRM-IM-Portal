@@ -1,0 +1,13 @@
+{
+  "ExpandedNodes": [
+    "",
+    "\\logs",
+    "\\worker",
+    "\\worker\\src",
+    "\\worker\\src\\browser",
+    "\\worker\\src\\platforms",
+    "\\worker\\src\\platforms\\douyin"
+  ],
+  "SelectedNode": "\\worker\\src\\platforms\\douyin\\platform.js",
+  "PreviewInSolutionExplorer": false
+}

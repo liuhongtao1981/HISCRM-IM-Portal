@@ -14,7 +14,7 @@ console.log('\n=== 创建 worker1 配置 ===\n');
 const existing = db.prepare('SELECT * FROM worker_configs WHERE id = ?').get('worker1');
 
 if (existing) {
-  console.log('✅ worker1 配置已存在,无需创建');
+  console.log('�?worker1 配置已存�?无需创建');
   db.close();
   process.exit(0);
 }
@@ -42,8 +42,7 @@ const now = Math.floor(Date.now() / 1000);
 
 insert.run(
   'worker1',
-  20,      // monitoring_interval_seconds - 20秒监控间隔
-  1,       // crawl_comments_enabled - 启用评论爬取
+  20,      // monitoring_interval_seconds - 20秒监控间�?  1,       // crawl_comments_enabled - 启用评论爬取
   1,       // crawl_direct_messages_enabled - 启用私信爬取
   'full',  // direct_message_crawl_depth - 完整爬取
   5,       // max_concurrent_tasks
@@ -56,16 +55,16 @@ insert.run(
   now      // updated_at
 );
 
-console.log('✅ worker1 配置创建成功!');
+console.log('�?worker1 配置创建成功!');
 console.log('\n配置详情:');
-console.log('  监控间隔: 20 秒');
+console.log('  监控间隔: 20 �?);
 console.log('  爬取评论: 启用');
 console.log('  爬取私信: 启用');
 console.log('  私信深度: full (完整爬取)');
-console.log('  最大并发: 5');
-console.log('  超时时间: 300 秒');
+console.log('  最大并�? 5');
+console.log('  超时时间: 300 �?);
 console.log('  重试次数: 3');
 
 db.close();
 
-console.log('\n✨ 请重启 Worker 以应用新配置');
+console.log('\n�?请重�?Worker 以应用新配置');

@@ -13,8 +13,7 @@ console.log('DEBUG: cache_messages 表账户ID分析');
 console.log('='.repeat(60) + '\n');
 
 try {
-  // 1. 查询所有 account_id 的分布
-  console.log('1. 账户ID分布:');
+  // 1. 查询所�?account_id 的分�?  console.log('1. 账户ID分布:');
   const accountGroups = db.prepare(`
     SELECT account_id, COUNT(*) as count
     FROM cache_messages
@@ -43,7 +42,7 @@ try {
   `).get();
 
   if (firstMessage) {
-    console.log('  所有字段:');
+    console.log('  所有字�?');
     Object.keys(firstMessage).forEach(key => {
       console.log(`    ${key}: ${firstMessage[key]}`);
     });
@@ -56,15 +55,14 @@ try {
     console.log('    senderName:', data.senderName);
   }
 
-  // 4. 检查是否存在没有 account_id 的消息
-  console.log('\n4. 检查 account_id 为 NULL 的消息:');
+  // 4. 检查是否存在没�?account_id 的消�?  console.log('\n4. 检�?account_id �?NULL 的消�?');
   const nullAccountMessages = db.prepare(`
     SELECT COUNT(*) as count
     FROM cache_messages
     WHERE account_id IS NULL OR account_id = ''
   `).get();
 
-  console.log(`  NULL/空 account_id 的消息数: ${nullAccountMessages.count}`);
+  console.log(`  NULL/�?account_id 的消息数: ${nullAccountMessages.count}`);
 
   console.log('\n' + '='.repeat(60));
 

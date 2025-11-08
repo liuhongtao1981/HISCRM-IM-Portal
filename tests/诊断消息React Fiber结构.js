@@ -1,6 +1,6 @@
 /**
- * 专门诊断消息元素的 React Fiber 结构
- * 目的: 找到正确的 Fiber 数据提取方法
+ * 专门诊断消息元素�?React Fiber 结构
+ * 目的: 找到正确�?Fiber 数据提取方法
  */
 
 const path = require('path');
@@ -8,16 +8,16 @@ const Database = require('better-sqlite3');
 const { chromium } = require('playwright');
 
 async function diagnoseMessageFiber() {
-  console.log('🔬 诊断消息元素的 React Fiber 结构\n');
+  console.log('🔬 诊断消息元素�?React Fiber 结构\n');
 
-  // 1. 连接数据库
+  // 1. 连接数据�?
   const dbPath = path.join(__dirname, '../packages/master/data/master.db');
   const db = new Database(dbPath);
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
-  console.log(`✅ 账户: ${account.id}\n`);
+  console.log(`�?账户: ${account.id}\n`);
 
-  // 2. 启动浏览器
+  // 2. 启动浏览�?
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -28,7 +28,7 @@ async function diagnoseMessageFiber() {
 
   try {
     // 3. 导航并打开会话
-    console.log('📍 导航到私信页面...');
+    console.log('📍 导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -37,12 +37,12 @@ async function diagnoseMessageFiber() {
     await page.waitForTimeout(5000);
     await page.waitForSelector('[role="list-item"]', { timeout: 10000 });
 
-    // 点击最后一个会话
+    // 点击最后一个会�?
     const conversations = await page.locator('[role="list-item"]').all();
     await conversations[conversations.length - 1].click();
     await page.waitForTimeout(3000);
 
-    console.log('✅ 会话已打开\n');
+    console.log('�?会话已打开\n');
 
     // 4. 专门查找消息容器内的元素
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -50,7 +50,7 @@ async function diagnoseMessageFiber() {
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const messageContainerInfo = await page.evaluate(() => {
-      // 查找可能的消息容器
+      // 查找可能的消息容�?
       const grids = document.querySelectorAll('[role="grid"]');
 
       const results = {
@@ -68,13 +68,13 @@ async function diagnoseMessageFiber() {
           innerHTML: grid.innerHTML.substring(0, 500),
         };
 
-        // 检查这个 grid 是否包含消息
+        // 检查这�?grid 是否包含消息
         const messagesInGrid = grid.querySelectorAll('[class*="message"]');
         gridInfo.messageCount = messagesInGrid.length;
 
         results.grids.push(gridInfo);
 
-        // 如果这个 grid 包含消息，深入分析
+        // 如果这个 grid 包含消息，深入分�?
         if (messagesInGrid.length > 0) {
           messagesInGrid.forEach((msgEl, msgIndex) => {
             results.messageElements.push({
@@ -110,12 +110,12 @@ async function diagnoseMessageFiber() {
       return results;
     });
 
-    console.log(`找到 ${messageContainerInfo.grids.length} 个 [role="grid"] 容器:\n`);
+    console.log(`找到 ${messageContainerInfo.grids.length} �?[role="grid"] 容器:\n`);
     messageContainerInfo.grids.forEach((grid, i) => {
       console.log(`Grid ${i + 1}:`);
       console.log(`  className: ${grid.className}`);
       console.log(`  子元素数: ${grid.childCount}`);
-      console.log(`  消息数: ${grid.messageCount}`);
+      console.log(`  消息�? ${grid.messageCount}`);
       console.log(`  scrollHeight: ${grid.scrollHeight}px`);
       console.log(`  clientHeight: ${grid.clientHeight}px\n`);
     });
@@ -128,22 +128,22 @@ async function diagnoseMessageFiber() {
         console.log(`\n消息 ${i + 1}:`);
         console.log(`  className: ${msg.className}`);
         console.log(`  文本: ${msg.textContent}`);
-        console.log(`  父级链 (前3层):`);
+        console.log(`  父级�?(�?�?:`);
         msg.parentChain.slice(0, 3).forEach((parent, j) => {
           console.log(`    ${j}. <${parent.tag}> class="${parent.className}" role="${parent.role || ''}"`);
         });
       });
     }
 
-    // 5. 深入分析消息元素的 React Fiber
+    // 5. 深入分析消息元素�?React Fiber
     console.log('\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔬 深度分析消息元素的 React Fiber');
+    console.log('🔬 深度分析消息元素�?React Fiber');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const fiberDeepAnalysis = await page.evaluate(() => {
       const results = [];
 
-      // 只分析消息容器内的元素
+      // 只分析消息容器内的元�?
       const messageGrid = Array.from(document.querySelectorAll('[role="grid"]'))
         .find(grid => grid.querySelectorAll('[class*="message"]').length > 0);
 
@@ -151,11 +151,11 @@ async function diagnoseMessageFiber() {
         return { error: '未找到包含消息的 grid' };
       }
 
-      // 获取所有消息元素
+      // 获取所有消息元�?
       const messageElements = messageGrid.querySelectorAll('[class*="message"]');
 
       messageElements.forEach((element, elementIndex) => {
-        // 只分析前 3 个
+        // 只分析前 3 �?
         if (elementIndex >= 3) return;
 
         const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
@@ -163,7 +163,7 @@ async function diagnoseMessageFiber() {
           results.push({
             elementIndex: elementIndex,
             className: element.className,
-            error: '没有 React Fiber 键',
+            error: '没有 React Fiber �?,
           });
           return;
         }
@@ -176,7 +176,7 @@ async function diagnoseMessageFiber() {
           fiberTree: [],
         };
 
-        // 向上遍历 Fiber 树
+        // 向上遍历 Fiber �?
         let current = element[fiberKey];
         let depth = 0;
 
@@ -188,18 +188,18 @@ async function diagnoseMessageFiber() {
             props: {},
           };
 
-          // 记录所有 props
+          // 记录所�?props
           if (current.memoizedProps) {
             const props = current.memoizedProps;
 
-            // 记录所有非函数的 props
+            // 记录所有非函数�?props
             Object.keys(props).forEach(key => {
               const value = props[key];
 
               if (typeof value === 'function') {
                 node.props[key] = '[Function]';
               } else if (typeof value === 'object' && value !== null) {
-                // 对于对象，记录其键
+                // 对于对象，记录其�?
                 if (Array.isArray(value)) {
                   node.props[key] = `[Array(${value.length})]`;
                 } else {
@@ -243,14 +243,14 @@ async function diagnoseMessageFiber() {
     });
 
     if (fiberDeepAnalysis.error) {
-      console.log(`❌ ${fiberDeepAnalysis.error}`);
+      console.log(`�?${fiberDeepAnalysis.error}`);
     } else {
       fiberDeepAnalysis.forEach((analysis, i) => {
-        console.log(`\n━━━ 消息元素 ${i + 1} ━━━`);
+        console.log(`\n━━�?消息元素 ${i + 1} ━━━`);
         console.log(`className: ${analysis.className}`);
         console.log(`文本: ${analysis.textContent}`);
-        console.log(`Fiber 键: ${analysis.fiberKey}`);
-        console.log(`\nFiber 树 (前 15 层):\n`);
+        console.log(`Fiber �? ${analysis.fiberKey}`);
+        console.log(`\nFiber �?(�?15 �?:\n`);
 
         analysis.fiberTree.slice(0, 15).forEach(node => {
           console.log(`深度 ${node.depth}: ${node.type}`);
@@ -264,19 +264,19 @@ async function diagnoseMessageFiber() {
     }
 
   } catch (error) {
-    console.error('\n❌ 诊断失败:', error);
+    console.error('\n�?诊断失败:', error);
     console.error(error.stack);
   } finally {
-    console.log('\n⏸️  等待 15 秒后关闭浏览器...');
+    console.log('\n⏸️  等待 15 秒后关闭浏览�?..');
     await page.waitForTimeout(15000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 诊断完成');
+    console.log('\n�?诊断完成');
   }
 }
 
 diagnoseMessageFiber().catch(error => {
-  console.error('❌ 脚本执行失败:', error);
+  console.error('�?脚本执行失败:', error);
   process.exit(1);
 });

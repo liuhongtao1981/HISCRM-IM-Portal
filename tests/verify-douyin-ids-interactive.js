@@ -1,7 +1,5 @@
 /**
- * 抖音私信ID验证工具（交互式）
- * 使用 Playwright 启动一个可控的浏览器
- */
+ * 抖音私信ID验证工具（交互式�? * 使用 Playwright 启动一个可控的浏览�? */
 
 const { chromium } = require('playwright');
 const path = require('path');
@@ -9,8 +7,7 @@ const path = require('path');
 const ACCOUNT_ID = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 const WORKER_ID = 'worker-1';
 
-// 浏览器用户数据目录
-const USER_DATA_DIR = path.join(
+// 浏览器用户数据目�?const USER_DATA_DIR = path.join(
   __dirname,
   '../packages/worker/data/browser',
   WORKER_ID,
@@ -18,14 +15,14 @@ const USER_DATA_DIR = path.join(
 );
 
 console.log('\n' + '='.repeat(80));
-console.log('抖音私信ID验证工具（交互式）');
+console.log('抖音私信ID验证工具（交互式�?);
 console.log('='.repeat(80) + '\n');
 
 async function main() {
   let context;
 
   try {
-    console.log('【步骤 1】启动浏览器（使用已有用户数据）...\n');
+    console.log('【步�?1】启动浏览器（使用已有用户数据）...\n');
     console.log('  用户数据目录:', USER_DATA_DIR);
 
     context = await chromium.launchPersistentContext(USER_DATA_DIR, {
@@ -38,23 +35,22 @@ async function main() {
     });
 
     const page = context.pages()[0] || await context.newPage();
-    console.log('  ✅ 浏览器已启动\n');
+    console.log('  �?浏览器已启动\n');
 
-    // 导航到私信页面
-    console.log('【步骤 2】导航到私信页面...\n');
+    // 导航到私信页�?    console.log('【步�?2】导航到私信页面...\n');
     const dmUrl = 'https://www.douyin.com/falcon/webcast_openpc/pages/im/index.html';
 
     try {
       await page.goto(dmUrl, { waitUntil: 'domcontentloaded', timeout: 60000 });
-      console.log('  ✅ 页面加载完成\n');
+      console.log('  �?页面加载完成\n');
     } catch (error) {
-      console.log('  ⚠️ 页面加载超时，继续执行...\n');
+      console.log('  ⚠️ 页面加载超时，继续执�?..\n');
     }
 
     // 等待页面渲染
     await page.waitForTimeout(5000);
 
-    console.log('【步骤 3】分析页面结构...\n');
+    console.log('【步�?3】分析页面结�?..\n');
 
     // 查找所有可能的会话容器
     const pageAnalysis = await page.evaluate(() => {
@@ -110,17 +106,17 @@ async function main() {
 
     console.log('  页面分析结果:');
     console.log(`    总元素数: ${pageAnalysis.totalElements}`);
-    console.log(`    React Fiber: ${pageAnalysis.reactFiberFound ? '✅ 找到' : '❌ 未找到'}`);
-    console.log(`    可能的会话容器: ${pageAnalysis.possibleConversationContainers.length} 个`);
-    console.log(`    可能的消息容器: ${pageAnalysis.possibleMessageContainers.length} 个`);
+    console.log(`    React Fiber: ${pageAnalysis.reactFiberFound ? '�?找到' : '�?未找�?}`);
+    console.log(`    可能的会话容�? ${pageAnalysis.possibleConversationContainers.length} 个`);
+    console.log(`    可能的消息容�? ${pageAnalysis.possibleMessageContainers.length} 个`);
     console.log('');
 
     // 如果找到会话容器
     if (pageAnalysis.possibleConversationContainers.length > 0) {
-      console.log('【步骤 4】提取会话数据...\n');
+      console.log('【步�?4】提取会话数�?..\n');
 
       const conversations = pageAnalysis.possibleConversationContainers;
-      console.log(`  找到 ${conversations.length} 个会话:\n`);
+      console.log(`  找到 ${conversations.length} 个会�?\n`);
 
       const idFormats = {
         base64: 0,
@@ -145,8 +141,8 @@ async function main() {
         }
 
         console.log(`    ${idx + 1}. ${conv.nickname || '未知'}`);
-        console.log(`       user_id: ${userId || '(无)'}`);
-        console.log(`       conversation_id: ${conv.conversation_id || '(无)'}`);
+        console.log(`       user_id: ${userId || '(�?'}`);
+        console.log(`       conversation_id: ${conv.conversation_id || '(�?'}`);
         console.log(`       ID格式: ${format}`);
         console.log('');
       });
@@ -160,10 +156,10 @@ async function main() {
 
     // 如果找到消息容器
     if (pageAnalysis.possibleMessageContainers.length > 0) {
-      console.log('【步骤 5】提取消息数据...\n');
+      console.log('【步�?5】提取消息数�?..\n');
 
       const messages = pageAnalysis.possibleMessageContainers;
-      console.log(`  找到 ${messages.length} 条消息:\n`);
+      console.log(`  找到 ${messages.length} 条消�?\n`);
 
       const idFormats = {
         base64: 0,
@@ -190,10 +186,10 @@ async function main() {
         }
 
         console.log(`    ${idx + 1}. 消息`);
-        console.log(`       messageId: ${msg.serverId || msg.messageId || '(无)'}`);
-        console.log(`       conversationId: ${convId || '(无)'}`);
+        console.log(`       messageId: ${msg.serverId || msg.messageId || '(�?'}`);
+        console.log(`       conversationId: ${convId || '(�?'}`);
         console.log(`       ID格式: ${format}`);
-        console.log(`       内容: ${msg.content || '(无)'}...`);
+        console.log(`       内容: ${msg.content || '(�?'}...`);
         console.log('');
       });
 
@@ -205,19 +201,18 @@ async function main() {
       console.log('');
     }
 
-    // 如果都没找到，打印诊断信息
-    if (pageAnalysis.possibleConversationContainers.length === 0 && pageAnalysis.possibleMessageContainers.length === 0) {
+    // 如果都没找到，打印诊断信�?    if (pageAnalysis.possibleConversationContainers.length === 0 && pageAnalysis.possibleMessageContainers.length === 0) {
       console.log('⚠️ 未找到会话或消息数据！\n');
-      console.log('可能的原因:');
+      console.log('可能的原�?');
       console.log('  1. 页面尚未加载完成');
-      console.log('  2. 需要手动登录');
-      console.log('  3. 页面结构已改变');
+      console.log('  2. 需要手动登�?);
+      console.log('  3. 页面结构已改�?);
       console.log('');
       console.log('建议：请在浏览器中手动导航到私信页面，然后刷新此脚本\n');
     }
 
     // 保存完整数据到JSON
-    console.log('【步骤 6】保存原始数据...\n');
+    console.log('【步�?6】保存原始数�?..\n');
 
     const fs = require('fs');
     const outputPath = path.join(__dirname, 'douyin-id-analysis.json');
@@ -233,22 +228,21 @@ async function main() {
       }
     }, null, 2));
 
-    console.log(`  ✅ 数据已保存到: ${outputPath}\n`);
+    console.log(`  �?数据已保存到: ${outputPath}\n`);
 
     console.log('='.repeat(80));
-    console.log('验证完成！浏览器保持打开状态，方便你手动检查。');
-    console.log('按 Ctrl+C 关闭浏览器');
+    console.log('验证完成！浏览器保持打开状态，方便你手动检查�?);
+    console.log('�?Ctrl+C 关闭浏览�?);
     console.log('='.repeat(80) + '\n');
 
     // 保持浏览器打开
     await new Promise(() => {});
 
   } catch (error) {
-    console.error('\n❌ 错误:', error.message);
+    console.error('\n�?错误:', error.message);
     console.error(error.stack);
   } finally {
-    // 不自动关闭，让用户手动关闭
-  }
+    // 不自动关闭，让用户手动关�?  }
 }
 
 main().catch(console.error);

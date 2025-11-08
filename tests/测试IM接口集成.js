@@ -1,6 +1,6 @@
 /**
  * 测试 IM API 接口集成
- * 1. 手动向 Master DataStore 添加测试数据
+ * 1. 手动�?Master DataStore 添加测试数据
  * 2. 调用 IM API 验证能否读取数据
  */
 
@@ -13,8 +13,8 @@ console.log('==================================================\n');
 // 测试账户 ID
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 
-// 步骤 1: 手动向 DataStore 推送测试数据
-console.log('步骤 1: 手动向 DataStore 推送测试数据\n');
+// 步骤 1: 手动�?DataStore 推送测试数�?
+console.log('步骤 1: 手动�?DataStore 推送测试数据\n');
 
 const testData = {
   type: 'worker:data:sync',
@@ -35,7 +35,7 @@ const testData = {
             userName: '测试用户1',
             userAvatar: 'https://example.com/avatar1.jpg',
             unreadCount: 3,
-            lastMessageContent: '你好，这是测试消息1',
+            lastMessageContent: '你好，这是测试消�?',
             lastMessageTime: Date.now() - 3600000,
             status: 'new',
             createdAt: Date.now() - 86400000,
@@ -51,7 +51,7 @@ const testData = {
             userName: '测试用户2',
             userAvatar: 'https://example.com/avatar2.jpg',
             unreadCount: 1,
-            lastMessageContent: '你好，这是测试消息2',
+            lastMessageContent: '你好，这是测试消�?',
             lastMessageTime: Date.now() - 7200000,
             status: 'new',
             createdAt: Date.now() - 172800000,
@@ -66,7 +66,7 @@ const testData = {
             conversationId: 'test_conv_1',
             messageId: 'test_msg_1',
             type: 'text',
-            content: '你好，这是测试消息1',
+            content: '你好，这是测试消�?',
             senderId: 'test_user_1',
             receiverId: accountId,
             createdAt: Date.now() - 3600000,
@@ -79,7 +79,7 @@ const testData = {
             conversationId: 'test_conv_2',
             messageId: 'test_msg_2',
             type: 'text',
-            content: '你好，这是测试消息2',
+            content: '你好，这是测试消�?',
             senderId: 'test_user_2',
             receiverId: accountId,
             createdAt: Date.now() - 7200000,
@@ -95,7 +95,7 @@ const testData = {
             contentId: 'test_content_1',
             userId: 'test_user_3',
             userName: '测试用户3',
-            text: '这是一条测试评论',
+            text: '这是一条测试评�?,
             createdAt: Date.now() - 1800000,
             status: 'new',
           },
@@ -118,7 +118,7 @@ const testData = {
   },
 };
 
-// 发送数据到 Master（模拟 Worker 推送）
+// 发送数据到 Master（模�?Worker 推送）
 const pushData = JSON.stringify(testData);
 
 const pushOptions = {
@@ -132,18 +132,18 @@ const pushOptions = {
   },
 };
 
-console.log('向 Master 推送测试数据...\n');
+console.log('�?Master 推送测试数�?..\n');
 
 const pushReq = http.request(pushOptions, (res) => {
   let data = '';
   res.on('data', (chunk) => { data += chunk; });
   res.on('end', () => {
     if (res.statusCode === 404) {
-      console.log('⚠️ 测试接口不存在，跳过数据推送');
+      console.log('⚠️ 测试接口不存在，跳过数据推�?);
       console.log('   这是正常的，因为我们没有创建测试接口\n');
       testIMAPIs();
     } else {
-      console.log('✅ 数据推送响应:', res.statusCode);
+      console.log('�?数据推送响�?', res.statusCode);
       console.log(data, '\n');
       testIMAPIs();
     }
@@ -218,17 +218,17 @@ function testIMAPIs() {
               console.log('返回数据数量:', items.length);
 
               if (items.length > 0) {
-                console.log('✅ 返回了数据');
-                console.log('第一条数据示例:');
+                console.log('�?返回了数�?);
+                console.log('第一条数据示�?');
                 console.log(JSON.stringify(items[0], null, 2).substring(0, 200) + '...');
               } else {
-                console.log('⚠️ 没有数据（可能 DataStore 为空或数据库为空）');
+                console.log('⚠️ 没有数据（可�?DataStore 为空或数据库为空�?);
               }
             } else {
               console.log('响应:', data.substring(0, 300));
             }
           } catch (err) {
-            console.log('❌ 解析失败:', err.message);
+            console.log('�?解析失败:', err.message);
             console.log('原始响应:', data.substring(0, 300));
           }
 
@@ -240,7 +240,7 @@ function testIMAPIs() {
       });
 
       req.on('error', (err) => {
-        console.log('❌ 请求失败:', err.message);
+        console.log('�?请求失败:', err.message);
         completedTests++;
         if (completedTests === tests.length) {
           printSummary();
@@ -257,18 +257,18 @@ function printSummary() {
   console.log('测试完成');
   console.log('==================================================\n');
 
-  console.log('📊 测试总结：');
-  console.log('  - 测试了 5 个 IM API 接口');
-  console.log('  - 验证了 API 路由是否正常');
+  console.log('📊 测试总结�?);
+  console.log('  - 测试�?5 �?IM API 接口');
+  console.log('  - 验证�?API 路由是否正常');
   console.log('  - 检查了数据返回格式\n');
 
-  console.log('💡 说明：');
-  console.log('  - 如果返回了数据：✅ IM API 集成成功');
-  console.log('  - 如果没有数据：DataStore 为空（需要 Worker 推送数据）');
-  console.log('  - 但只要 API 返回了正确的 JSON 格式，就说明集成成功\n');
+  console.log('💡 说明�?);
+  console.log('  - 如果返回了数据：�?IM API 集成成功');
+  console.log('  - 如果没有数据：DataStore 为空（需�?Worker 推送数据）');
+  console.log('  - 但只�?API 返回了正确的 JSON 格式，就说明集成成功\n');
 
   console.log('📋 下一步：');
-  console.log('  1. 如果所有 API 都返回正确格式 → 集成成功 ✅');
-  console.log('  2. 如果需要测试实际数据流 → 需要账户登录并启动爬虫');
+  console.log('  1. 如果所�?API 都返回正确格�?�?集成成功 �?);
+  console.log('  2. 如果需要测试实际数据流 �?需要账户登录并启动爬虫');
   console.log('  3. 或者创建一个专门的测试端点来手动注入数据\n');
 }

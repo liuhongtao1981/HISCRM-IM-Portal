@@ -1,7 +1,6 @@
 /**
  * 验证 Discussions 数据入库测试
- * 用于验证 discussions 表数据是否成功入库
- */
+ * 用于验证 discussions 表数据是否成功入�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -12,8 +11,7 @@ const db = new Database(dbPath);
 console.log('\n📊 Discussions 数据入库验证\n');
 console.log('=' .repeat(80));
 
-// 1. 统计所有表的数据
-console.log('\n📈 数据统计:');
+// 1. 统计所有表的数�?console.log('\n📈 数据统计:');
 const tables = [
   { name: 'contents', label: '作品 (contents)' },
   { name: 'contents', label: '作品 (contents)' },
@@ -26,7 +24,7 @@ const tables = [
 tables.forEach(({ name, label }) => {
   try {
     const result = db.prepare(`SELECT COUNT(*) as count FROM ${name}`).get();
-    const icon = result.count > 0 ? '✅' : '❌';
+    const icon = result.count > 0 ? '�? : '�?;
     console.log(`  ${icon} ${label}: ${result.count} 条`);
   } catch (error) {
     console.log(`  ⚠️  ${label}: 表不存在或查询失败`);
@@ -60,7 +58,7 @@ try {
   if (discussions.length === 0) {
     console.log('  ⚠️  没有找到任何 discussions 数据');
   } else {
-    console.log(`  找到 ${discussions.length} 条 discussions 数据:\n`);
+    console.log(`  找到 ${discussions.length} �?discussions 数据:\n`);
 
     discussions.forEach((d, index) => {
       console.log(`  [${index + 1}] Discussion ID: ${d.id.substring(0, 20)}...`);
@@ -70,19 +68,18 @@ try {
       console.log(`      平台讨论ID: ${d.platform_discussion_id}`);
       console.log(`      父评论ID: ${d.parent_comment_id}`);
       console.log(`      内容: ${d.content?.substring(0, 50) || ''}...`);
-      console.log(`      作者: ${d.author_name} (ID: ${d.author_id})`);
-      console.log(`      点赞数: ${d.stats_like_count}`);
-      console.log(`      检测时间: ${new Date(d.detected_at * 1000).toLocaleString('zh-CN')}`);
+      console.log(`      作�? ${d.author_name} (ID: ${d.author_id})`);
+      console.log(`      点赞�? ${d.stats_like_count}`);
+      console.log(`      检测时�? ${new Date(d.detected_at * 1000).toLocaleString('zh-CN')}`);
       console.log(`      创建时间: ${new Date(d.created_at * 1000).toLocaleString('zh-CN')}`);
       console.log();
     });
   }
 } catch (error) {
-  console.error('  ❌ 查询失败:', error.message);
+  console.error('  �?查询失败:', error.message);
 }
 
-// 3. 检查 discussions 和 comments 的关联
-console.log('\n🔗 Discussions 与 Comments 关联检查:');
+// 3. 检�?discussions �?comments 的关�?console.log('\n🔗 Discussions �?Comments 关联检�?');
 console.log('-'.repeat(80));
 
 try {
@@ -104,19 +101,18 @@ try {
     linkedDiscussions.forEach((item, index) => {
       console.log(`  [${index + 1}] Discussion: ${item.discussion_content?.substring(0, 40)}...`);
       if (item.comment_id) {
-        console.log(`      ✅ 关联评论: ${item.comment_content?.substring(0, 40)}...`);
+        console.log(`      �?关联评论: ${item.comment_content?.substring(0, 40)}...`);
       } else {
-        console.log(`      ❌ 未找到父评论 (parent_comment_id: ${item.parent_comment_id})`);
+        console.log(`      �?未找到父评论 (parent_comment_id: ${item.parent_comment_id})`);
       }
       console.log();
     });
   }
 } catch (error) {
-  console.error('  ❌ 关联检查失败:', error.message);
+  console.error('  �?关联检查失�?', error.message);
 }
 
-// 4. 最近入库时间
-console.log('\n⏰ 最近数据入库时间:');
+// 4. 最近入库时�?console.log('\n�?最近数据入库时�?');
 console.log('-'.repeat(80));
 
 ['comments', 'discussions', 'direct_messages'].forEach(tableName => {
@@ -135,7 +131,7 @@ console.log('-'.repeat(80));
       const detectedTime = new Date(latest.detected_at * 1000).toLocaleString('zh-CN');
       console.log(`  ${tableName}:`);
       console.log(`    创建时间: ${createdTime}`);
-      console.log(`    检测时间: ${detectedTime}`);
+      console.log(`    检测时�? ${detectedTime}`);
     } else {
       console.log(`  ${tableName}: 无数据`);
     }
@@ -145,6 +141,6 @@ console.log('-'.repeat(80));
 });
 
 console.log('\n' + '='.repeat(80));
-console.log('\n✅ 验证完成！\n');
+console.log('\n�?验证完成！\n');
 
 db.close();

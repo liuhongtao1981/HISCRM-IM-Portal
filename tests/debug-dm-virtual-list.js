@@ -1,5 +1,5 @@
 /**
- * 调试抖音私信虚拟列表 - 检查为什么消息提取返回0
+ * 调试抖音私信虚拟列表 - 检查为什么消息提取返�?
  *
  * 使用 Playwright MCP 连接到抖音私信页面，运行调试脚本
  */
@@ -10,18 +10,16 @@ const path = require('path');
 async function debugVirtualList() {
   console.log('\n=== 抖音私信虚拟列表调试 ===\n');
 
-  // 使用与 Worker 相同的 User Data 目录（已登录的浏览器）
-  const userDataDir = path.join(
+  // 使用�?Worker 相同�?User Data 目录（已登录的浏览器�?  const userDataDir = path.join(
     __dirname,
     '../packages/worker/data/browser/worker1/browser_acc-98296c87-2e42-447a-9d8b-8be008ddb6e4'
   );
 
-  console.log(`使用浏览器数据目录: ${userDataDir}\n`);
+  console.log(`使用浏览器数据目�? ${userDataDir}\n`);
 
   let context;
   try {
-    // 启动浏览器（使用已登录的会话）
-    context = await chromium.launchPersistentContext(userDataDir, {
+    // 启动浏览器（使用已登录的会话�?    context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: [
         '--no-sandbox',
@@ -30,32 +28,30 @@ async function debugVirtualList() {
       ]
     });
 
-    console.log('✅ 浏览器已启动');
+    console.log('�?浏览器已启动');
 
-    // 获取第一个页面或创建新页面
-    const pages = context.pages();
+    // 获取第一个页面或创建新页�?    const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    // 导航到抖音私信页面
-    console.log('\n导航到抖音私信页面...');
+    // 导航到抖音私信页�?    console.log('\n导航到抖音私信页�?..');
     await page.goto('https://www.douyin.com/falcon/webcast_openpc/pages/douyin_reflow/index', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    console.log('✅ 页面已加载');
-    console.log('\n请在浏览器中：');
-    console.log('1. 确保已登录');
-    console.log('2. 点击左侧的"私信"标签');
+    console.log('�?页面已加�?);
+    console.log('\n请在浏览器中�?);
+    console.log('1. 确保已登�?);
+    console.log('2. 点击左侧�?私信"标签');
     console.log('3. 点击任意一个会话，查看右侧消息列表');
-    console.log('\n按 Enter 键继续调试...');
+    console.log('\n�?Enter 键继续调�?..');
 
     // 等待用户确认
     await new Promise(resolve => {
       process.stdin.once('data', resolve);
     });
 
-    console.log('\n开始调试虚拟列表...\n');
+    console.log('\n开始调试虚拟列�?..\n');
 
     // ============================================================
     // 调试步骤 1: 查找所有可能包含消息的元素
@@ -79,15 +75,15 @@ async function debugVirtualList() {
       return results;
     });
 
-    console.log('找到的元素数量:');
+    console.log('找到的元素数�?');
     Object.entries(step1Result).forEach(([selector, count]) => {
       console.log(`  ${selector}: ${count} 个`);
     });
 
     // ============================================================
-    // 调试步骤 2: 检查 React Fiber 结构
+    // 调试步骤 2: 检�?React Fiber 结构
     // ============================================================
-    console.log('\n=== 步骤 2: 检查 React Fiber 结构 ===');
+    console.log('\n=== 步骤 2: 检�?React Fiber 结构 ===');
     const step2Result = await page.evaluate(() => {
       const allElements = document.querySelectorAll('[class*="message"], [class*="item"], [role*="article"]');
 
@@ -96,8 +92,7 @@ async function debugVirtualList() {
       }
 
       const samples = [];
-      // 检查前 5 个元素
-      Array.from(allElements).slice(0, 5).forEach((element, index) => {
+      // 检查前 5 个元�?      Array.from(allElements).slice(0, 5).forEach((element, index) => {
         const sample = {
           index,
           className: element.className,
@@ -107,8 +102,7 @@ async function debugVirtualList() {
           fiberPropsKeys: []
         };
 
-        // 查找 React Fiber 键
-        const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
+        // 查找 React Fiber �?        const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
         if (fiberKey) {
           sample.hasFiber = true;
           sample.fiberKeys.push(fiberKey);
@@ -129,18 +123,18 @@ async function debugVirtualList() {
     });
 
     if (step2Result.error) {
-      console.log(`❌ ${step2Result.error}`);
+      console.log(`�?${step2Result.error}`);
     } else {
       console.log(`总共找到 ${step2Result.totalElements} 个元素`);
-      console.log('\n前 5 个元素的 React Fiber 分析:');
+      console.log('\n�?5 个元素的 React Fiber 分析:');
       step2Result.samples.forEach(sample => {
         console.log(`\n  元素 ${sample.index}:`);
         console.log(`    className: ${sample.className}`);
         console.log(`    文本预览: ${sample.textPreview}`);
-        console.log(`    有 React Fiber: ${sample.hasFiber ? '✅' : '❌'}`);
+        console.log(`    �?React Fiber: ${sample.hasFiber ? '�? : '�?}`);
         if (sample.hasFiber) {
-          console.log(`    Fiber 键: ${sample.fiberKeys.join(', ')}`);
-          console.log(`    Props 键: ${sample.fiberPropsKeys.join(', ')}`);
+          console.log(`    Fiber �? ${sample.fiberKeys.join(', ')}`);
+          console.log(`    Props �? ${sample.fiberPropsKeys.join(', ')}`);
         }
       });
     }
@@ -160,8 +154,7 @@ async function debugVirtualList() {
           const props = fiber.memoizedProps;
           const keys = Object.keys(props);
 
-          // 检查是否包含消息相关的键
-          const messageKeys = ['conversationId', 'serverId', 'content', 'message', 'text', 'msgId', 'id'];
+          // 检查是否包含消息相关的�?          const messageKeys = ['conversationId', 'serverId', 'content', 'message', 'text', 'msgId', 'id'];
           const foundKeys = keys.filter(key => messageKeys.some(mk => key.toLowerCase().includes(mk.toLowerCase())));
 
           if (foundKeys.length > 0) {
@@ -184,8 +177,7 @@ async function debugVirtualList() {
           if (childResults) results.push(...(Array.isArray(childResults) ? childResults : [childResults]));
         }
 
-        // 递归检查兄弟节点
-        if (fiber.sibling) {
+        // 递归检查兄弟节�?        if (fiber.sibling) {
           const siblingResults = findMessageDataInFiber(fiber.sibling, maxDepth - 1, path + ' > sibling');
           if (siblingResults) results.push(...(Array.isArray(siblingResults) ? siblingResults : [siblingResults]));
         }
@@ -208,9 +200,9 @@ async function debugVirtualList() {
     });
 
     if (step3Result.error) {
-      console.log(`❌ ${step3Result.error}`);
+      console.log(`�?${step3Result.error}`);
     } else if (step3Result.messageData) {
-      console.log('找到的消息数据结构:');
+      console.log('找到的消息数据结�?');
       step3Result.messageData.forEach((data, index) => {
         console.log(`\n  结果 ${index + 1}:`);
         console.log(`    路径: ${data.path}`);
@@ -218,13 +210,13 @@ async function debugVirtualList() {
         console.log(`    数据样本:`, data.sample);
       });
     } else {
-      console.log('❌ 在 React Fiber 树中没有找到消息数据');
+      console.log('�?�?React Fiber 树中没有找到消息数据');
     }
 
     // ============================================================
     // 调试步骤 4: 测试当前的提取逻辑
     // ============================================================
-    console.log('\n=== 步骤 4: 测试当前的 extractMessagesFromVirtualList 逻辑 ===');
+    console.log('\n=== 步骤 4: 测试当前�?extractMessagesFromVirtualList 逻辑 ===');
     const step4Result = await page.evaluate(() => {
       // 复制爬虫中的提取逻辑
       function extractMessagesFromVirtualList() {
@@ -245,8 +237,7 @@ async function debugVirtualList() {
 
             const props = fiber.memoizedProps;
 
-            // 检查是否包含消息数据
-            if (props.conversationId || props.serverId || props.content || props.message) {
+            // 检查是否包含消息数�?            if (props.conversationId || props.serverId || props.content || props.message) {
               const messageId = props.serverId || props.msgId || props.id;
               if (messageId && !processedIds.has(messageId)) {
                 processedIds.add(messageId);
@@ -277,28 +268,27 @@ async function debugVirtualList() {
     console.log(`找到元素: ${step4Result.totalElements}`);
     console.log(`提取消息: ${step4Result.extractedCount}`);
     if (step4Result.extractedCount > 0) {
-      console.log('\n提取的消息样本:');
+      console.log('\n提取的消息样�?');
       step4Result.samples.forEach((msg, index) => {
         console.log(`\n  消息 ${index + 1}:`);
-        console.log(`    Props 键: ${msg.allPropsKeys.join(', ')}`);
+        console.log(`    Props �? ${msg.allPropsKeys.join(', ')}`);
         console.log(`    数据:`, msg);
       });
     } else {
-      console.log('❌ 当前提取逻辑返回 0 条消息');
+      console.log('�?当前提取逻辑返回 0 条消�?);
     }
 
     console.log('\n\n=== 调试完成 ===');
-    console.log('浏览器将保持打开状态，请按 Ctrl+C 退出...');
+    console.log('浏览器将保持打开状态，请按 Ctrl+C 退�?..');
 
     // 保持浏览器打开
     await new Promise(() => {});
 
   } catch (error) {
-    console.error('\n❌ 调试过程出错:', error.message);
+    console.error('\n�?调试过程出错:', error.message);
     console.error(error.stack);
   } finally {
-    // 不关闭浏览器，方便手动检查
-  }
+    // 不关闭浏览器，方便手动检�?  }
 }
 
 debugVirtualList().catch(err => {

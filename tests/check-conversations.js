@@ -1,6 +1,5 @@
 /**
- * 检查内存中的会话数据
- */
+ * 检查内存中的会话数�? */
 
 const https = require('http');
 
@@ -22,8 +21,8 @@ https.get(API_URL, (res) => {
         process.exit(1);
       }
 
-      console.log('\n╔═══════════════════════════════════════════════════════╗');
-      console.log('║  内存中的会话数据（Cache Conversations）              ║');
+      console.log('\n╔═══════════════════════════════════════════════════════�?);
+      console.log('�? 内存中的会话数据（Cache Conversations�?             �?);
       console.log('╚═══════════════════════════════════════════════════════╝\n');
 
       console.log(`总计: ${data.pagination.total} 个会话\n`);
@@ -34,8 +33,8 @@ https.get(API_URL, (res) => {
 
         console.log(`${index + 1}. ${conv.nickname || conv.user_id}`);
         console.log(`   用户ID: ${conv.user_id}`);
-        console.log(`   最后消息时间: ${formattedTime} (${conv.last_message_time})`);
-        console.log(`   未读数: ${conv.unread_count || 0}`);
+        console.log(`   最后消息时�? ${formattedTime} (${conv.last_message_time})`);
+        console.log(`   未读�? ${conv.unread_count || 0}`);
         console.log('');
       });
 

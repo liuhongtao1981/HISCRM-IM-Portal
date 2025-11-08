@@ -238,68 +238,89 @@ async function start() {
     logger.info('✓ Task runner started');
 
     // 12. 添加已成功初始化的账户到任务执行器
+    // 检查是否启用独立登录检测
+    const loginCheckEnabled = process.env.LOGIN_CHECK_ENABLED === 'true';
+    logger.info(`Login check mode: ${loginCheckEnabled ? 'Independent' : 'Legacy'}`);
+    
     let addedTasksCount = 0;
+    const initializedAccounts = [];
+    
     for (const account of assignedAccounts) {
       if (accountInitializer.isInitialized(account.id)) {
-        taskRunner.addTask(account);
+        // 先添加任务，但不启动登录检测（等账户完全就绪）
+        await taskRunner.addTask(account, { startLoginDetection: false });
         addedTasksCount++;
+        initializedAccounts.push(account);
       } else {
         logger.warn(`Skipping task for account ${account.id} (browser initialization failed)`);
       }
     }
-    logger.info(`✓ Added ${addedTasksCount} monitoring tasks`);
+    logger.info(`✓ Added ${addedTasksCount} ${loginCheckEnabled ? 'login detection + monitoring' : 'monitoring'} tasks`);
 
-    // 12. 检查登录状态并上报给 Master
-    logger.info('Checking login status for all accounts...');
-    for (const account of assignedAccounts) {
-      if (accountInitializer.isInitialized(account.id)) {
-        try {
-          // 获取平台实例
-          const platform = platformManager.getPlatform(account.platform);
-          if (!platform) {
-            logger.warn(`Platform ${account.platform} not found for account ${account.id}`);
-            continue;
+    // ⭐ 所有账户任务添加完成后，统一启动登录检测任务
+    if (loginCheckEnabled && initializedAccounts.length > 0) {
+      logger.info(`Starting login detection for ${initializedAccounts.length} accounts...`);
+      for (const account of initializedAccounts) {
+        await taskRunner.startLoginDetection(account.id);
+      }
+      logger.info(`✓ Login detection started for all accounts`);
+    }
+
+    // 12. 检查登录状态并上报给 Master（仅在传统模式下）
+    if (!loginCheckEnabled) {
+      logger.info('Checking login status for all accounts (legacy mode)...');
+      for (const account of assignedAccounts) {
+        if (accountInitializer.isInitialized(account.id)) {
+          try {
+            // 获取平台实例
+            const platform = platformManager.getPlatform(account.platform);
+            if (!platform) {
+              logger.warn(`Platform ${account.platform} not found for account ${account.id}`);
+              continue;
+            }
+
+            // 获取浏览器上下文
+            const context = browserManager.contexts.get(account.id);
+            if (!context) {
+              logger.warn(`Browser context not found for account ${account.id}`);
+              continue;
+            }
+
+            // 获取账户页面（Spider1）
+            // ⭐ getAccountPage() 现在会自动导航到创作中心，无需手动导航
+            const page = await browserManager.getAccountPage(account.id);
+            if (!page) {
+              logger.warn(`Account page not found for account ${account.id}`);
+              continue;
+            }
+
+            // 检查登录状态（页面已由 getAccountPage() 导航到创作中心）
+            logger.info(`Checking login status for account ${account.id}...`);
+            const loginStatus = await platform.checkLoginStatus(page);
+
+            if (loginStatus.isLoggedIn) {
+              logger.info(`✓ Account ${account.id} is logged in - setting status to online`);
+              accountStatusReporter.updateAccountStatus(account.id, {
+                worker_status: 'online',
+                login_status: 'logged_in'
+              });
+            } else {
+              logger.warn(`✗ Account ${account.id} is NOT logged in - setting status to not_logged_in`);
+              accountStatusReporter.recordError(account.id, 'Not logged in - login required');
+              // 设置为离线状态并更新登录状态
+              accountStatusReporter.updateAccountStatus(account.id, {
+                worker_status: 'offline',
+                login_status: 'not_logged_in'
+              });
+            }
+          } catch (error) {
+            logger.error(`Failed to check login status for account ${account.id}:`, error);
+            accountStatusReporter.recordError(account.id, `Login check failed: ${error.message}`);
           }
-
-          // 获取浏览器上下文
-          const context = browserManager.contexts.get(account.id);
-          if (!context) {
-            logger.warn(`Browser context not found for account ${account.id}`);
-            continue;
-          }
-
-          // 获取账户页面（Spider1）
-          // ⭐ getAccountPage() 现在会自动导航到创作中心，无需手动导航
-          const page = await browserManager.getAccountPage(account.id);
-          if (!page) {
-            logger.warn(`Account page not found for account ${account.id}`);
-            continue;
-          }
-
-          // 检查登录状态（页面已由 getAccountPage() 导航到创作中心）
-          logger.info(`Checking login status for account ${account.id}...`);
-          const loginStatus = await platform.checkLoginStatus(page);
-
-          if (loginStatus.isLoggedIn) {
-            logger.info(`✓ Account ${account.id} is logged in - setting status to online`);
-            accountStatusReporter.updateAccountStatus(account.id, {
-              worker_status: 'online',
-              login_status: 'logged_in'
-            });
-          } else {
-            logger.warn(`✗ Account ${account.id} is NOT logged in - setting status to not_logged_in`);
-            accountStatusReporter.recordError(account.id, 'Not logged in - login required');
-            // 设置为离线状态并更新登录状态
-            accountStatusReporter.updateAccountStatus(account.id, {
-              worker_status: 'offline',
-              login_status: 'not_logged_in'
-            });
-          }
-        } catch (error) {
-          logger.error(`Failed to check login status for account ${account.id}:`, error);
-          accountStatusReporter.recordError(account.id, `Login check failed: ${error.message}`);
         }
       }
+    } else {
+      logger.info('Skipping initial login status check (independent login detection enabled)');
     }
 
     // 13. 启动上报器（此时已有账号状态数据）

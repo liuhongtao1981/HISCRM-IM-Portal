@@ -1,5 +1,5 @@
 /**
- * 查看评论和讨论抓取结果
+ * 查看评论和讨论抓取结�?
  */
 
 const path = require('path');
@@ -28,7 +28,7 @@ function checkCrawlResults() {
     `).all();
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`📝 评论数据 (共 ${comments.length} 条)`);
+    console.log(`📝 评论数据 (�?${comments.length} �?`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     comments.forEach((c, i) => {
@@ -58,14 +58,14 @@ function checkCrawlResults() {
       `).all();
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`💬 讨论数据 (共 ${discussions.length} 条)`);
+      console.log(`💬 讨论数据 (�?${discussions.length} �?`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       if (discussions.length === 0) {
-        console.log('⚠️  没有抓取到讨论数据!\n');
+        console.log('⚠️  没有抓取到讨论数�?\n');
         console.log('可能原因:');
-        console.log('  1. Worker未执行点击"查看回复"按钮操作');
-        console.log('  2. 选择的视频评论没有回复');
+        console.log('  1. Worker未执行点�?查看回复"按钮操作');
+        console.log('  2. 选择的视频评论没有回�?);
         console.log('  3. API拦截器未捕获讨论API');
         console.log('');
       } else {
@@ -79,7 +79,7 @@ function checkCrawlResults() {
       }
     } catch (e) {
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`❌ discussions 表不存在或查询失败`);
+      console.log(`�?discussions 表不存在或查询失败`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
     }
 
@@ -99,27 +99,27 @@ function checkCrawlResults() {
     console.log('');
 
     if (commentsCount.count > 0 && discussionsCount.count === 0) {
-      console.log('⚠️  评论已抓取,但讨论为0!');
-      console.log('   说明Worker未执行点击"查看回复"按钮的操作\n');
+      console.log('⚠️  评论已抓�?但讨论为0!');
+      console.log('   说明Worker未执行点�?查看回复"按钮的操作\n');
 
-      // 检查有回复的评论
+      // 检查有回复的评�?
       const commentsWithReplies = db.prepare(`
         SELECT COUNT(*) as count
         FROM comments
         WHERE reply_count > 0
       `).get();
 
-      console.log(`   有回复的评论数: ${commentsWithReplies.count}`);
+      console.log(`   有回复的评论�? ${commentsWithReplies.count}`);
 
       if (commentsWithReplies.count > 0) {
-        console.log(`   ✅ 有 ${commentsWithReplies.count} 条评论包含回复,应该能抓取讨论数据`);
-        console.log('   但实际未抓取到,说明点击操作未执行!');
+        console.log(`   �?�?${commentsWithReplies.count} 条评论包含回�?应该能抓取讨论数据`);
+        console.log('   但实际未抓取�?说明点击操作未执�?');
       }
       console.log('');
     }
 
   } catch (error) {
-    console.error('❌ 查询失败:', error);
+    console.error('�?查询失败:', error);
   } finally {
     db.close();
   }

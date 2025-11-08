@@ -1,7 +1,7 @@
 /**
  * 监控 Worker 日志 - DataManager 更新
  *
- * 实时监控 Worker 日志文件,过滤 DataManager 相关的日志输出
+ * 实时监控 Worker 日志文件,过滤 DataManager 相关的日志输�?
  */
 
 const fs = require('fs');
@@ -35,17 +35,17 @@ const KEYWORDS = [
 // 记录已读取的文件位置
 const filePositions = new Map();
 
-console.log('═'.repeat(60));
+console.log('�?.repeat(60));
 console.log('  监控 Worker 日志 - DataManager 更新');
-console.log('═'.repeat(60));
+console.log('�?.repeat(60));
 console.log(`日志目录: ${LOGS_DIR}`);
 console.log(`监控文件: ${LOG_FILES.length} 个`);
-console.log(`关键字: ${KEYWORDS.join(', ')}`);
-console.log('═'.repeat(60));
-console.log('\n⏰ 开始监控... (按 Ctrl+C 停止)\n');
+console.log(`关键�? ${KEYWORDS.join(', ')}`);
+console.log('�?.repeat(60));
+console.log('\n�?开始监�?.. (�?Ctrl+C 停止)\n');
 
 /**
- * 检查日志行是否包含关键字
+ * 检查日志行是否包含关键�?
  */
 function containsKeyword(line) {
   return KEYWORDS.some(keyword => line.includes(keyword));
@@ -56,7 +56,7 @@ function containsKeyword(line) {
  */
 function formatLogLine(filename, line) {
   try {
-    // 尝试解析 JSON 格式的日志
+    // 尝试解析 JSON 格式的日�?
     const log = JSON.parse(line);
     const level = (log.level || 'info').toUpperCase();
     const timestamp = log.timestamp || '';
@@ -64,14 +64,14 @@ function formatLogLine(filename, line) {
     const service = log.service || filename.replace('.log', '');
 
     // 根据日志级别添加颜色标记
-    const levelTag = level === 'ERROR' ? '❌' :
+    const levelTag = level === 'ERROR' ? '�? :
                      level === 'WARN' ? '⚠️' :
                      level === 'DEBUG' ? '🔍' :
-                     '✅';
+                     '�?;
 
     return `${levelTag} [${service}] ${message}`;
   } catch (e) {
-    // 非 JSON 格式的日志
+    // �?JSON 格式的日�?
     return `📝 [${filename}] ${line}`;
   }
 }
@@ -90,12 +90,12 @@ function readNewContent(filePath) {
       return [];
     }
 
-    // 如果没有新内容
+    // 如果没有新内�?
     if (stats.size === lastPosition) {
       return [];
     }
 
-    // 读取新内容
+    // 读取新内�?
     const fd = fs.openSync(filePath, 'r');
     const buffer = Buffer.alloc(stats.size - lastPosition);
     fs.readSync(fd, buffer, 0, buffer.length, lastPosition);
@@ -114,7 +114,7 @@ function readNewContent(filePath) {
 }
 
 /**
- * 监控所有日志文件
+ * 监控所有日志文�?
  */
 function monitorLogs() {
   LOG_FILES.forEach(filename => {
@@ -131,13 +131,13 @@ function monitorLogs() {
 }
 
 // 定时监控
-const monitorInterval = setInterval(monitorLogs, 500);  // 每 500ms 检查一次
+const monitorInterval = setInterval(monitorLogs, 500);  // �?500ms 检查一�?
 
 // 统计信息
 let totalLines = 0;
 let filteredLines = 0;
 
-// 每 10 秒输出统计
+// �?10 秒输出统�?
 const statsInterval = setInterval(() => {
   const stats = {
     totalFiles: LOG_FILES.length,
@@ -163,14 +163,14 @@ const statsInterval = setInterval(() => {
   }
 }, 10000);
 
-// 处理退出
+// 处理退�?
 process.on('SIGINT', () => {
-  console.log('\n\n收到中断信号，停止监控...');
+  console.log('\n\n收到中断信号，停止监�?..');
   clearInterval(monitorInterval);
   clearInterval(statsInterval);
 
-  console.log('\n最终统计:');
-  console.log(`  监控的文件: ${filePositions.size} 个`);
+  console.log('\n最终统�?');
+  console.log(`  监控的文�? ${filePositions.size} 个`);
   LOG_FILES.forEach(filename => {
     const filePath = path.join(LOGS_DIR, filename);
     const position = filePositions.get(filePath);
@@ -183,15 +183,15 @@ process.on('SIGINT', () => {
   process.exit(0);
 });
 
-// 初始化: 读取所有文件当前位置
+// 初始�? 读取所有文件当前位�?
 LOG_FILES.forEach(filename => {
   const filePath = path.join(LOGS_DIR, filename);
   try {
     const stats = fs.statSync(filePath);
-    filePositions.set(filePath, stats.size);  // 从文件末尾开始
+    filePositions.set(filePath, stats.size);  // 从文件末尾开�?
   } catch (error) {
-    // 文件不存在,忽略
+    // 文件不存�?忽略
   }
 });
 
-console.log(`✅ 已初始化 ${filePositions.size} 个日志文件的监控\n`);
+console.log(`�?已初始化 ${filePositions.size} 个日志文件的监控\n`);

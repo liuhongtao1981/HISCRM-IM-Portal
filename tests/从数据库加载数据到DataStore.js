@@ -1,7 +1,6 @@
 /**
- * 从数据库加载数据到 Master DataStore
- * 用于测试 IM 客户端显示功能
- */
+ * 从数据库加载数据�?Master DataStore
+ * 用于测试 IM 客户端显示功�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -9,14 +8,13 @@ const io = require('socket.io-client');
 
 async function loadDataToDataStore() {
   console.log('========================================');
-  console.log('从数据库加载数据到 Master DataStore');
+  console.log('从数据库加载数据�?Master DataStore');
   console.log('========================================\n');
 
-  // 1. 读取数据库数据
-  const dbPath = path.join(__dirname, '../packages/master/data/master.db');
+  // 1. 读取数据库数�?  const dbPath = path.join(__dirname, '../packages/master/data/master.db');
   const db = new Database(dbPath, { readonly: true });
 
-  console.log('1. 读取数据库数据...');
+  console.log('1. 读取数据库数�?..');
 
   // 读取账户信息
   const account = db.prepare(`SELECT * FROM accounts WHERE platform = 'douyin' LIMIT 1`).get();
@@ -40,8 +38,8 @@ async function loadDataToDataStore() {
 
   db.close();
 
-  // 2. 构造 DataStore 数据格式
-  console.log('2. 构造 DataStore 数据格式...');
+  // 2. 构�?DataStore 数据格式
+  console.log('2. 构�?DataStore 数据格式...');
   const dataStoreData = {
     accountId: account.id,
     platform: account.platform,
@@ -56,7 +54,7 @@ async function loadDataToDataStore() {
         last_crawl_time: c.last_crawl_time
       })),
       comments: comments.map(c => ({
-        id: c.comment_id,  // DataStore 需要 .id 字段
+        id: c.comment_id,  // DataStore 需�?.id 字段
         comment_id: c.comment_id,
         work_id: c.work_id,
         platform_comment_id: c.platform_comment_id,
@@ -69,7 +67,7 @@ async function loadDataToDataStore() {
         parent_comment_id: c.parent_comment_id
       })),
       conversations: conversations.map(conv => ({
-        id: conv.conversation_id,  // DataStore 需要 .id 字段
+        id: conv.conversation_id,  // DataStore 需�?.id 字段
         conversation_id: conv.conversation_id,
         participant: JSON.parse(conv.participant_info || '{}'),
         create_time: conv.create_time,
@@ -77,7 +75,7 @@ async function loadDataToDataStore() {
         unread_count: conv.unread_count || 0
       })),
       messages: messages.map(m => ({
-        id: m.msg_id,  // DataStore 需要 .id 字段
+        id: m.msg_id,  // DataStore 需�?.id 字段
         msg_id: m.msg_id,
         conversation_id: m.conversation_id,
         sender: JSON.parse(m.sender_info || '{}'),
@@ -89,33 +87,31 @@ async function loadDataToDataStore() {
     }
   };
 
-  console.log('   ✓ 数据格式化完成\n');
+  console.log('   �?数据格式化完成\n');
 
-  // 3. 连接到 Master 并模拟 Worker 推送数据
-  console.log('3. 连接到 Master 并推送数据...');
+  // 3. 连接�?Master 并模�?Worker 推送数�?  console.log('3. 连接�?Master 并推送数�?..');
 
   const socket = io('http://localhost:3000/worker', {
     reconnection: false
   });
 
   socket.on('connect', () => {
-    console.log('   ✓ 已连接到 Master\n');
+    console.log('   �?已连接到 Master\n');
 
-    // 发送数据同步消息
-    console.log('4. 发送 WORKER_DATA_SYNC 消息...');
+    // 发送数据同步消�?    console.log('4. 发�?WORKER_DATA_SYNC 消息...');
     socket.emit('worker:data_sync', {
       workerId: 'test-data-loader',
       accountId: account.id,
       snapshot: dataStoreData
     });
 
-    console.log('   ✓ 数据已发送\n');
+    console.log('   �?数据已发送\n');
 
     // 等待确认
     setTimeout(() => {
       console.log('========================================');
       console.log('数据加载完成');
-      console.log('现在可以在 CRM PC IM 中查看数据');
+      console.log('现在可以�?CRM PC IM 中查看数�?);
       console.log('========================================');
       socket.disconnect();
       process.exit(0);
@@ -123,13 +119,13 @@ async function loadDataToDataStore() {
   });
 
   socket.on('connect_error', (error) => {
-    console.error('❌ 连接错误:', error.message);
+    console.error('�?连接错误:', error.message);
     process.exit(1);
   });
 }
 
 // 运行脚本
 loadDataToDataStore().catch((error) => {
-  console.error('❌ 加载失败:', error);
+  console.error('�?加载失败:', error);
   process.exit(1);
 });

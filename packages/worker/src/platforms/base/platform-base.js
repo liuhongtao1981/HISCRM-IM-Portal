@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Platform Base - 平台基类
  * 提供统一的平台接口和公共功能
  */
@@ -32,17 +32,12 @@ class PlatformBase {
    * @param {Object} account - 账户对象
    */
   async initialize(account) {
-    console.log(`[DEBUG] PlatformBase.initialize() called for ${this.config.platform}, account ${account.id}`);
-    logger.info(`Initializing ${this.config.platform} platform for account ${account.id}`);
+    logger.info(`初始化 ${this.config.platform} 平台，账号 ${account.id}`);
 
-    // 不需要创建浏览器上下文（已经在 AccountInitializer 中完成）
-    // 只需要初始化平台特定的数据管理器
-    console.log(`[DEBUG] Calling initializeDataManager()...`);
+    // 初始化平台特定的数据管理器
     await this.initializeDataManager(account.id);
-    console.log(`[DEBUG] initializeDataManager() completed`);
 
-    logger.info(`${this.config.platform} platform initialized for account ${account.id}`);
-    console.log(`[DEBUG] PlatformBase.initialize() completed for account ${account.id}`);
+    logger.info(`${this.config.platform} 平台初始化完成`);
   }
 
   /**
@@ -51,19 +46,14 @@ class PlatformBase {
    * @param {string} accountId - 账户 ID
    */
   async initializeDataManager(accountId) {
-    console.log(`[DEBUG] initializeDataManager() called for account ${accountId}`);
     try {
       // 检查是否已经存在
       if (this.dataManagers.has(accountId)) {
-        console.log(`[DEBUG] DataManager already exists for account ${accountId}`);
-        logger.debug(`DataManager already exists for account ${accountId}`);
         return this.dataManagers.get(accountId);
       }
 
       // 调用子类的工厂方法创建平台特定的 DataManager
-      console.log(`[DEBUG] Calling createDataManager()...`);
       const dataManager = await this.createDataManager(accountId);
-      console.log(`[DEBUG] createDataManager() returned:`, dataManager ? 'valid instance' : 'null');
 
       if (!dataManager) {
         throw new Error('createDataManager() must return a valid DataManager instance');
@@ -71,23 +61,18 @@ class PlatformBase {
 
       // 保存到 Map
       this.dataManagers.set(accountId, dataManager);
-      console.log(`[DEBUG] DataManager saved to Map`);
 
       // 启动自动同步（如果配置了）
       if (dataManager.pushConfig.autoSync) {
-        console.log(`[DEBUG] Starting auto-sync...`);
         dataManager.startAutoSync();
-        logger.info(`Auto-sync enabled for account ${accountId}`);
       }
 
-      logger.info(`DataManager initialized for account ${accountId}`);
-      console.log(`[DEBUG] DataManager initialized successfully for account ${accountId}`);
+      logger.info(`DataManager 初始化完成 (账号 ${accountId})`);
 
       return dataManager;
 
     } catch (error) {
-      console.log(`[DEBUG] Error initializing DataManager:`, error.message);
-      logger.error(`Failed to initialize DataManager for account ${accountId}:`, error);
+      logger.error(`初始化 DataManager 失败 (账号 ${accountId}): ${error.message}`);
       throw error;
     }
   }
@@ -227,7 +212,6 @@ class PlatformBase {
             qrCheckCounter = 0; // 重置计数器
 
             try {
-              logger.debug(`[QR Monitor] Checking if QR code has changed...`);
               const qrElement = await page.$(qrSelector);
 
               if (qrElement) {
@@ -1066,7 +1050,6 @@ class PlatformBase {
   async registerAPIHandlers(manager, accountId) {
     // 默认不注册任何拦截器
     // 子类应该覆盖此方法来注册自己的拦截器
-    logger.debug(`No API handlers registered for platform ${this.config.platform}`);
   }
 
   /**

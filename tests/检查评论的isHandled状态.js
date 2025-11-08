@@ -3,7 +3,7 @@ const io = require('socket.io-client');
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 
 console.log('================================================================================');
-console.log('检查评论的 isHandled 状态');
+console.log('检查评论的 isHandled 状�?);
 console.log('================================================================================\n');
 
 const socket = io('http://localhost:3000', {
@@ -14,7 +14,7 @@ const socket = io('http://localhost:3000', {
 let topicsReceived = false;
 
 socket.on('connect', () => {
-  console.log('✅ 已连接到 Master\n');
+  console.log('�?已连接到 Master\n');
 
   socket.emit('register', {
     clientId: 'test_check_handled_' + Date.now(),
@@ -24,7 +24,7 @@ socket.on('connect', () => {
 });
 
 socket.on('registerSuccess', () => {
-  console.log('✅ 注册成功\n');
+  console.log('�?注册成功\n');
 
   socket.emit('getTopics', {
     accountId: accountId,
@@ -67,26 +67,26 @@ socket.on('topicList', (data) => {
 
     if (completed === contentTopics.length) {
       console.log('================================================================================');
-      console.log('所有评论的 isHandled 状态:');
+      console.log('所有评论的 isHandled 状�?');
       console.log('================================================================================\n');
 
       const handled = allComments.filter(c => c.isHandled === true);
       const unhandled = allComments.filter(c => c.isHandled === false || c.isHandled === undefined);
 
       console.log(`总评论数: ${allComments.length}`);
-      console.log(`已处理: ${handled.length}`);
-      console.log(`未处理: ${unhandled.length}\n`);
+      console.log(`已处�? ${handled.length}`);
+      console.log(`未处�? ${unhandled.length}\n`);
 
       console.log('详细数据:');
       allComments.forEach((comment, idx) => {
         console.log(`  ${idx + 1}. ${comment.content}...`);
-        console.log(`     isHandled: ${comment.isHandled ?? '(未定义)'}`);
-        console.log(`     isNew: ${comment.isNew ?? '(未定义)'}`);
+        console.log(`     isHandled: ${comment.isHandled ?? '(未定�?'}`);
+        console.log(`     isNew: ${comment.isNew ?? '(未定�?'}`);
         console.log('');
       });
 
       console.log('================================================================================');
-      console.log('✅ 检查完成');
+      console.log('�?检查完�?);
       console.log('================================================================================');
 
       setTimeout(() => process.exit(0), 1000);
@@ -95,11 +95,11 @@ socket.on('topicList', (data) => {
 });
 
 socket.on('error', (err) => {
-  console.error('❌ 错误:', err);
+  console.error('�?错误:', err);
   process.exit(1);
 });
 
 setTimeout(() => {
-  console.error('❌ 超时');
+  console.error('�?超时');
   process.exit(1);
 }, 15000);

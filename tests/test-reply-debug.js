@@ -2,7 +2,7 @@
 
 /**
  * 回复功能完整调试脚本
- * 用于测试private message回复的整个流程
+ * 用于测试private message回复的整个流�?
  * 包含编码检查、API测试、数据库验证
  */
 
@@ -33,16 +33,16 @@ function log(color, label, message) {
   console.log(`${colors[color]}[${label}]${colors.reset} ${message}`);
 }
 
-function success(msg) { log('green', '✅', msg); }
-function error(msg) { log('red', '❌', msg); }
+function success(msg) { log('green', '�?, msg); }
+function error(msg) { log('red', '�?, msg); }
 function info(msg) { log('blue', 'ℹ️ ', msg); }
 function warn(msg) { log('yellow', '⚠️ ', msg); }
 function debug(msg) { log('magenta', '🔍', msg); }
 
-// 测试1: 检查数据库连接和编码
+// 测试1: 检查数据库连接和编�?
 async function testDatabaseEncoding() {
   console.log('\n' + '='.repeat(60));
-  console.log('测试1: 数据库编码检查');
+  console.log('测试1: 数据库编码检�?);
   console.log('='.repeat(60));
 
   try {
@@ -53,7 +53,7 @@ async function testDatabaseEncoding() {
     info(`Database encoding: ${encoding[0]?.encoding || 'Unknown'}`);
 
     if (encoding[0]?.encoding === 'UTF-8') {
-      success('数据库编码设置正确 (UTF-8)');
+      success('数据库编码设置正�?(UTF-8)');
     } else {
       error('数据库编码设置不正确');
     }
@@ -61,27 +61,27 @@ async function testDatabaseEncoding() {
     // 检查表是否存在
     const tables = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='replies'").all();
     if (tables.length > 0) {
-      success('Replies表存在');
+      success('Replies表存�?);
     } else {
       warn('Replies表不存在');
     }
 
     db.close();
   } catch (err) {
-    error(`数据库连接失败: ${err.message}`);
+    error(`数据库连接失�? ${err.message}`);
   }
 }
 
 // 测试2: 测试UTF-8编码的字符串
 async function testUTF8Strings() {
   console.log('\n' + '='.repeat(60));
-  console.log('测试2: UTF-8字符串处理');
+  console.log('测试2: UTF-8字符串处�?);
   console.log('='.repeat(60));
 
   const testStrings = [
-    '简单中文测试',
-    '包含符号的测试 @#$%',
-    '混合English和中文',
+    '简单中文测�?,
+    '包含符号的测�?@#$%',
+    '混合English和中�?,
     '表情符号测试😀🎉',
     '特殊字符：©®™',
   ];
@@ -94,7 +94,7 @@ async function testUTF8Strings() {
     console.log(`     Hex: ${hex}`);
   });
 
-  success('UTF-8字符串处理验证完成');
+  success('UTF-8字符串处理验证完�?);
 }
 
 // 测试3: 测试API连接
@@ -119,7 +119,7 @@ async function testAPIConnection() {
         try {
           const json = JSON.parse(data);
           success(`API连接成功，状态码: ${res.statusCode}`);
-          info(`当前账户数: ${json.totalAccounts}`);
+          info(`当前账户�? ${json.totalAccounts}`);
           if (json.accounts && json.accounts.length > 0) {
             json.accounts.forEach(acc => {
               info(`  账户: ${acc.accountName} (${acc.platform}) - ${acc.loginStatus}`);
@@ -148,10 +148,10 @@ async function testAPIConnection() {
   });
 }
 
-// 测试4: 发送测试回复
+// 测试4: 发送测试回�?
 async function testSendReply() {
   console.log('\n' + '='.repeat(60));
-  console.log('测试4: 发送测试回复');
+  console.log('测试4: 发送测试回�?);
   console.log('='.repeat(60));
 
   const testCases = [
@@ -170,7 +170,7 @@ async function testSendReply() {
   ];
 
   for (const testCase of testCases) {
-    info(`发送: ${testCase.name}`);
+    info(`发�? ${testCase.name}`);
     debug(`内容: ${testCase.content}`);
 
     const requestId = `test-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
@@ -186,9 +186,9 @@ async function testSendReply() {
       const response = await sendAPIRequest('/api/v1/replies', 'POST', postData);
 
       if (response.success) {
-        success(`回复已提交 - Reply ID: ${response.reply_id}`);
+        success(`回复已提�?- Reply ID: ${response.reply_id}`);
 
-        // 等待数据库更新
+        // 等待数据库更�?
         await new Promise(resolve => setTimeout(resolve, 1000));
 
         // 检查数据库
@@ -197,7 +197,7 @@ async function testSendReply() {
         error(`API错误: ${response.error}`);
       }
     } catch (err) {
-      error(`发送失败: ${err.message}`);
+      error(`发送失�? ${err.message}`);
     }
 
     // 测试间隔
@@ -205,7 +205,7 @@ async function testSendReply() {
   }
 }
 
-// 测试5: 验证数据库中的数据
+// 测试5: 验证数据库中的数�?
 function verifyReplyInDatabase(requestId, expectedContent) {
   try {
     const db = new Database(CONFIG.DB_PATH);
@@ -217,11 +217,11 @@ function verifyReplyInDatabase(requestId, expectedContent) {
       const utf8Bytes = Buffer.from(stored, 'utf8');
       const hasReplacement = stored.includes('\ufffd');
 
-      info(`数据库验证 - Request ID: ${requestId}`);
+      info(`数据库验�?- Request ID: ${requestId}`);
       info(`  存储内容: ${stored}`);
       info(`  预期内容: ${expectedContent}`);
       info(`  内容匹配: ${stored === expectedContent}`);
-      info(`  UTF-8字节数: ${utf8Bytes.length}`);
+      info(`  UTF-8字节�? ${utf8Bytes.length}`);
       info(`  包含替换字符: ${hasReplacement}`);
       info(`  Hex: ${utf8Bytes.toString('hex')}`);
 
@@ -231,12 +231,12 @@ function verifyReplyInDatabase(requestId, expectedContent) {
         warn(`数据库编码异常`);
       }
     } else {
-      warn('数据库中未找到记录');
+      warn('数据库中未找到记�?);
     }
 
     db.close();
   } catch (err) {
-    error(`数据库查询失败: ${err.message}`);
+    error(`数据库查询失�? ${err.message}`);
   }
 }
 
@@ -288,7 +288,7 @@ function sendAPIRequest(path, method = 'GET', body = null) {
 // 测试6: 检查Worker日志
 function checkWorkerLogs() {
   console.log('\n' + '='.repeat(60));
-  console.log('测试6: Worker日志检查');
+  console.log('测试6: Worker日志检�?);
   console.log('='.repeat(60));
 
   const fs = require('fs');
@@ -304,7 +304,7 @@ function checkWorkerLogs() {
       const lastModified = new Date(stats.mtime).toLocaleString();
       info(`${path.basename(logFile)}: ${stats.size} bytes (修改: ${lastModified})`);
 
-      // 显示最后几行
+      // 显示最后几�?
       const content = fs.readFileSync(logFile, 'utf8');
       const lines = content.split('\n').filter(l => l.trim()).slice(-3);
       lines.forEach(line => {
@@ -316,21 +316,21 @@ function checkWorkerLogs() {
         }
       });
     } else {
-      warn(`日志文件不存在: ${logFile}`);
+      warn(`日志文件不存�? ${logFile}`);
     }
   });
 }
 
-// 主测试流程
+// 主测试流�?
 async function runAllTests() {
-  console.log('\n' + '█'.repeat(60));
-  console.log('█ 回复功能完整调试测试开始');
-  console.log('█'.repeat(60));
+  console.log('\n' + '�?.repeat(60));
+  console.log('�?回复功能完整调试测试开�?);
+  console.log('�?.repeat(60));
 
-  // 测试1: 数据库
+  // 测试1: 数据�?
   await testDatabaseEncoding();
 
-  // 测试2: UTF-8字符串
+  // 测试2: UTF-8字符�?
   await testUTF8Strings();
 
   // 测试3: API连接
@@ -340,19 +340,19 @@ async function runAllTests() {
     return;
   }
 
-  // 测试4: 发送回复
+  // 测试4: 发送回�?
   await testSendReply();
 
-  // 测试5: 检查日志
+  // 测试5: 检查日�?
   checkWorkerLogs();
 
-  console.log('\n' + '█'.repeat(60));
-  console.log('█ 测试完成');
-  console.log('█'.repeat(60));
+  console.log('\n' + '�?.repeat(60));
+  console.log('�?测试完成');
+  console.log('�?.repeat(60));
   console.log('\n建议:');
   console.log('  1. 查看上述输出中的编码问题');
-  console.log('  2. 检查Worker日志是否有"Received reply request"');
-  console.log('  3. 查看浏览器是否正确输入文字并点击发送按钮');
+  console.log('  2. 检查Worker日志是否�?Received reply request"');
+  console.log('  3. 查看浏览器是否正确输入文字并点击发送按�?);
   console.log('  4. 验证数据库中存储的内容编码是否正确\n');
 }
 

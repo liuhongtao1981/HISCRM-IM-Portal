@@ -1,6 +1,6 @@
 /**
  * 测试 API 模式匹配
- * 验证 Playwright 的 route.request().url() 匹配逻辑
+ * 验证 Playwright �?route.request().url() 匹配逻辑
  */
 
 const minimatch = require('minimatch');
@@ -28,7 +28,7 @@ patterns.forEach((pattern, pi) => {
 
   testUrls.forEach((url, ui) => {
     const match = minimatch(url, pattern);
-    const icon = match ? '✅' : '❌';
+    const icon = match ? '�? : '�?;
     console.log(`${icon} URL ${ui + 1}: ${url}`);
   });
 });
@@ -38,7 +38,7 @@ console.log('='.repeat(80));
 
 patterns.forEach((pattern, pi) => {
   const matchCount = testUrls.filter(url => minimatch(url, pattern)).length;
-  console.log(`模式 ${pi + 1} 匹配: ${matchCount}/${testUrls.length} 个 URL`);
+  console.log(`模式 ${pi + 1} 匹配: ${matchCount}/${testUrls.length} �?URL`);
 });
 
 console.log('\n\n💡 结论:');
@@ -53,18 +53,18 @@ const newMatches = testUrls.filter(url => minimatch(url, newPattern)).length;
 const flexMatches = testUrls.filter(url => minimatch(url, flexPattern)).length;
 
 if (oldMatches === 0) {
-  console.log('❌ 旧模式 (**/creator/item/list?**) 无法匹配任何 URL');
-  console.log('   原因：抖音 API 返回的 URL 末尾有斜杠 (list/?)');
+  console.log('�?旧模�?(**/creator/item/list?**) 无法匹配任何 URL');
+  console.log('   原因：抖�?API 返回�?URL 末尾有斜�?(list/?)');
 }
 
 if (newMatches > oldMatches) {
-  console.log('✅ 新模式 (**/creator/item/list/?**) 成功匹配 ' + newMatches + ' 个 URL');
+  console.log('�?新模�?(**/creator/item/list/?**) 成功匹配 ' + newMatches + ' �?URL');
   console.log('   推荐使用此模式！');
 }
 
 if (flexMatches === testUrls.length) {
-  console.log('🌟 兼容模式 (**/creator/item/list{/,}?**) 匹配所有 URL');
-  console.log('   如果需要兼容两种格式，可以使用此模式');
+  console.log('🌟 兼容模式 (**/creator/item/list{/,}?**) 匹配所�?URL');
+  console.log('   如果需要兼容两种格式，可以使用此模�?);
 }
 
 console.log('\n');

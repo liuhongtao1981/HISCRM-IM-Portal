@@ -1,8 +1,8 @@
 /**
- * 检查 platformManager 返回的对象
+ * 检�?platformManager 返回的对�?
  */
 
-// 模拟 workerBridge 和 browserManager
+// 模拟 workerBridge �?browserManager
 const mockBridge = {
   socket: { emit: () => {} }
 };
@@ -15,7 +15,7 @@ const mockBrowserManager = {
 // 加载 PlatformManager
 const PlatformManager = require('../packages/worker/src/platform-manager');
 
-console.log('🧪 检查 PlatformManager\n');
+console.log('🧪 检�?PlatformManager\n');
 
 (async () => {
   try {
@@ -32,24 +32,24 @@ console.log('🧪 检查 PlatformManager\n');
     const douyinPlatform = platformManager.getPlatform('douyin');
 
     if (!douyinPlatform) {
-      console.error('❌ douyin 平台未找到！');
+      console.error('�?douyin 平台未找到！');
       process.exit(1);
     }
 
-    console.log('✅ douyin 平台实例获取成功');
+    console.log('�?douyin 平台实例获取成功');
     console.log('   类型:', typeof douyinPlatform);
-    console.log('   构造函数:', douyinPlatform.constructor.name);
+    console.log('   构造函�?', douyinPlatform.constructor.name);
     console.log('');
 
-    // 检查方法
-    console.log('🔧 检查平台方法:');
+    // 检查方�?
+    console.log('🔧 检查平台方�?');
     const methods = ['getName', 'startLogin', 'login', 'detectLoginMethod'];
 
     for (const method of methods) {
       if (typeof douyinPlatform[method] === 'function') {
-        console.log(`   ✓ ${method}: function`);
+        console.log(`   �?${method}: function`);
       } else {
-        console.log(`   ❌ ${method}: ${typeof douyinPlatform[method]}`);
+        console.log(`   �?${method}: ${typeof douyinPlatform[method]}`);
       }
     }
 
@@ -59,15 +59,15 @@ console.log('🧪 检查 PlatformManager\n');
     console.log('📞 调用 getName() 方法...');
     try {
       const name = douyinPlatform.getName();
-      console.log(`   ✅ getName() 返回: "${name}"`);
+      console.log(`   �?getName() 返回: "${name}"`);
     } catch (error) {
-      console.error(`   ❌ getName() 失败:`, error.message);
+      console.error(`   �?getName() 失败:`, error.message);
     }
 
-    console.log('\n✅ 所有检查完成！');
+    console.log('\n�?所有检查完成！');
 
   } catch (error) {
-    console.error('\n❌ 检查失败:', error.message);
+    console.error('\n�?检查失�?', error.message);
     console.error(error.stack);
     process.exit(1);
   }

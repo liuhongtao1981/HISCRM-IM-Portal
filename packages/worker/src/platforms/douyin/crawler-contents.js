@@ -43,15 +43,12 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
     includeTypes = ['video', 'image', 'article'],  // 包含的作品类型
   } = options;
 
-  logger.info(`Starting contents crawl for account ${account.id}`);
+  logger.info(`开始爬取作品 (账号 ${account.id})`);
 
-  // ✅ 设置全局上下文
+  // 设置全局上下文
   if (dataManager) {
     globalContext.dataManager = dataManager;
     globalContext.accountId = account.id;
-    logger.info(`✅ [DataManager] 已启用统一数据管理架构`);
-  } else {
-    logger.warn(`⚠️  [DataManager] 未提供，使用旧的数据收集逻辑`);
   }
 
   try {
@@ -59,36 +56,29 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
     apiData.worksList = [];
     apiData.workDetail = [];
     apiData.cache.clear();
-    logger.debug('已清空 API 数据存储');
 
-    // 第 2 步: 导航到作品管理页面
-    logger.debug('Step 2: Navigating to contents page');
+    // 导航到作品管理页面
     await page.goto('https://creator.douyin.com/creator-micro/content/manage', {
       waitUntil: 'networkidle',
       timeout: 30000
     });
 
     await page.waitForTimeout(2000);
-    logger.info('Navigated to contents page');
 
-    // 第 3 步: 点击"全部"标签，确保显示所有类型的作品
+    // 点击"全部"标签，确保显示所有类型的作品
     await clickAllWorksTab(page);
 
-    // 第 4 步: 滚动加载所有作品
-    logger.debug('Step 4: Loading all contents via virtual list scrolling');
+    // 滚动加载所有作品
     const contents = await loadAllWorks(page, account, maxWorks);
-    logger.info(`Loaded ${contents.length} contents from virtual list`);
+    logger.info(`加载了 ${contents.length} 个作品`);
 
-    // 第 5 步: 从 API 响应中增强数据
-    logger.debug('Step 5: Enhancing contents data from API responses');
+    // 从 API 响应中增强数据
     const enhancedWorks = enhanceWorksWithAPIData(contents, {
       worksList: apiData.worksList,
       workDetail: apiData.workDetail
     });
-    logger.info(`Enhanced ${enhancedWorks.length} contents with API data`);
 
-    // 第 6 步: 标准化数据格式
-    logger.debug('Step 6: Standardizing contents data');
+    // 标准化数据格式
     const standardizedWorks = enhancedWorks.map(work => standardizeWorkData(work, account));
 
     // 第 7 步: 统计信息
@@ -102,14 +92,13 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
       }
     };
 
-    // ✅ 如果使用了 DataManager，添加其统计信息
+    // 如果使用了 DataManager，添加其统计信息
     if (dataManager) {
       const dmStats = dataManager.getStats();
       stats.dataManager = dmStats;
-      logger.info(`✅ [DataManager] 统计:`, JSON.stringify(dmStats));
     }
 
-    logger.info('✅ Works crawl completed', stats);
+    logger.info(`作品爬取完成: ${stats.totalWorks} 个`);
 
     return {
       contents: standardizedWorks,
@@ -120,10 +109,9 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
     logger.error('❌ FATAL ERROR in contents crawl:', error);
     throw error;
   } finally {
-    // ✅ 清理全局上下文
+    // 清理全局上下文
     globalContext.dataManager = null;
     globalContext.accountId = null;
-    logger.debug('已清理全局 DataManager 上下文');
   }
 }
 
@@ -135,68 +123,35 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
  * API 返回格式: { item_info_list: [...], cursor, has_more, total_count, status_code }
  */
 async function onWorksListAPI(body, response) {
-  const timestamp = new Date().toISOString();
   const url = response.url();
 
-  // 🔍 调试日志：记录 API 被触发
-  console.log(`[DEBUG] ${timestamp} - onWorksListAPI 被调用！`);
-  console.log(`[DEBUG] URL: ${url}`);
-  logger.info(`🎯 [API] 作品列表 API 被触发！URL: ${url}`);
-
-  // ✅ 修正：检查 item_info_list 而不是 aweme_list
+  // 检查 item_info_list
   if (!body || !body.item_info_list) {
-    logger.warn(`⚠️  [API] 作品列表响应无效（无 item_info_list），跳过处理`);
-    console.log(`[DEBUG] Body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
-  }
-
-  console.log(`[DEBUG] 作品数量: ${body.item_info_list.length}`);
-  logger.info(`📦 [API] 作品列表包含 ${body.item_info_list.length} 个作品`);
-
-  // 🔍 调试：输出第一个作品的字段
-  if (body.item_info_list.length > 0) {
-    const firstItem = body.item_info_list[0];
-    console.log(`[DEBUG] 第一个作品的字段: ${Object.keys(firstItem).join(', ')}`);
-    console.log(`[DEBUG] 第一个作品 item_id: ${firstItem.item_id}`);
-    console.log(`[DEBUG] 第一个作品 item_id_plain: ${firstItem.item_id_plain}`);
-    console.log(`[DEBUG] 第一个作品 aweme_id: ${firstItem.aweme_id}`);
-    logger.info(`🔍 第一个作品字段: ${Object.keys(firstItem).slice(0, 10).join(', ')}`);
   }
 
   // URL 去重
   if (apiData.cache.has(url)) {
-    console.log(`[DEBUG] URL 已存在于缓存，跳过处理`);
     return;
   }
 
   apiData.cache.add(url);
 
-  // ✅ 使用 DataManager（如果可用）
+  // 使用 DataManager（如果可用）
   if (globalContext.dataManager && body.item_info_list.length > 0) {
     try {
-      console.log(`[DEBUG] 调用 DataManager.batchUpsertContents，数据源: API`);
       const contents = globalContext.dataManager.batchUpsertContents(
         body.item_info_list,
         DataSource.API
       );
-      console.log(`[DEBUG] DataManager 返回: ${contents.length} 个作品`);
-      logger.info(`✅ [API] 作品列表 -> DataManager: ${contents.length} 个作品`);
+      logger.info(`[API] 作品列表: ${contents.length} 个`);
     } catch (error) {
-      console.error(`[ERROR] DataManager 处理失败:`, error);
-      logger.error(`[API] 作品列表处理失败:`, error);
-    }
-  } else {
-    if (!globalContext.dataManager) {
-      console.log(`[DEBUG] globalContext.dataManager 不存在`);
-    }
-    if (body.item_info_list.length === 0) {
-      console.log(`[DEBUG] item_info_list 长度为 0`);
+      logger.error(`[API] 作品列表处理失败: ${error.message}`);
     }
   }
 
   // 保留旧逻辑用于调试
   apiData.worksList.push(body);
-  logger.debug(`收集到作品列表: ${body.item_info_list.length} 个，has_more: ${body.has_more}, total: ${body.total_count || 'N/A'}`);
 }
 
 /**

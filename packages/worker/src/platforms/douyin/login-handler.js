@@ -10,7 +10,7 @@
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { ErrorClassifier, ErrorTypes, LoginError } = require('@hiscrm-im/shared/utils/error-handler');
 const { RetryProfiles } = require('@hiscrm-im/shared/utils/retry-strategy');
-const ProxyManager = require('./proxy-manager');
+const ProxyManager = require('../../browser/proxy-manager');
 
 const logger = createLogger('douyin-login');
 
@@ -591,9 +591,9 @@ class DouyinLoginHandler {
 
     const pollInterval = setInterval(async () => {
       try {
-        const isLoggedIn = await this.checkLoginStatus(session.page);
+        const loginStatus = await this.checkLoginStatus(session.page);
 
-        if (isLoggedIn) {
+        if (loginStatus.isLoggedIn) {
           // 登录成功
           clearInterval(pollInterval);
           await this.handleLoginSuccess(accountId, sessionId);
@@ -661,49 +661,120 @@ class DouyinLoginHandler {
    */
   async checkLoginStatus(page) {
     try {
-      const url = page.url();
+      const currentUrl = page.url();
+      logger.debug(`Checking login status on URL: ${currentUrl}`);
 
-      // 检查 URL 是否跳转（登录成功通常会跳转）
-      if (url !== this.DOUYIN_HOME && !url.includes('login')) {
-        logger.info('URL changed, likely logged in');
-        return true;
+      // 1. 首先检查是否在登录页面（明确的未登录状态）
+      if (currentUrl.includes('login') || currentUrl.includes('passport')) {
+        logger.info('❌ On login/passport page, user is NOT logged in');
+        return { isLoggedIn: false };
       }
 
-      // 检查是否有用户信息元素
-      const userInfoSelectors = [
-        '.user-info',
-        '.avatar',
-        '[class*="user"]',
-        '[class*="profile"]',
-      ];
-
-      for (const selector of userInfoSelectors) {
-        const element = await page.$(selector);
-        if (element) {
-          const isVisible = await element.isVisible();
-          if (isVisible) {
-            logger.info('User info element found, logged in');
-            return true;
+      // 2. 如果不在创作中心，导航到创作中心
+      if (!currentUrl.includes('creator.douyin.com')) {
+        logger.info(`📍 Not on creator center (current: ${currentUrl}), navigating...`);
+        try {
+          await page.goto('https://creator.douyin.com/', {
+            waitUntil: 'domcontentloaded',
+            timeout: 15000
+          });
+          // 等待页面加载
+          await page.waitForTimeout(2000);
+          
+          const newUrl = page.url();
+          logger.info(`📍 Navigation completed, new URL: ${newUrl}`);
+          
+          // 如果被重定向到登录页，说明未登录
+          if (newUrl.includes('login') || newUrl.includes('passport')) {
+            logger.info('❌ Redirected to login page after navigation, user is NOT logged in');
+            return { isLoggedIn: false };
           }
+        } catch (error) {
+          logger.warn(`Navigation to creator center failed: ${error.message}`);
+          return { isLoggedIn: false };
         }
       }
 
-      // 检查 cookies 中是否有 sessionid 或 token
-      const cookies = await page.context().cookies();
-      const hasSessionCookie = cookies.some(
-        (cookie) => cookie.name.includes('session') || cookie.name.includes('token')
-      );
-
-      if (hasSessionCookie) {
-        logger.info('Session cookie found, likely logged in');
-        return true;
-      }
-
-      return false;
+      // 3. 现在已经在创作中心，检查用户信息元素
+      return await this._checkUserInfoElements(page);
 
     } catch (error) {
       logger.error('Error checking login status:', error);
-      return false;
+      return { isLoggedIn: false };
+    }
+  }
+
+  /**
+   * 检查创作中心页面的用户信息元素
+   * @param {Page} page - Playwright页面对象
+   * @returns {Promise<{isLoggedIn: boolean}>}
+   */
+  async _checkUserInfoElements(page) {
+    try {
+      // 等待页面加载
+      await page.waitForTimeout(1000);
+
+      // 创作中心登录后会显示用户头像和昵称
+      const userInfoSelectors = [
+        // 头像选择器
+        {
+          selector: 'img[class*="avatar"]',
+          name: 'avatar image'
+        },
+        {
+          selector: '[class*="user-info"] img',
+          name: 'user-info avatar'
+        },
+        {
+          selector: '[class*="header"] [class*="avatar"]',
+          name: 'header avatar'
+        },
+        // 昵称选择器
+        {
+          selector: '[class*="nickname"]',
+          name: 'nickname'
+        },
+        {
+          selector: '[class*="user-name"]',
+          name: 'user name'
+        },
+        {
+          selector: '[class*="account-name"]',
+          name: 'account name'
+        }
+      ];
+
+      for (const { selector, name } of userInfoSelectors) {
+        try {
+          const element = await page.$(selector);
+          if (element) {
+            const isVisible = await element.isVisible();
+            if (isVisible) {
+              // 尝试获取文本内容（如果是昵称元素）
+              let text = '';
+              try {
+                text = await element.textContent();
+                text = text ? text.trim() : '';
+              } catch (e) {
+                // 图片元素没有文本内容，跳过
+              }
+              
+              logger.info(`✅ Found ${name} element${text ? ` (${text})` : ''} on creator center, user is logged in`);
+              return { isLoggedIn: true };
+            }
+          }
+        } catch (error) {
+          logger.debug(`Error checking ${name}:`, error.message);
+        }
+      }
+
+      // 在创作中心但没有找到用户信息，说明未登录
+      logger.info('❌ No user info found on creator center, user is NOT logged in');
+      return { isLoggedIn: false };
+
+    } catch (error) {
+      logger.error('Error checking user info elements:', error);
+      return { isLoggedIn: false };
     }
   }
 

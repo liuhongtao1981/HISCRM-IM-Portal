@@ -11,10 +11,10 @@ const row = db.prepare(`
   WHERE id = ?
 `).get('acc-98296c87-2e42-447a-9d8b-8be008ddb6e4');
 
-console.log('\n=== 账户最新状态 ===\n');
-console.log('登录状态:', row.login_status);
-console.log('Worker状态:', row.worker_status);
-console.log('更新时间戳:', row.updated_at);
+console.log('\n=== 账户最新状�?===\n');
+console.log('登录状�?', row.login_status);
+console.log('Worker状�?', row.worker_status);
+console.log('更新时间�?', row.updated_at);
 console.log('更新时间:', row.update_time);
 console.log('');
 

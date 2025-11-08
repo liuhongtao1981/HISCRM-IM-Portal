@@ -1,10 +1,7 @@
 /**
- * 手动操作后分析消息
- *
+ * 手动操作后分析消�? *
  * 使用步骤:
- * 1. 脚本打开浏览器并导航到私信页面
- * 2. 你手动点击一个会话，查看右侧的消息列表
- * 3. 在终端按 Enter 继续
+ * 1. 脚本打开浏览器并导航到私信页�? * 2. 你手动点击一个会话，查看右侧的消息列�? * 3. 在终端按 Enter 继续
  * 4. 脚本分析当前页面上所有的虚拟列表容器
  */
 
@@ -43,31 +40,30 @@ async function manualAnalysis() {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
-    console.log('✅ 浏览器已启动\n');
+    console.log('�?浏览器已启动\n');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    // 导航到私信页面
-    console.log('导航到私信页面...');
+    // 导航到私信页�?    console.log('导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(2000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
     console.log('='.repeat(80));
     console.log('请在浏览器中进行以下操作:');
-    console.log('  1. 点击左侧的一个会话');
-    console.log('  2. 确保右侧显示了消息列表');
+    console.log('  1. 点击左侧的一个会�?);
+    console.log('  2. 确保右侧显示了消息列�?);
     console.log('  3. 如果需要，滚动消息列表加载更多消息');
     console.log('='.repeat(80));
 
-    await waitForEnter('\n操作完成后，按 Enter 键继续分析...\n');
+    await waitForEnter('\n操作完成后，�?Enter 键继续分�?..\n');
 
-    console.log('\n开始分析页面上的所有虚拟列表容器...\n');
+    console.log('\n开始分析页面上的所有虚拟列表容�?..\n');
 
     // 查找并分析所有可能的虚拟列表容器
     const allContainers = await page.evaluate(() => {
@@ -119,10 +115,10 @@ async function manualAnalysis() {
     console.log(`找到 ${allContainers.length} 个虚拟列表容器\n`);
 
     if (allContainers.length === 0) {
-      console.log('❌ 没有找到任何虚拟列表容器');
-      console.log('\n可能的原因:');
-      console.log('  1. 页面结构已改变');
-      console.log('  2. 消息列表未加载');
+      console.log('�?没有找到任何虚拟列表容器');
+      console.log('\n可能的原�?');
+      console.log('  1. 页面结构已改�?);
+      console.log('  2. 消息列表未加�?);
       console.log('  3. 使用了iframe\n');
     } else {
       allContainers.forEach((container, idx) => {
@@ -132,14 +128,14 @@ async function manualAnalysis() {
         console.log(`  类名: ${container.containerClassName}`);
         console.log(`  内部容器: ${container.innerClassName}`);
         console.log(`  子元素数: ${container.childCount}`);
-        console.log('\n  前5个子元素:');
+        console.log('\n  �?个子元素:');
 
         container.samples.forEach(sample => {
           console.log(`\n    元素 #${sample.index}:`);
           console.log(`      标签: ${sample.tagName}`);
-          console.log(`      类名: ${sample.className || '(无)'}`);
+          console.log(`      类名: ${sample.className || '(�?'}`);
           console.log(`      位置: ${sample.style.position}, top=${sample.style.top}, height=${sample.style.height}`);
-          console.log(`      文本: ${sample.text || '(无)'}`);
+          console.log(`      文本: ${sample.text || '(�?'}`);
         });
 
         console.log('');
@@ -148,15 +144,15 @@ async function manualAnalysis() {
 
     // 让用户选择要深度分析的容器
     console.log('='.repeat(80));
-    console.log('根据上面的信息，哪个容器看起来是消息列表？');
+    console.log('根据上面的信息，哪个容器看起来是消息列表�?);
     console.log('提示: 消息列表通常:');
-    console.log('  - 子元素数量较多 (>10)');
-    console.log('  - 每个子元素有具体的消息文本');
+    console.log('  - 子元素数量较�?(>10)');
+    console.log('  - 每个子元素有具体的消息文�?);
     console.log('  - 元素使用 absolute 定位');
     console.log('='.repeat(80));
 
     const containerChoice = await new Promise((resolve) => {
-      rl.question(`\n请输入容器编号 (1-${allContainers.length}), 或输入 0 跳过: `, (answer) => {
+      rl.question(`\n请输入容器编�?(1-${allContainers.length}), 或输�?0 跳过: `, (answer) => {
         resolve(parseInt(answer) - 1);
       });
     });
@@ -183,7 +179,7 @@ async function manualAnalysis() {
         allContainers = Array.from(new Set(allContainers));
 
         const container = allContainers[containerIdx];
-        if (!container) return { error: '容器不存在' };
+        if (!container) return { error: '容器不存�? };
 
         const innerContainer = container.querySelector('.ReactVirtualized__Grid__innerScrollContainer') ||
                                container.children[0];
@@ -257,16 +253,16 @@ async function manualAnalysis() {
       }, containerChoice);
 
       if (deepAnalysis.error) {
-        console.log(`❌ ${deepAnalysis.error}`);
+        console.log(`�?${deepAnalysis.error}`);
       } else if (deepAnalysis.results.length === 0) {
-        console.log('❌ 在前15个元素中没有找到消息数据');
+        console.log('�?在前15个元素中没有找到消息数据');
       } else {
-        console.log(`✅ 找到 ${deepAnalysis.results.length} 个包含消息数据的元素:\n`);
+        console.log(`�?找到 ${deepAnalysis.results.length} 个包含消息数据的元素:\n`);
 
         deepAnalysis.results.forEach((result, idx) => {
           console.log(`消息 #${idx + 1} (元素 #${result.elementIndex}):`);
           console.log(`  深度: ${result.depth}`);
-          console.log(`  所有Props (${result.allKeys.length}个): ${result.allKeys.join(', ')}`);
+          console.log(`  所有Props (${result.allKeys.length}�?: ${result.allKeys.join(', ')}`);
           console.log(`  消息数据:`);
           Object.entries(result.messageFields).forEach(([key, value]) => {
             console.log(`    📌 ${key}: ${value}`);
@@ -277,15 +273,15 @@ async function manualAnalysis() {
     }
 
     console.log('='.repeat(80));
-    console.log('分析完成！浏览器将保持打开状态');
-    console.log('按 Ctrl+C 退出脚本并关闭浏览器');
+    console.log('分析完成！浏览器将保持打开状�?);
+    console.log('�?Ctrl+C 退出脚本并关闭浏览�?);
     console.log('='.repeat(80) + '\n');
 
-    // 保持浏览器打开直到用户按 Ctrl+C
+    // 保持浏览器打开直到用户�?Ctrl+C
     await new Promise(() => {});
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
   } finally {
     rl.close();

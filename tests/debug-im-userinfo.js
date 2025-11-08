@@ -1,12 +1,12 @@
 /**
  * 调试 IM 客户端收到的 userInfo 数据
- * 验证 Master 是否正确推送 userInfo 字段
+ * 验证 Master 是否正确推�?userInfo 字段
  */
 const io = require('socket.io-client');
 
 const MASTER_URL = 'http://localhost:3000';
 
-console.log('=== 连接到 Master IM WebSocket (根命名空间) ===\n');
+console.log('=== 连接�?Master IM WebSocket (根命名空�? ===\n');
 
 const socket = io(MASTER_URL, {
   transports: ['websocket'],
@@ -14,15 +14,14 @@ const socket = io(MASTER_URL, {
 });
 
 socket.on('connect', () => {
-  console.log('✅ 已连接到 Master\n');
+  console.log('�?已连接到 Master\n');
 
-  // 监听所有事件用于调试
-  socket.onAny((eventName, ...args) => {
+  // 监听所有事件用于调�?  socket.onAny((eventName, ...args) => {
     console.log(`📨 收到事件: ${eventName}`, JSON.stringify(args).substring(0, 100));
   });
 
   // 注册为监控客户端
-  console.log('📤 发送 monitor:register 事件...');
+  console.log('📤 发�?monitor:register 事件...');
   socket.emit('monitor:register', {
     clientId: 'debug-client',
     clientType: 'monitor'
@@ -30,13 +29,13 @@ socket.on('connect', () => {
 
   // 等待2秒后请求频道列表
   setTimeout(() => {
-    console.log('📤 发送 monitor:request_channels 事件...');
+    console.log('📤 发�?monitor:request_channels 事件...');
     socket.emit('monitor:request_channels');
   }, 2000);
 });
 
 socket.on('monitor:registered', (data) => {
-  console.log('✅ 监控注册成功');
+  console.log('�?监控注册成功');
   console.log(`频道数量: ${data.channelCount}\n`);
 });
 
@@ -51,7 +50,7 @@ socket.on('monitor:channels', (data) => {
     console.log(`  name: ${channel.name}`);
     console.log(`  avatar: ${channel.avatar ? channel.avatar.substring(0, 60) + '...' : 'null'}`);
     console.log(`  platform: ${channel.platform || 'null'}`);
-    console.log(`  userInfo 字段: ${channel.userInfo ? '存在' : '❌ 不存在'}`);
+    console.log(`  userInfo 字段: ${channel.userInfo ? '存在' : '�?不存�?}`);
 
     if (channel.userInfo) {
       console.log(`  userInfo 类型: ${typeof channel.userInfo}`);
@@ -59,19 +58,19 @@ socket.on('monitor:channels', (data) => {
 
       try {
         const userInfo = JSON.parse(channel.userInfo);
-        console.log(`  ✅ userInfo 解析成功:`);
+        console.log(`  �?userInfo 解析成功:`);
         console.log(`    - nickname: ${userInfo.nickname || 'null'}`);
         console.log(`    - douyin_id: ${userInfo.douyin_id || 'null'}`);
         console.log(`    - platformUserId: ${userInfo.platformUserId || 'null'}`);
         console.log(`    - avatar: ${userInfo.avatar ? userInfo.avatar.substring(0, 60) + '...' : 'null'}`);
         console.log(`    - uid: ${userInfo.uid || 'null'}`);
       } catch (e) {
-        console.log(`  ❌ userInfo JSON 解析失败: ${e.message}`);
-        console.log(`  原始值: ${channel.userInfo.substring(0, 100)}...`);
+        console.log(`  �?userInfo JSON 解析失败: ${e.message}`);
+        console.log(`  原始�? ${channel.userInfo.substring(0, 100)}...`);
       }
     } else {
       console.log(`  ⚠️  缺少 userInfo 字段！`);
-      console.log(`  当前显示: ${channel.name} (应显示平台昵称)`);
+      console.log(`  当前显示: ${channel.name} (应显示平台昵�?`);
     }
 
     console.log(`  unreadCount: ${channel.unreadCount}`);
@@ -82,15 +81,15 @@ socket.on('monitor:channels', (data) => {
   console.log('\n=== 总结 ===');
   const hasUserInfo = channels.filter(c => c.userInfo).length;
   const noUserInfo = channels.filter(c => !c.userInfo).length;
-  console.log(`✅ 包含 userInfo: ${hasUserInfo} 个频道`);
-  console.log(`❌ 缺少 userInfo: ${noUserInfo} 个频道`);
+  console.log(`�?包含 userInfo: ${hasUserInfo} 个频道`);
+  console.log(`�?缺少 userInfo: ${noUserInfo} 个频道`);
 
   socket.disconnect();
   process.exit(0);
 });
 
 socket.on('connect_error', (error) => {
-  console.error('❌ 连接失败:', error.message);
+  console.error('�?连接失败:', error.message);
   process.exit(1);
 });
 

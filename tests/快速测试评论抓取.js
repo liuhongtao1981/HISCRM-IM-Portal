@@ -1,6 +1,6 @@
 /**
- * 快速测试评论抓取
- * 直接通过数据库查询账户,然后手动执行爬虫
+ * 快速测试评论抓�?
+ * 直接通过数据库查询账�?然后手动执行爬虫
  */
 
 const path = require('path');
@@ -15,16 +15,16 @@ async function quickTest() {
   const db = new Database(dbPath);
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ?').get('douyin');
-  console.log('✅ 账户信息:');
+  console.log('�?账户信息:');
   console.log('   ID:', account.id);
-  console.log('   登录状态:', account.login_status);
+  console.log('   登录状�?', account.login_status);
   console.log('   Worker:', account.assigned_worker_id);
   console.log('   平台用户ID:', account.platform_user_id);
   console.log('');
 
-  // 2. 启动浏览器
+  // 2. 启动浏览�?
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
-  console.log('🌐 启动浏览器...');
+  console.log('🌐 启动浏览�?..');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     viewport: { width: 1280, height: 720 },
@@ -37,7 +37,7 @@ async function quickTest() {
     const { crawlComments } = require('../packages/worker/src/platforms/douyin/crawl-comments');
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🕷️  开始执行评论抓取');
+    console.log('🕷�? 开始执行评论抓�?);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     // 4. 执行爬虫
@@ -55,45 +55,45 @@ async function quickTest() {
     console.log(`作品数量: ${result.contents.length}\n`);
 
     if (result.discussions.length > 0) {
-      console.log('✅ 讨论数据抓取成功!\n');
-      console.log('前5条讨论:');
+      console.log('�?讨论数据抓取成功!\n');
+      console.log('�?条讨�?');
       result.discussions.slice(0, 5).forEach((d, i) => {
         const createTime = new Date(d.create_time * 1000);
         console.log(`  ${i + 1}. ${d.author_name}: ${d.content}`);
         console.log(`     父评论ID: ${d.parent_comment_id.substring(0, 40)}...`);
-        console.log(`     ⏰ ${createTime.toLocaleString('zh-CN')}\n`);
+        console.log(`     �?${createTime.toLocaleString('zh-CN')}\n`);
       });
     } else {
-      console.log('⚠️  讨论数量为0\n');
+      console.log('⚠️  讨论数量�?\n');
 
       const commentsWithReplies = result.comments.filter(c => c.reply_count > 0);
-      console.log(`评论中有回复的数量: ${commentsWithReplies.length}`);
+      console.log(`评论中有回复的数�? ${commentsWithReplies.length}`);
       if (commentsWithReplies.length > 0) {
-        console.log('前3条有回复的评论:');
+        console.log('�?条有回复的评�?');
         commentsWithReplies.slice(0, 3).forEach((c, i) => {
           console.log(`  ${i + 1}. ${c.author_name}: ${c.content.substring(0, 30)}...`);
           console.log(`     reply_count: ${c.reply_count}`);
         });
-        console.log('\n❌ 按钮点击功能未生效!');
+        console.log('\n�?按钮点击功能未生�?');
       }
     }
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
   } catch (error) {
-    console.error('\n❌ 抓取失败:', error);
+    console.error('\n�?抓取失败:', error);
     console.error(error.stack);
   } finally {
-    console.log('\n⏸️  等待10秒后关闭浏览器...');
+    console.log('\n⏸️  等待10秒后关闭浏览�?..');
     await page.waitForTimeout(10000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 测试完成');
+    console.log('\n�?测试完成');
   }
 }
 
 quickTest().catch(error => {
-  console.error('❌ 测试失败:', error);
+  console.error('�?测试失败:', error);
   process.exit(1);
 });

@@ -1,5 +1,5 @@
 /**
- * 分析讨论/回复API的完整数据结构
+ * 分析讨论/回复API的完整数据结�?
  */
 
 const path = require('path');
@@ -14,7 +14,7 @@ async function analyzeReplyAPIStructure() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
@@ -29,7 +29,7 @@ async function analyzeReplyAPIStructure() {
 
   let replyAPIData = null;
 
-  // API拦截器
+  // API拦截�?
   page.on('response', async (response) => {
     const url = response.url();
 
@@ -42,7 +42,7 @@ async function analyzeReplyAPIStructure() {
           data,
         };
 
-        console.log('✅ 捕获到讨论API响应!\n');
+        console.log('�?捕获到讨论API响应!\n');
       } catch (e) {
         console.error('解析API响应失败:', e.message);
       }
@@ -50,8 +50,8 @@ async function analyzeReplyAPIStructure() {
   });
 
   try {
-    // 1. 导航到评论页面
-    console.log('📍 导航到评论管理页面...');
+    // 1. 导航到评论页�?
+    console.log('📍 导航到评论管理页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -77,14 +77,14 @@ async function analyzeReplyAPIStructure() {
     await page.waitForTimeout(3000);
 
     // 4. 点击"查看回复"按钮
-    console.log('🖱️  点击"查看回复"按钮...\n');
+    console.log('🖱�? 点击"查看回复"按钮...\n');
 
     await page.evaluate(() => {
       const buttons = Array.from(document.querySelectorAll('[class*="load-more"]'));
       const replyButton = buttons.find(btn => {
         const text = (btn.textContent || '').trim();
         const style = window.getComputedStyle(btn);
-        return text.match(/^查看\d+条回复$/) && style.cursor === 'pointer';
+        return text.match(/^查看\d+条回�?/) && style.cursor === 'pointer';
       });
 
       if (replyButton) {
@@ -96,7 +96,7 @@ async function analyzeReplyAPIStructure() {
     await page.waitForTimeout(3000);
 
     if (!replyAPIData) {
-      console.log('❌ 没有捕获到讨论API响应\n');
+      console.log('�?没有捕获到讨论API响应\n');
       await context.close();
       db.close();
       return;
@@ -126,7 +126,7 @@ async function analyzeReplyAPIStructure() {
       const firstComment = data.comment_info_list[0];
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('第一条讨论/回复的完整字段:');
+      console.log('第一条讨�?回复的完整字�?');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       Object.keys(firstComment).forEach(key => {
@@ -153,41 +153,41 @@ async function analyzeReplyAPIStructure() {
       }
 
       console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log('所有讨论数据:');
+      console.log('所有讨论数�?');
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
       data.comment_info_list.forEach((comment, i) => {
         console.log(`${i + 1}. ${comment.user_info?.screen_name || '未知用户'}`);
-        console.log(`   内容: ${comment.text || '无内容'}`);
+        console.log(`   内容: ${comment.text || '无内�?}`);
         console.log(`   时间: ${new Date(parseInt(comment.create_time) * 1000).toLocaleString('zh-CN')}`);
         console.log(`   点赞: ${comment.digg_count}`);
-        console.log(`   回复数: ${comment.reply_count}`);
+        console.log(`   回复�? ${comment.reply_count}`);
         console.log(`   评论ID: ${comment.comment_id}`);
         console.log('');
       });
     }
 
-    // 保存完整数据到文件
+    // 保存完整数据到文�?
     const outputPath = path.join(__dirname, 'reply-api-data.json');
     fs.writeFileSync(outputPath, JSON.stringify(replyAPIData, null, 2), 'utf8');
 
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log(`✅ 完整数据已保存到: ${outputPath}`);
+    console.log(`�?完整数据已保存到: ${outputPath}`);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   } catch (error) {
-    console.error('❌ 测试失败:', error);
+    console.error('�?测试失败:', error);
   } finally {
-    console.log('⏸️  等待10秒后关闭浏览器...');
+    console.log('⏸️  等待10秒后关闭浏览�?..');
     await page.waitForTimeout(10000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 测试完成');
+    console.log('\n�?测试完成');
   }
 }
 
 analyzeReplyAPIStructure().catch(error => {
-  console.error('❌ 测试脚本执行失败:', error);
+  console.error('�?测试脚本执行失败:', error);
   process.exit(1);
 });

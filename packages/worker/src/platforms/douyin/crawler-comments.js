@@ -55,15 +55,13 @@ async function onCommentsListAPI(body, response) {
   const itemId = extractItemId(url);
   const cursor = extractCursor(url);
 
-  logger.info(`🎯 [API] 评论列表 API 触发：${body.comments.length} 条评论`);
-
   // ✅ 使用 DataManager（新架构）
   if (globalContext.dataManager && body.comments.length > 0) {
     const comments = globalContext.dataManager.batchUpsertComments(
       body.comments,
       DataSource.API
     );
-    logger.info(`✅ [API] 评论列表 -> DataManager: ${comments.length} 条评论`);
+    logger.info(`[API] 评论列表: ${comments.length} 条`);
   }
 
   // 保留旧逻辑（向后兼容）
@@ -74,8 +72,6 @@ async function onCommentsListAPI(body, response) {
     cursor: cursor,
     data: body,
   });
-
-  logger.debug(`收集到评论: cursor=${cursor}, count=${body.comments.length}, has_more=${body.has_more}`);
 }
 
 /**
@@ -94,8 +90,6 @@ async function onDiscussionsListAPI(body, response) {
   const commentId = extractCommentId(url);
   const cursor = extractCursor(url);
 
-  logger.info(`🎯 [API] 讨论列表 API 触发：${body.comments.length} 条讨论`);
-
   // ✅ 使用 DataManager（新架构）
   // 注意：讨论也作为评论存储，只是有 parent_comment_id 字段
   if (globalContext.dataManager && body.comments.length > 0) {
@@ -103,7 +97,7 @@ async function onDiscussionsListAPI(body, response) {
       body.comments,
       DataSource.API
     );
-    logger.info(`✅ [API] 讨论列表 -> DataManager: ${discussions.length} 条讨论`);
+    logger.info(`[API] 讨论列表: ${discussions.length} 条`);
   }
 
   // 保留旧逻辑（向后兼容）
@@ -114,8 +108,92 @@ async function onDiscussionsListAPI(body, response) {
     cursor: cursor,
     data: body,
   });
+}
 
-  logger.debug(`收集到讨论: comment_id=${commentId}, count=${body.comments.length}, has_more=${body.has_more}`);
+/**
+ * API 回调：通知详情（评论通知）
+ * 由 platform.js 注册到 APIInterceptorManager
+ * API: /aweme/v1/web/notice/detail/
+ * 
+ * 触发场景：用户在抖音首页收到评论通知时触发
+ * 
+ * 响应结构：
+ * {
+ *   status_code: 0,
+ *   notice_list_v2: [{
+ *     nid: "7569492244785513522",
+ *     type: 31,  // 31 = 评论通知
+ *     create_time: 1762409752,
+ *     comment: {
+ *       comment: { cid, text, aweme_id, user, ... },
+ *       aweme: { aweme_id, desc, author, video, ... }
+ *     }
+ *   }]
+ * }
+ */
+async function onNoticeDetailAPI(body, response) {
+  // 检查响应结构
+  if (!body || !body.notice_list_v2 || !Array.isArray(body.notice_list_v2)) {
+    logger.warn(`⚠️  [API] 通知详情响应无效（无 notice_list_v2 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
+    return;
+  }
+
+  const url = response.url();
+  const notices = body.notice_list_v2;
+  
+  // 过滤评论类型的通知 (type === 31)
+  const commentNotices = notices.filter(notice => notice.type === 31 && notice.comment);
+  
+  if (commentNotices.length === 0) {
+    return;
+  }
+
+  // 提取评论数据和作品数据
+  const comments = [];
+  const contents = [];
+
+  for (const notice of commentNotices) {
+    try {
+      const commentData = notice.comment?.comment;
+      const awemeData = notice.comment?.aweme;
+
+      if (commentData) {
+        comments.push(commentData);
+      }
+
+      if (awemeData) {
+        contents.push(awemeData);
+      }
+    } catch (error) {
+      logger.error(`[API] 处理通知数据时出错：${error.message}`);
+    }
+  }
+
+  // ✅ 使用 DataManager 存储数据
+  if (globalContext.dataManager) {
+    if (comments.length > 0) {
+      const savedComments = globalContext.dataManager.batchUpsertComments(
+        comments,
+        DataSource.API
+      );
+      logger.info(`[API] 通知详情: ${savedComments.length} 条评论, ${contents.length} 条作品`);
+    }
+
+    if (contents.length > 0) {
+      globalContext.dataManager.batchUpsertContents(
+        contents,
+        DataSource.API
+      );
+    }
+  }
+
+  // 保留旧逻辑（向后兼容）
+  apiData.comments.push({
+    timestamp: Date.now(),
+    url: url,
+    source: 'notice_detail',
+    data: body,
+  });
 }
 
 /**
@@ -133,16 +211,13 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
   const { maxVideos = null } = options;
 
   // 设置全局上下文
-  // 注意：globalContext 已在 platform.initialize() 中统一设置
-  // 这里再次设置是为了向后兼容（如果直接调用此函数而不通过 platform）
   if (dataManager) {
     globalContext.dataManager = dataManager;
     globalContext.accountId = account.id;
-    logger.info(`✅ [DataManager] 已启用统一数据管理架构`);
   }
 
   try {
-    logger.info(`Crawling comments for account ${account.id} (platform_user_id: ${account.platform_user_id})`);
+    logger.info(`开始爬取评论 (账号 ${account.id})`);
 
     // 确保账号有 platform_user_id
     if (!account.platform_user_id) {
@@ -152,42 +227,17 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     // 清空之前的 API 数据
     apiData.comments = [];
     apiData.discussions = [];
-    logger.debug('已清空 API 数据存储');
-
-    // API 拦截器已由 platform.js 在 initialize() 时统一注册
-    // 不再需要在此处设置 page.on('response') 监听器
-    logger.info('API 拦截器已全局启用（由 platform.js 管理）');
-
-    // 🔍 临时诊断：监控所有网络请求（查找 item/list 或 work 相关请求）
-    page.on('request', request => {
-      const url = request.url();
-      if (url.includes('item/list') || url.includes('work_list') || url.includes('/work')) {
-        logger.info(`📡 [Network Request] ${request.method()} ${url}`);
-        console.log(`[DEBUG Network] Request: ${url}`);
-      }
-    });
-
-    page.on('response', async response => {
-      const url = response.url();
-      if (url.includes('item/list') || url.includes('work_list') || url.includes('/work')) {
-        logger.info(`📥 [Network Response] ${response.status()} ${url}`);
-        console.log(`[DEBUG Network] Response: ${response.status()} ${url}`);
-      }
-    });
-
-    logger.info('🔍 网络请求监控已启用（监控 item/list 和 work 相关请求）');
 
     // 导航到评论管理页面
     await navigateToCommentManage(page);
     await page.waitForTimeout(3000);
 
     // 点击"选择作品"按钮打开模态框
-    logger.info('Opening video selector modal');
     try {
       await page.click('span:has-text("选择作品")', { timeout: 5000 });
       await page.waitForTimeout(2000);
     } catch (error) {
-      logger.warn('Failed to open video selector, videos may already be visible');
+      logger.warn('无法打开作品选择器，可能已展开');
     }
 
     // 获取所有视频元素
@@ -211,19 +261,9 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
       return videos;
     });
 
-    logger.info(`Found ${videoElements.length} video elements`);
-
-    // 5. 筛选有评论的视频
+    // 筛选有评论的视频
     const videosToClick = videoElements.filter(v => parseInt(v.commentCountText) > 0);
-    logger.info(`Videos with comments: ${videosToClick.length}`);
-
-    // 🔍 DEBUG: 输出 videosToClick 数组的完整内容
-    logger.info('\n🎬 Videos to Click (with comment counts):');
-    videosToClick.forEach((v, i) => {
-      logger.info(`   [${i}] Title: "${v.title.substring(0, 50)}${v.title.length > 50 ? '...' : ''}"`);
-      logger.info(`       Comment Count Text: "${v.commentCountText}"`);
-      logger.info(`       Index: ${v.index}\n`);
-    });
+    logger.info(`找到 ${videosToClick.length}/${videoElements.length} 个有评论的作品`);
 
     if (videosToClick.length === 0) {
       logger.warn('No videos with comments found');
@@ -237,21 +277,16 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     // 限制处理的视频数量
     const maxToProcess = maxVideos ? Math.min(maxVideos, videosToClick.length) : videosToClick.length;
 
-    // 🔍 建立视频索引与 item_id 的映射
-    // 策略：在点击每个视频时，记录新增的 API 响应的 item_id
-    const videoIndexToItemId = {};  // { videoIndex: item_id }
+    // 建立视频索引与 item_id 的映射
+    const videoIndexToItemId = {};
 
-    // 6. 逐个完整处理每个视频 (新策略)
-    logger.info(`Processing ${maxToProcess} videos one by one (with scroll & reply buttons)`);
+    // 逐个完整处理每个视频
+    logger.info(`开始处理 ${maxToProcess} 个作品`);
     for (let i = 0; i < maxToProcess; i++) {
       const video = videosToClick[i];
-      logger.info(`[${i + 1}/${maxToProcess}] Processing: ${video.title.substring(0, 50)}...`);
 
       try {
-        // 记录点击前的 API 响应数量
-        const apiResponsesBeforeClick = apiData.comments.length;
-
-        // 6.1 点击视频
+        // 点击视频
         await page.evaluate((idx) => {
           const containers = document.querySelectorAll('.container-Lkxos9');
           if (idx < containers.length) {
@@ -259,43 +294,22 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
           }
         }, video.index);
 
-        logger.info(`  ✅ Video clicked, waiting for comments to load...`);
         await page.waitForTimeout(3000);
 
-        // 🔍 新策略：API 请求在打开模态框时就已经发生了（点击之前）
-        // 所以我们需要在这里建立映射：将当前视频索引与对应的 API 响应关联
-        //
-        // 关键观察：
-        // - videosToClick 数组按照 DOM 顺序排列（index: 0, 1, 2...）
-        // - apiData.comments 数组按照 API 请求顺序排列
-        // - 假设：DOM 顺序 = API 请求顺序（需验证）
-        //
-        // 简单策略（适用于单视频场景）：
-        // - 如果只有一个视频，直接将第一个 API 响应关联到第一个视频
-        // - 如果有多个视频，按照索引顺序一一对应
-
+        // 建立映射
         if (apiData.comments.length > i && apiData.comments[i].item_id) {
           const itemId = apiData.comments[i].item_id;
           videoIndexToItemId[video.index] = itemId;
-          logger.info(`  📝 Mapped: video[${video.index}] "${video.title.substring(0, 30)}..." -> item_id: ${itemId.substring(0, 30)}...`);
-        } else {
-          logger.warn(`  ⚠️  No API response found for video[${i}]!`);
         }
 
-        // 6.2 滚动加载所有评论
-        logger.info(`  📜 Scrolling to load all comments...`);
+        // 滚动加载所有评论
         const scrollResult = await loadAllComments(page);
-        logger.info(`  ✅ Scrolling complete (${scrollResult.scrollAttempts} attempts)`);
 
-        // 6.3 点击所有"查看X条回复"按钮
-        logger.info(`  🖱️  Clicking all reply buttons...`);
+        // 点击所有"查看X条回复"按钮
         const clickResult = await clickAllReplyButtons(page);
-        logger.info(`  ✅ Clicked ${clickResult.clickedCount} reply buttons`);
 
-        // 6.4 等待讨论API响应
+        // 等待讨论API响应
         await page.waitForTimeout(2000);
-
-        logger.info(`  ✅ Video processing complete\n`);
 
         // 重新打开模态框以便处理下一个视频
         if (i < maxToProcess - 1) {
@@ -303,15 +317,11 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
           await page.waitForTimeout(1000);
         }
       } catch (error) {
-        logger.error(`Failed to process video ${i}: ${error.message}`);
+        logger.error(`处理第 ${i + 1} 个作品失败: ${error.message}`);
       }
     }
 
-    logger.info('Finished processing all videos, waiting for final API responses');
     await page.waitForTimeout(2000);
-
-    // 7. 第二轮: 处理需要分页的视频 (has_more: true)
-    logger.info('Checking for videos that need pagination...');
 
     // 按item_id分组当前已拦截的响应
     let currentResponsesByItemId = groupResponsesByItemId(apiData.comments);
@@ -337,14 +347,10 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     }
 
     if (videosNeedMore.length > 0) {
-      logger.info(`Found ${videosNeedMore.length} videos that need pagination`);
-      videosNeedMore.forEach(v => {
-        logger.debug(`  - item_id: ${v.itemId.substring(0, 30)}... (loaded ${v.loadedCount}/${v.totalCount})`);
-      });
+      logger.info(`需要分页处理 ${videosNeedMore.length} 个作品`);
 
       // 对于需要分页的视频，尝试加载更多评论
       for (const videoInfo of videosNeedMore) {
-        logger.info(`Processing pagination for item_id: ${videoInfo.itemId.substring(0, 30)}...`);
 
         // 查找对应的视频元素
         const videoElement = videosToClick.find(v => {
@@ -353,7 +359,6 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
         });
 
         if (!videoElement) {
-          logger.warn(`  Could not find matching video element, skipping pagination`);
           continue;
         }
 
@@ -370,7 +375,6 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
             }
           }, videoElement.index);
 
-          logger.info(`  Clicked video, attempting to load more comments`);
           await page.waitForTimeout(2000);
 
           // 尝试滚动加载更多评论
@@ -459,74 +463,18 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
         // ✅ 修正：使用 comments 字段而不是 comment_info_list
         const commentList = resp.data.comments || resp.data.comment_info_list || [];
         commentList.forEach((c, cIdx) => {
-          // DEBUG: 记录第一条评论的完整对象结构，找到真实的时间字段
-          if (respIdx === 0 && cIdx === 0) {
-            logger.info('\n╔════════════════════════════════════════════════════════════╗');
-            logger.info('║  🔍 API Response Comment Object Diagnosis (First Comment)  ║');
-            logger.info('╚════════════════════════════════════════════════════════════╝\n');
-
-            logger.info(`📋 All keys (${Object.keys(c).length}):`, Object.keys(c).sort().join(', '));
-
-            // 列出所有可能的时间相关字段
-            logger.info('\n⏰ Time-related fields:');
-            for (const [key, value] of Object.entries(c)) {
-              if (key.toLowerCase().includes('time') ||
-                  key.toLowerCase().includes('date') ||
-                  key.toLowerCase().includes('create') ||
-                  key.toLowerCase().includes('publish')) {
-                const valueStr = String(value);
-                const valueType = typeof value;
-                logger.info(`   ${key}:`);
-                logger.info(`      Type: ${valueType}`);
-                logger.info(`      Value: ${valueStr}`);
-                logger.info(`      Value length: ${valueStr.length}`);
-                if (valueType === 'number') {
-                  const asDate = new Date(value * 1000);
-                  const asDateMs = new Date(value);
-                  logger.info(`      As seconds (×1000): ${asDate.toLocaleString('zh-CN')}`);
-                  logger.info(`      As milliseconds: ${asDateMs.toLocaleString('zh-CN')}`);
-                }
-                logger.info('');
-              }
-            }
-
-            // 输出完整的第一条评论对象（前3000字符）
-            logger.info('\n📝 Full comment object (first 3000 chars):');
-            logger.info(JSON.stringify(c, null, 2).substring(0, 3000));
-            logger.info('\n');
-          }
-
           // 获取原始 create_time 值（可能是秒级或毫秒级）
           const rawCreateTime = c.create_time;
           let createTimeSeconds = parseInt(rawCreateTime);
 
-          // 诊断: 打印原始值
-          if (respIdx === 0 && cIdx === 0) {
-            logger.info(`🔍 Create time debug:`);
-            logger.info(`   Raw value: ${rawCreateTime} (type: ${typeof rawCreateTime})`);
-            logger.info(`   As seconds: ${createTimeSeconds}`);
-            logger.info(`   Formatted (as seconds): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
-
-            // 检查是否为毫秒级（13位数字）
-            if (createTimeSeconds > 9999999999) {
-              logger.info(`   ⚠️  Detected milliseconds format, converting to seconds`);
-              createTimeSeconds = Math.floor(createTimeSeconds / 1000);
-              logger.info(`   After conversion: ${createTimeSeconds}`);
-              logger.info(`   Formatted (corrected): ${new Date(createTimeSeconds * 1000).toLocaleString('zh-CN')}`);
-            }
+          // 检查是否为毫秒级（13位数字）
+          if (createTimeSeconds > 9999999999) {
+            createTimeSeconds = Math.floor(createTimeSeconds / 1000);
           }
 
-          // 🔧 时区修正: 抖音API返回的时间戳是UTC+8时区的
-          // 需要减去8小时（28800秒）转换为标准UTC时间戳
-          const TIMEZONE_OFFSET = 8 * 3600; // 8小时 = 28800秒
+          // 时区修正: 抖音API返回的时间戳是UTC+8时区的
+          const TIMEZONE_OFFSET = 8 * 3600;
           const utcTimestamp = createTimeSeconds - TIMEZONE_OFFSET;
-
-          if (respIdx === 0 && cIdx === 0) {
-            logger.info(`   🌐 Timezone correction:`);
-            logger.info(`      Original (UTC+8): ${new Date(createTimeSeconds * 1000).toUTCString()}`);
-            logger.info(`      Corrected (UTC): ${new Date(utcTimestamp * 1000).toUTCString()}`);
-            logger.info(`      Display (UTC+8): ${new Date(utcTimestamp * 1000).toLocaleString('zh-CN')}`);
-          }
 
           comments.push({
             platform_comment_id: c.comment_id,
@@ -961,6 +909,7 @@ module.exports = {
   // API 回调函数（由 platform.js 注册）
   onCommentsListAPI,
   onDiscussionsListAPI,
+  onNoticeDetailAPI,  // 新增：通知详情 API
 
   // 爬取函数
   crawlComments,

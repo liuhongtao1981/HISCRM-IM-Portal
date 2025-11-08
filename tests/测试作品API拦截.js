@@ -1,6 +1,6 @@
 /**
- * 测试作品列表 API 拦截器
- * 目的：验证 API 拦截器是否能正确捕获 /creator/item/list/ API 请求
+ * 测试作品列表 API 拦截�?
+ * 目的：验�?API 拦截器是否能正确捕获 /creator/item/list/ API 请求
  */
 
 const path = require('path');
@@ -18,7 +18,7 @@ const apiData = {
 };
 
 /**
- * API 回调：作品列表
+ * API 回调：作品列�?
  */
 async function onWorksListAPI(body, route) {
   const url = route.request().url();
@@ -27,11 +27,11 @@ async function onWorksListAPI(body, route) {
   logger.info(`   响应体键: ${Object.keys(body || {}).join(', ')}`);
 
   if (body) {
-    // 显示前3层数据结构
-    logger.info(`   完整响应体 (前500字符):\n   ${JSON.stringify(body, null, 2).substring(0, 500)}...`);
+    // 显示�?层数据结�?
+    logger.info(`   完整响应�?(�?00字符):\n   ${JSON.stringify(body, null, 2).substring(0, 500)}...`);
   }
 
-  // ✅ 修正：检查 item_info_list 而不是 aweme_list
+  // �?修正：检�?item_info_list 而不�?aweme_list
   if (!body || !body.item_info_list) {
     logger.warn('⚠️  API 响应没有 item_info_list 字段');
     return;
@@ -39,14 +39,14 @@ async function onWorksListAPI(body, route) {
 
   // URL 去重
   if (apiData.cache.has(url)) {
-    logger.debug('🔁 重复的 URL，跳过');
+    logger.debug('🔁 重复�?URL，跳�?);
     return;
   }
 
   apiData.cache.add(url);
   apiData.worksList.push(body);
 
-  logger.info(`✅ 收集到作品列表: ${body.item_info_list.length} 个作品`);
+  logger.info(`�?收集到作品列�? ${body.item_info_list.length} 个作品`);
   logger.info(`   has_more: ${body.has_more}, total_count: ${body.total_count || 'N/A'}`);
   logger.info(`   API URL: ${url.substring(0, 100)}...`);
 }
@@ -56,9 +56,9 @@ async function testWorksAPIInterceptor() {
   let context;
 
   try {
-    logger.info('🚀 启动测试：作品列表 API 拦截器');
+    logger.info('🚀 启动测试：作品列�?API 拦截�?);
 
-    // 1. 启动浏览器
+    // 1. 启动浏览�?
     browser = await chromium.launch({
       headless: false,
       args: [
@@ -74,7 +74,7 @@ async function testWorksAPIInterceptor() {
       `../packages/worker/data/browser/worker1/storage-states/${accountId}_storage.json`
     );
 
-    logger.info(`📂 加载存储状态: ${storageStatePath}`);
+    logger.info(`📂 加载存储状�? ${storageStatePath}`);
 
     context = await browser.newContext({
       storageState: storageStatePath,
@@ -90,23 +90,23 @@ async function testWorksAPIInterceptor() {
       const url = request.url();
       if (url.includes('creator.douyin.com') && url.includes('item')) {
         allRequests.push(url);
-        logger.info(`\n🌐 捕获到相关请求: ${url.substring(0, 150)}...`);
+        logger.info(`\n🌐 捕获到相关请�? ${url.substring(0, 150)}...`);
       }
     });
 
-    // 3. 注册 API 拦截器 - 测试多种模式
+    // 3. 注册 API 拦截�?- 测试多种模式
     const patterns = [
-      '**/creator/item/list*',            // ✅ 修正：不要求结尾斜杠
-      '**/creator/item/list?**',          // ✅ 匹配查询参数
-      '**/creator/item/list/?**',         // ✅ 匹配带斜杠+查询参数
+      '**/creator/item/list*',            // �?修正：不要求结尾斜杠
+      '**/creator/item/list?**',          // �?匹配查询参数
+      '**/creator/item/list/?**',         // �?匹配带斜�?查询参数
     ];
 
-    logger.info('\n📡 注册 API 拦截器模式:');
+    logger.info('\n📡 注册 API 拦截器模�?');
     for (const pattern of patterns) {
       logger.info(`   - ${pattern}`);
       await page.route(pattern, async (route) => {
         try {
-          logger.info(`\n🎯 拦截到请求: ${pattern}`);
+          logger.info(`\n🎯 拦截到请�? ${pattern}`);
           logger.info(`   URL: ${route.request().url()}`);
 
           const response = await route.fetch();
@@ -116,32 +116,32 @@ async function testWorksAPIInterceptor() {
           await route.fulfill({ response });
 
         } catch (error) {
-          logger.error(`❌ 拦截器错误:`, error);
+          logger.error(`�?拦截器错�?`, error);
           await route.continue();
         }
       });
     }
 
-    logger.info('✅ API 拦截器已注册\n');
+    logger.info('�?API 拦截器已注册\n');
 
-    // 4. 导航到评论管理页面（会触发作品列表 API）
-    logger.info('📍 导航到评论管理页面...');
+    // 4. 导航到评论管理页面（会触发作品列�?API�?
+    logger.info('📍 导航到评论管理页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
       waitUntil: 'networkidle',
       timeout: 30000
     });
 
-    logger.info('✅ 页面加载完成');
+    logger.info('�?页面加载完成');
     await page.waitForTimeout(3000);
 
-    // 5. 点击"选择作品"按钮（应该会触发作品列表 API）
-    logger.info('\n🖱️  点击"选择作品"按钮...');
+    // 5. 点击"选择作品"按钮（应该会触发作品列表 API�?
+    logger.info('\n🖱�? 点击"选择作品"按钮...');
     try {
       await page.click('span:has-text("选择作品")', { timeout: 5000 });
-      logger.info('✅ 按钮已点击');
+      logger.info('�?按钮已点�?);
       await page.waitForTimeout(3000);
     } catch (error) {
-      logger.warn('⚠️  未找到"选择作品"按钮，可能已经打开');
+      logger.warn('⚠️  未找�?选择作品"按钮，可能已经打开');
     }
 
     // 6. 检查是否拦截到 API 请求
@@ -150,35 +150,35 @@ async function testWorksAPIInterceptor() {
     logger.info(`   捕获到的相关请求数量: ${allRequests.length}`);
 
     if (allRequests.length > 0) {
-      logger.info('\n📜 捕获到的所有相关请求:');
+      logger.info('\n📜 捕获到的所有相关请�?');
       allRequests.forEach((url, idx) => {
         logger.info(`   [${idx}] ${url}`);
       });
     }
 
     if (apiData.worksList.length > 0) {
-      logger.info('   ✅ API 拦截器工作正常！');
+      logger.info('   �?API 拦截器工作正常！');
       apiData.worksList.forEach((resp, idx) => {
         logger.info(`   [${idx}] 作品数量: ${resp.aweme_list?.length || 0}`);
       });
     } else {
-      logger.error('   ❌ 没有拦截到任何 API 请求！');
+      logger.error('   �?没有拦截到任�?API 请求�?);
       logger.info('\n🔍 调试建议:');
-      logger.info('   1. 检查网络面板，确认 API 请求是否真的被发送');
-      logger.info('   2. 检查 API URL 是否与模式匹配');
-      logger.info('   3. 检查 API 响应是否包含 aweme_list 字段');
+      logger.info('   1. 检查网络面板，确认 API 请求是否真的被发�?);
+      logger.info('   2. 检�?API URL 是否与模式匹�?);
+      logger.info('   3. 检�?API 响应是否包含 aweme_list 字段');
     }
 
     // 等待用户观察
-    logger.info('\n⏳ 等待 10 秒以便观察...');
+    logger.info('\n�?等待 10 秒以便观�?..');
     await page.waitForTimeout(10000);
 
   } catch (error) {
-    logger.error('❌ 测试失败:', error);
+    logger.error('�?测试失败:', error);
   } finally {
     if (context) await context.close();
     if (browser) await browser.close();
-    logger.info('\n✅ 测试结束');
+    logger.info('\n�?测试结束');
   }
 }
 

@@ -6,9 +6,8 @@ const db = new Database(dbPath, { readonly: true });
 
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 
-// 查看 accounts 表结构
-const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'").get();
-console.log('\n=== accounts 表结构 ===');
+// 查看 accounts 表结�?const schema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='accounts'").get();
+console.log('\n=== accounts 表结�?===');
 console.log(schema.sql);
 
 // 查看账户数据

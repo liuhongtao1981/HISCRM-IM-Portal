@@ -1,7 +1,5 @@
 /**
- * 修复 cache_conversations 表的时间戳
- * 从 cache_messages 表获取真实的最后消息时间
- */
+ * 修复 cache_conversations 表的时间�? * �?cache_messages 表获取真实的最后消息时�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -9,12 +7,11 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath);
 
-console.log('\n╔═══════════════════════════════════════════════════════╗');
-console.log('║  修复 cache_conversations 时间戳                      ║');
+console.log('\n╔═══════════════════════════════════════════════════════�?);
+console.log('�? 修复 cache_conversations 时间�?                     �?);
 console.log('╚═══════════════════════════════════════════════════════╝\n');
 
-// 1. 查找所有会话及其真实的最后消息时间
-const conversationsWithMessages = db.prepare(`
+// 1. 查找所有会话及其真实的最后消息时�?const conversationsWithMessages = db.prepare(`
   SELECT
     c.id as conv_id,
     c.user_id,
@@ -38,8 +35,7 @@ const conversationsWithMessages = db.prepare(`
 
 console.log(`找到 ${conversationsWithMessages.length} 个会话\n`);
 
-// 2. 更新会话时间戳
-const updateStmt = db.prepare(`
+// 2. 更新会话时间�?const updateStmt = db.prepare(`
   UPDATE cache_conversations
   SET last_message_time = ?,
       updated_at = ?
@@ -62,15 +58,14 @@ const transaction = db.transaction(() => {
       const newDate = new Date(conv.latest_message_time);
 
       console.log(`${index + 1}. ${conv.user_name || conv.user_id.substring(0, 20)}`);
-      console.log(`   旧时间: ${oldDate.toLocaleString('zh-CN')}`);
-      console.log(`   新时间: ${newDate.toLocaleString('zh-CN')}`);
-      console.log(`   消息数: ${conv.message_count}`);
+      console.log(`   旧时�? ${oldDate.toLocaleString('zh-CN')}`);
+      console.log(`   新时�? ${newDate.toLocaleString('zh-CN')}`);
+      console.log(`   消息�? ${conv.message_count}`);
       console.log('');
 
       updatedCount++;
     } else {
-      // 没有消息记录，跳过
-      skippedCount++;
+      // 没有消息记录，跳�?      skippedCount++;
       console.log(`⚠️  ${index + 1}. ${conv.user_name || conv.user_id.substring(0, 20)} - 无消息记录，跳过`);
     }
   });
@@ -78,14 +73,14 @@ const transaction = db.transaction(() => {
 
 try {
   transaction();
-  console.log('\n═══════════════════════════════════════════════════════');
-  console.log('✅ 会话时间戳修复完成:');
-  console.log(`   - 已更新: ${updatedCount} 个`);
-  console.log(`   - 已跳过 (无消息): ${skippedCount} 个`);
+  console.log('\n══════════════════════════════════════════════════════�?);
+  console.log('�?会话时间戳修复完�?');
+  console.log(`   - 已更�? ${updatedCount} 个`);
+  console.log(`   - 已跳�?(无消�?: ${skippedCount} 个`);
   console.log(`   - 总计: ${conversationsWithMessages.length} 个`);
   console.log('═══════════════════════════════════════════════════════\n');
 } catch (error) {
-  console.error('❌ 更新失败:', error);
+  console.error('�?更新失败:', error);
   process.exit(1);
 }
 
@@ -105,11 +100,11 @@ const verifyQuery = db.prepare(`
 
 const topConversations = verifyQuery.all();
 
-console.log('最新的 10 个会话:');
+console.log('最新的 10 个会�?');
 topConversations.forEach((conv, index) => {
   console.log(`${index + 1}. ${conv.user_name}`);
   console.log(`   时间: ${conv.formatted_time}`);
-  console.log(`   时间戳: ${conv.last_message_time}`);
+  console.log(`   时间�? ${conv.last_message_time}`);
 });
 
 console.log('\n═══════════════════════════════════════════════════════\n');

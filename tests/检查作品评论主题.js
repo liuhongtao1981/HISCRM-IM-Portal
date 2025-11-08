@@ -8,7 +8,7 @@ const socket = io('http://localhost:3000', {
 });
 
 socket.on('connect', () => {
-  console.log('✅ 已连接到 Master');
+  console.log('�?已连接到 Master');
 
   socket.emit('register', {
     clientId: 'test-client-check-comments',
@@ -17,7 +17,7 @@ socket.on('connect', () => {
 });
 
 socket.on('registerSuccess', (data) => {
-  console.log('✅ 注册成功');
+  console.log('�?注册成功');
 
   // 请求作品评论主题列表
   socket.emit('getTopics', {
@@ -34,7 +34,7 @@ socket.on('topicList', (data) => {
   console.log('总主题数:', data.topics.length);
 
   const topicsWithMessages = data.topics.filter(t => t.unreadCount > 0 || t.lastMessage);
-  console.log('有消息的主题数:', topicsWithMessages.length);
+  console.log('有消息的主题�?', topicsWithMessages.length);
 
   console.log('\n主题详情:');
   data.topics.forEach((topic, idx) => {
@@ -42,7 +42,7 @@ socket.on('topicList', (data) => {
     console.log('  topicId:', topic.topicId);
     console.log('  title:', topic.title);
     console.log('  unreadCount:', topic.unreadCount);
-    console.log('  lastMessage:', topic.lastMessage ? '有' : '无');
+    console.log('  lastMessage:', topic.lastMessage ? '�? : '�?);
     if (topic.lastMessage) {
       console.log('  lastMessage内容:', topic.lastMessage.content?.substring(0, 50));
       console.log('  lastMessage时间:', topic.lastMessage.createdAt);
@@ -53,15 +53,15 @@ socket.on('topicList', (data) => {
 });
 
 socket.on('error', (err) => {
-  console.error('❌ Socket错误:', err);
+  console.error('�?Socket错误:', err);
 });
 
 socket.on('connect_error', (err) => {
-  console.error('❌ 连接错误:', err.message);
+  console.error('�?连接错误:', err.message);
   process.exit(1);
 });
 
 setTimeout(() => {
-  console.error('❌ 超时');
+  console.error('�?超时');
   process.exit(1);
 }, 10000);

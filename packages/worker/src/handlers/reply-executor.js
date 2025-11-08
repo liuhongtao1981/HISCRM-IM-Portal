@@ -1,4 +1,4 @@
-/**
+﻿/**
  * ReplyExecutor - 回复执行器
  * 在 Worker 进程中执行回复操作
  */
@@ -38,7 +38,6 @@ class ReplyExecutor {
       }
 
       if (cleanedCount > 0) {
-        logger.debug(`Cleaned up ${cleanedCount} expired cache entries`);
       }
     }, 60 * 60 * 1000); // 每小时执行一次
   }
@@ -62,14 +61,6 @@ class ReplyExecutor {
     const finalConversationId = conversation_id || target_id;
     const finalPlatformMessageId = platform_message_id ||
                                    (conversation_id ? null : target_id);
-
-    logger.debug('Normalized reply request', {
-      originalTargetId: target_id,
-      finalConversationId,
-      finalPlatformMessageId,
-      hasNewFormat: !!conversation_id || !!platform_message_id,
-    });
-
     return {
       ...rest,
       target_id,  // 保留原始值以兼容调试
@@ -287,7 +278,6 @@ class ReplyExecutor {
     try {
       if (this.socketClient && this.socketClient.socket && this.socketClient.socket.connected) {
         this.socketClient.socket.emit('worker:reply:result', result);
-        logger.debug(`Sent reply result to master: ${result.reply_id}`);
       } else {
         logger.warn('Socket client not connected, cannot send reply result');
       }

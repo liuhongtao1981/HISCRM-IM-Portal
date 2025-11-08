@@ -1,6 +1,6 @@
 /**
  * API 端点完整测试脚本
- * 测试所有 Admin-Web 使用的 API 端点
+ * 测试所�?Admin-Web 使用�?API 端点
  */
 
 const http = require('http');
@@ -55,17 +55,17 @@ async function testEndpoint(name, path, expectedKeys = []) {
     const result = await httpGet(path);
 
     if (result.statusCode !== 200) {
-      log(`   ❌ HTTP ${result.statusCode}`, 'red');
+      log(`   �?HTTP ${result.statusCode}`, 'red');
       return { name, success: false, error: `HTTP ${result.statusCode}` };
     }
 
     if (result.error) {
-      log(`   ❌ ${result.error}`, 'red');
+      log(`   �?${result.error}`, 'red');
       return { name, success: false, error: result.error };
     }
 
     if (!result.data.success) {
-      log(`   ❌ API Error: ${result.data.error || 'Unknown'}`, 'red');
+      log(`   �?API Error: ${result.data.error || 'Unknown'}`, 'red');
       return { name, success: false, error: result.data.error };
     }
 
@@ -78,27 +78,26 @@ async function testEndpoint(name, path, expectedKeys = []) {
 
     // 显示数据摘要
     if (Array.isArray(result.data.data)) {
-      log(`   ✅ 成功 - 返回 ${result.data.data.length} 条记录`, 'green');
+      log(`   �?成功 - 返回 ${result.data.data.length} 条记录`, 'green');
     } else if (result.data.data) {
       const keys = Object.keys(result.data.data);
-      log(`   ✅ 成功 - ${keys.length} 个字段: ${keys.slice(0, 5).join(', ')}${keys.length > 5 ? '...' : ''}`, 'green');
+      log(`   �?成功 - ${keys.length} 个字�? ${keys.slice(0, 5).join(', ')}${keys.length > 5 ? '...' : ''}`, 'green');
     } else {
-      log(`   ✅ 成功`, 'green');
+      log(`   �?成功`, 'green');
     }
 
     return { name, success: true, data: result.data };
 
   } catch (error) {
-    log(`   ❌ 请求失败: ${error.message}`, 'red');
+    log(`   �?请求失败: ${error.message}`, 'red');
     return { name, success: false, error: error.message };
   }
 }
 
-// 主测试函数
-async function runTests() {
-  log('═══════════════════════════════════════════════════════', 'cyan');
+// 主测试函�?async function runTests() {
+  log('══════════════════════════════════════════════════════�?, 'cyan');
   log('  Admin-Web API 端点完整测试', 'cyan');
-  log('═══════════════════════════════════════════════════════', 'cyan');
+  log('══════════════════════════════════════════════════════�?, 'cyan');
 
   const tests = [
     // Cache Data API (Phase 3.3 + 3.4)
@@ -163,14 +162,13 @@ async function runTests() {
   for (const test of tests) {
     const result = await testEndpoint(test.name, test.path, test.expectedKeys);
     results.push(result);
-    // 短暂延迟，避免请求过快
-    await new Promise(resolve => setTimeout(resolve, 200));
+    // 短暂延迟，避免请求过�?    await new Promise(resolve => setTimeout(resolve, 200));
   }
 
   // 生成测试报告
-  log('\n═══════════════════════════════════════════════════════', 'cyan');
-  log('  测试结果汇总', 'cyan');
-  log('═══════════════════════════════════════════════════════', 'cyan');
+  log('\n══════════════════════════════════════════════════════�?, 'cyan');
+  log('  测试结果汇�?, 'cyan');
+  log('══════════════════════════════════════════════════════�?, 'cyan');
 
   const passed = results.filter(r => r.success).length;
   const failed = results.filter(r => !r.success).length;
@@ -180,15 +178,15 @@ async function runTests() {
   log(`失败: ${failed} 个`, failed > 0 ? 'red' : 'green');
 
   if (failed > 0) {
-    log('\n失败的测试:', 'red');
+    log('\n失败的测�?', 'red');
     results.filter(r => !r.success).forEach(r => {
-      log(`  ❌ ${r.name}: ${r.error}`, 'red');
+      log(`  �?${r.name}: ${r.error}`, 'red');
     });
   }
 
-  log('\n通过的测试:', 'green');
+  log('\n通过的测�?', 'green');
   results.filter(r => r.success).forEach(r => {
-    log(`  ✅ ${r.name}`, 'green');
+    log(`  �?${r.name}`, 'green');
   });
 
   log('\n═══════════════════════════════════════════════════════\n', 'cyan');

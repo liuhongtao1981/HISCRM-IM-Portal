@@ -3,17 +3,17 @@
  *
  * 用途：
  * 1. 拦截 get_conversation_list API
- * 2. 输出完整的 JSON 响应结构
+ * 2. 输出完整�?JSON 响应结构
  * 3. 分析字段映射问题
  *
- * 使用方法：
- * 1. 在 crawl-direct-messages-v2.js 中添加此调试代码
+ * 使用方法�?
+ * 1. �?crawl-direct-messages-v2.js 中添加此调试代码
  * 2. 运行私信爬虫
  * 3. 查看日志中的 conversations API 响应
  */
 
 // ============================================================================
-// 在 setupAPIInterceptors() 函数中的 conversations 拦截部分添加以下代码：
+// �?setupAPIInterceptors() 函数中的 conversations 拦截部分添加以下代码�?
 // ============================================================================
 
 /*
@@ -22,20 +22,20 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
     const response = await route.fetch();
     const body = await response.json();
 
-    // 🔍 DEBUG: 输出完整的 conversations API 响应
-    logger.info('\n╔═══════════════════════════════════════════════════════════════╗');
-    logger.info('║  🔍 Conversations API Response - Complete Structure           ║');
+    // 🔍 DEBUG: 输出完整�?conversations API 响应
+    logger.info('\n╔═══════════════════════════════════════════════════════════════�?);
+    logger.info('�? 🔍 Conversations API Response - Complete Structure           �?);
     logger.info('╚═══════════════════════════════════════════════════════════════╝\n');
 
-    // 1. 输出完整的 JSON（格式化）
+    // 1. 输出完整�?JSON（格式化�?
     logger.info('📦 Complete JSON (formatted):');
     logger.info(JSON.stringify(body, null, 2));
 
-    // 2. 输出 conversations 数组的结构
+    // 2. 输出 conversations 数组的结�?
     if (body.data && Array.isArray(body.data.conversations)) {
       logger.info(`\n📋 Conversations Array (${body.data.conversations.length} items):`);
 
-      // 输出第一个 conversation 的完整结构
+      // 输出第一�?conversation 的完整结�?
       if (body.data.conversations.length > 0) {
         const firstConv = body.data.conversations[0];
         logger.info('\n🔍 First Conversation Object:');
@@ -60,12 +60,12 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
           logger.info(`   ${key}: ${displayValue} (${valueType})`);
         }
 
-        // 重点检查用户相关字段
+        // 重点检查用户相关字�?
         logger.info('\n🎯 User-related Fields:');
         const userFields = ['user_id', 'uid', 'user', 'from_user', 'to_user', 'participant', 'participants'];
         userFields.forEach(field => {
           if (firstConv.hasOwnProperty(field)) {
-            logger.info(`   ✅ ${field}: ${JSON.stringify(firstConv[field])}`);
+            logger.info(`   �?${field}: ${JSON.stringify(firstConv[field])}`);
           }
         });
 
@@ -74,7 +74,7 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
         const nameFields = ['user_name', 'username', 'name', 'nickname', 'nick_name', 'display_name'];
         nameFields.forEach(field => {
           if (firstConv.hasOwnProperty(field)) {
-            logger.info(`   ✅ ${field}: ${JSON.stringify(firstConv[field])}`);
+            logger.info(`   �?${field}: ${JSON.stringify(firstConv[field])}`);
           }
         });
       }
@@ -94,37 +94,37 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
 */
 
 // ============================================================================
-// 预期的 conversations API 响应结构分析
+// 预期�?conversations API 响应结构分析
 // ============================================================================
 
 /**
- * 典型的抖音 conversations API 响应结构：
+ * 典型的抖�?conversations API 响应结构�?
  *
  * {
  *   "data": {
  *     "conversations": [
  *       {
  *         "conversation_id": "string",           // 会话 ID
- *         "conversation_short_id": "string",     // 短 ID
- *         "user_id": "number",                   // ✅ 用户 ID（真实 ID）
+ *         "conversation_short_id": "string",     // �?ID
+ *         "user_id": "number",                   // �?用户 ID（真�?ID�?
  *         "sec_user_id": "string",               // 安全用户 ID
- *         "user": {                              // ✅ 用户对象（包含详细信息）
+ *         "user": {                              // �?用户对象（包含详细信息）
  *           "uid": "string",
  *           "sec_uid": "string",
- *           "nickname": "string",                // ✅ 用户昵称
+ *           "nickname": "string",                // �?用户昵称
  *           "avatar_thumb": {
- *             "url_list": ["string"]             // ✅ 头像 URL
+ *             "url_list": ["string"]             // �?头像 URL
  *           },
  *           "unique_id": "string",               // 唯一 ID
  *           "short_id": "string"
  *         },
- *         "last_message": {                      // 最后一条消息
+ *         "last_message": {                      // 最后一条消�?
  *           "message_id": "string",
  *           "content": "string",
  *           "msg_type": "number",
  *           "create_time": "number"
  *         },
- *         "unread_count": "number",              // 未读数
+ *         "unread_count": "number",              // 未读�?
  *         "is_pinned": "boolean",                // 是否置顶
  *         "is_muted": "boolean",                 // 是否静音
  *         "update_time": "number"                // 更新时间
@@ -141,7 +141,7 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
  */
 
 // ============================================================================
-// 当前代码的问题
+// 当前代码的问�?
 // ============================================================================
 
 /**
@@ -152,45 +152,45 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
  * platform_user_id: `user_${userName}`.replace(/\s+/g, '_'),
  * ```
  *
- * 问题：
- * - 使用用户名生成占位符 ID（如 "user_张三"）
- * - 不是真实的平台 user_id
- * - 导致无法用于 API 调用或关联
+ * 问题�?
+ * - 使用用户名生成占位符 ID（如 "user_张三"�?
+ * - 不是真实的平�?user_id
+ * - 导致无法用于 API 调用或关�?
  *
- * 正确做法：
+ * 正确做法�?
  * ```javascript
  * platform_user_id: conversation.user_id || conversation.user?.uid || conversation.sec_user_id
  * ```
  */
 
 /**
- * 问题 2：platform_user_name 可能不正确
+ * 问题 2：platform_user_name 可能不正�?
  *
  * 当前代码（crawl-direct-messages-v2.js:465）：
  * ```javascript
  * platform_user_name: userName,
  * ```
  *
- * 这里的 userName 是从 DOM 提取的，可能包含：
- * - 多余的空格
+ * 这里�?userName 是从 DOM 提取的，可能包含�?
+ * - 多余的空�?
  * - 其他文本（如时间、消息内容）
- * - 不是真实的用户昵称
+ * - 不是真实的用户昵�?
  *
- * 正确做法：
+ * 正确做法�?
  * ```javascript
  * platform_user_name: conversation.user?.nickname || conversation.user?.unique_id
  * ```
  */
 
 /**
- * 问题 3：platform_user_avatar 始终为 null
+ * 问题 3：platform_user_avatar 始终�?null
  *
  * 当前代码（crawl-direct-messages-v2.js:466）：
  * ```javascript
  * platform_user_avatar: null,
  * ```
  *
- * 正确做法：
+ * 正确做法�?
  * ```javascript
  * platform_user_avatar: conversation.user?.avatar_thumb?.url_list?.[0] || null
  * ```
@@ -201,12 +201,12 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
 // ============================================================================
 
 /**
- * 方案 1：优先使用 API 数据（推荐）✅
+ * 方案 1：优先使�?API 数据（推荐）�?
  *
  * 位置：crawl-direct-messages-v2.js
  *
- * 步骤：
- * 1. 从 apiResponses.conversations 中提取真实数据
+ * 步骤�?
+ * 1. �?apiResponses.conversations 中提取真实数�?
  * 2. 使用 conversation.user_id 作为 platform_user_id
  * 3. 使用 conversation.user.nickname 作为 platform_user_name
  * 4. 使用 conversation.user.avatar_thumb.url_list[0] 作为头像
@@ -214,11 +214,11 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
  */
 
 /**
- * 方案 2：同时记录 DOM 和 API 数据
+ * 方案 2：同时记�?DOM �?API 数据
  *
- * 在日志中同时输出：
- * - DOM 提取的数据
- * - API 返回的数据
+ * 在日志中同时输出�?
+ * - DOM 提取的数�?
+ * - API 返回的数�?
  * - 对比差异
  */
 
@@ -227,10 +227,10 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
 // ============================================================================
 
 /**
- * 改进的 extractConversationsList() 函数：
+ * 改进�?extractConversationsList() 函数�?
  *
  * async function extractConversationsList(page, account, apiResponses) {
- *   // 1. 优先从 API 提取
+ *   // 1. 优先�?API 提取
  *   if (apiResponses.conversations && apiResponses.conversations.length > 0) {
  *     logger.info(`Extracting conversations from API responses (${apiResponses.conversations.length} responses)`);
  *
@@ -241,9 +241,9 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
  *           conversations.push({
  *             id: generateConversationId(account.id, conv.user_id),
  *             account_id: account.id,
- *             platform_user_id: String(conv.user_id || conv.user?.uid),  // ✅ 真实 ID
- *             platform_user_name: conv.user?.nickname || conv.user?.unique_id,  // ✅ 真实昵称
- *             platform_user_avatar: conv.user?.avatar_thumb?.url_list?.[0] || null,  // ✅ 真实头像
+ *             platform_user_id: String(conv.user_id || conv.user?.uid),  // �?真实 ID
+ *             platform_user_name: conv.user?.nickname || conv.user?.unique_id,  // �?真实昵称
+ *             platform_user_avatar: conv.user?.avatar_thumb?.url_list?.[0] || null,  // �?真实头像
  *             last_message_time: conv.last_message?.create_time || conv.update_time,
  *             last_message_content: conv.last_message?.content || '',
  *             platform_message_id: conv.last_message?.message_id || null,
@@ -258,16 +258,16 @@ await page.route('**\/v1/stranger/get_conversation_list**', async (route) => {
  *       }
  *     });
  *
- *     logger.info(`✅ Extracted ${conversations.length} conversations from API`);
+ *     logger.info(`�?Extracted ${conversations.length} conversations from API`);
  *     return conversations;
  *   }
  *
- *   // 2. 如果 API 没有数据，使用 DOM 提取（备用方案）
+ *   // 2. 如果 API 没有数据，使�?DOM 提取（备用方案）
  *   logger.warn('No API data available, falling back to DOM extraction');
  *   return extractConversationsFromDOM(page, account);
  * }
  */
 
 module.exports = {
-  // 导出调试函数供测试使用
+  // 导出调试函数供测试使�?
 };

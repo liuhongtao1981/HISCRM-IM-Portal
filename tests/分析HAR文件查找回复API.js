@@ -1,5 +1,5 @@
 /**
- * 分析 HAR 文件查找评论和回复 API
+ * 分析 HAR 文件查找评论和回�?API
  */
 
 const fs = require('fs');
@@ -44,7 +44,7 @@ harData.log.entries.forEach(entry => {
   }
 });
 
-console.log('📝 评论列表 API：');
+console.log('📝 评论列表 API�?);
 console.log('='.repeat(100));
 commentAPIs.forEach((api, i) => {
   console.log(`\n${i + 1}. [${api.method}] ${api.status}`);
@@ -52,10 +52,10 @@ commentAPIs.forEach((api, i) => {
   console.log(`   大小: ${api.size} 字节`);
 });
 
-console.log('\n\n💬 回复/讨论 API：');
+console.log('\n\n💬 回复/讨论 API�?);
 console.log('='.repeat(100));
 if (replyAPIs.length === 0) {
-  console.log('❌ 未找到回复 API（可能 HAR 文件录制时没有点击"查看回复"）');
+  console.log('�?未找到回�?API（可�?HAR 文件录制时没有点�?查看回复"�?);
 } else {
   replyAPIs.forEach((api, i) => {
     console.log(`\n${i + 1}. [${api.method}] ${api.status}`);
@@ -64,10 +64,10 @@ if (replyAPIs.length === 0) {
   });
 }
 
-console.log('\n\n📊 其他相关 API：');
+console.log('\n\n📊 其他相关 API�?);
 console.log('='.repeat(100));
 otherAPIs.slice(0, 10).forEach((api, i) => {
   console.log(`${i + 1}. [${api.method}] ${api.url}`);
 });
 
-console.log(`\n\n总计: ${commentAPIs.length} 个评论 API, ${replyAPIs.length} 个回复 API, ${otherAPIs.length} 个其他 API`);
+console.log(`\n\n总计: ${commentAPIs.length} 个评�?API, ${replyAPIs.length} 个回�?API, ${otherAPIs.length} 个其�?API`);

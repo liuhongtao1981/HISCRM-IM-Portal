@@ -1,7 +1,6 @@
 /**
  * 完整验证 PC IM 数据获取功能
- * 验证字段名修复后，PC IM 能否正确获取所有数据
- */
+ * 验证字段名修复后，PC IM 能否正确获取所有数�? */
 
 const io = require('socket.io-client');
 
@@ -13,7 +12,7 @@ async function testFullDataRetrieval() {
   console.log('========================================\n');
 
   return new Promise((resolve, reject) => {
-    // 连接到 Master IM WebSocket
+    // 连接�?Master IM WebSocket
     const socket = io(MASTER_URL, {
       transports: ['websocket'],
       reconnection: false,
@@ -30,10 +29,9 @@ async function testFullDataRetrieval() {
     };
 
     socket.on('connect', () => {
-      console.log('✓ 已连接到 Master IM WebSocket\n');
+      console.log('�?已连接到 Master IM WebSocket\n');
 
-      // 1. 注册监控客户端
-      console.log('1. 注册监控客户端...');
+      // 1. 注册监控客户�?      console.log('1. 注册监控客户�?..');
       socket.emit('monitor:register', {
         clientId: 'test-client-full-validation',
         clientType: 'monitor',
@@ -41,8 +39,8 @@ async function testFullDataRetrieval() {
     });
 
     socket.on('monitor:registered', (data) => {
-      console.log(`   ✓ 监控客户端注册成功`);
-      console.log(`   频道数: ${data.channelCount}\n`);
+      console.log(`   �?监控客户端注册成功`);
+      console.log(`   频道�? ${data.channelCount}\n`);
 
       // 2. 请求频道列表
       console.log('2. 请求频道列表...');
@@ -53,18 +51,18 @@ async function testFullDataRetrieval() {
       const { channels } = data;
       testResults.channels = channels;
 
-      console.log(`   ✓ 收到 ${channels.length} 个频道\n`);
+      console.log(`   �?收到 ${channels.length} 个频道\n`);
 
       if (channels.length > 0) {
         const channel = channels[0];
         console.log(`   频道详情:`);
         console.log(`     ID: ${channel.id}`);
         console.log(`     Name: ${channel.name}`);
-        console.log(`     未读消息数: ${channel.unreadCount}`);
+        console.log(`     未读消息�? ${channel.unreadCount}`);
         console.log(`     总消息数: ${channel.messageCount}`);
-        console.log(`     最后消息: ${channel.lastMessage}`);
+        console.log(`     最后消�? ${channel.lastMessage}`);
         const date = new Date(channel.lastMessageTime);
-        console.log(`     最后消息时间: ${date.toLocaleString('zh-CN')}\n`);
+        console.log(`     最后消息时�? ${date.toLocaleString('zh-CN')}\n`);
 
         // 3. 请求主题列表
         console.log('3. 请求主题列表...');
@@ -80,7 +78,7 @@ async function testFullDataRetrieval() {
       const { channelId, topics } = data;
       testResults.topics = topics;
 
-      console.log(`   ✓ 收到 ${topics.length} 个主题\n`);
+      console.log(`   �?收到 ${topics.length} 个主题\n`);
 
       // 分类主题
       topics.forEach((topic) => {
@@ -102,8 +100,8 @@ async function testFullDataRetrieval() {
           const date = new Date(topic.lastMessageTime);
           console.log(`   [${index + 1}] ${topic.title}`);
           console.log(`       ID: ${topic.id}`);
-          console.log(`       评论数: ${topic.messageCount}`);
-          console.log(`       未读数: ${topic.unreadCount}`);
+          console.log(`       评论�? ${topic.messageCount}`);
+          console.log(`       未读�? ${topic.unreadCount}`);
           console.log(`       发布时间: ${new Date(topic.createdTime).toLocaleString('zh-CN')}`);
         });
         console.log();
@@ -116,9 +114,9 @@ async function testFullDataRetrieval() {
           const date = new Date(topic.lastMessageTime);
           console.log(`   [${index + 1}] ${topic.title}`);
           console.log(`       ID: ${topic.id}`);
-          console.log(`       消息数: ${topic.messageCount}`);
-          console.log(`       未读数: ${topic.unreadCount}`);
-          console.log(`       最后消息时间: ${date.toLocaleString('zh-CN')}`);
+          console.log(`       消息�? ${topic.messageCount}`);
+          console.log(`       未读�? ${topic.unreadCount}`);
+          console.log(`       最后消息时�? ${date.toLocaleString('zh-CN')}`);
         });
         console.log();
       }
@@ -126,13 +124,13 @@ async function testFullDataRetrieval() {
       // 4. 测试获取作品评论
       if (testResults.contentTopics.length > 0) {
         const contentTopic = testResults.contentTopics[0];
-        console.log(`4. 请求作品 "${contentTopic.title}" 的评论...`);
+        console.log(`4. 请求作品 "${contentTopic.title}" 的评�?..`);
         socket.emit('monitor:request_messages', { topicId: contentTopic.id });
       }
       // 5. 测试获取会话私信
       else if (testResults.conversationTopics.length > 0) {
         const conversationTopic = testResults.conversationTopics[0];
-        console.log(`4. 请求会话 "${conversationTopic.title}" 的私信...`);
+        console.log(`4. 请求会话 "${conversationTopic.title}" 的私�?..`);
         socket.emit('monitor:request_messages', { topicId: conversationTopic.id });
       } else {
         console.log('   ⚠️  没有找到主题\n');
@@ -146,7 +144,7 @@ async function testFullDataRetrieval() {
       const { topicId, messages } = data;
       messageRequestCount++;
 
-      console.log(`   ✓ 收到 ${messages.length} 条消息\n`);
+      console.log(`   �?收到 ${messages.length} 条消息\n`);
 
       if (messages.length > 0) {
         // 分类消息
@@ -173,10 +171,9 @@ async function testFullDataRetrieval() {
         console.log();
       }
 
-      // 如果已经测试了作品评论，再测试会话私信
-      if (messageRequestCount === 1 && testResults.conversationTopics.length > 0) {
+      // 如果已经测试了作品评论，再测试会话私�?      if (messageRequestCount === 1 && testResults.conversationTopics.length > 0) {
         const conversationTopic = testResults.conversationTopics[0];
-        console.log(`5. 请求会话 "${conversationTopic.title}" 的私信...`);
+        console.log(`5. 请求会话 "${conversationTopic.title}" 的私�?..`);
         socket.emit('monitor:request_messages', { topicId: conversationTopic.id });
       } else {
         // 测试完成
@@ -188,11 +185,11 @@ async function testFullDataRetrieval() {
 
     function printSummary() {
       console.log('\n========================================');
-      console.log('验证结果汇总');
+      console.log('验证结果汇�?);
       console.log('========================================\n');
 
-      console.log('✅ 数据获取统计:');
-      console.log(`   频道数: ${testResults.channels ? testResults.channels.length : 0}`);
+      console.log('�?数据获取统计:');
+      console.log(`   频道�? ${testResults.channels ? testResults.channels.length : 0}`);
       console.log(`   主题总数: ${testResults.topics ? testResults.topics.length : 0}`);
       console.log(`     - 作品主题: ${testResults.contentTopics.length}`);
       console.log(`     - 会话主题: ${testResults.conversationTopics.length}`);
@@ -200,79 +197,79 @@ async function testFullDataRetrieval() {
       console.log(`     - 评论消息: ${testResults.commentMessages.length}`);
       console.log(`     - 私信消息: ${testResults.dmMessages.length}`);
 
-      console.log('\n✅ 字段名修复验证:');
+      console.log('\n�?字段名修复验�?');
 
       // 验证作品主题字段
       if (testResults.contentTopics.length > 0) {
         const contentTopic = testResults.contentTopics[0];
         console.log(`   作品主题字段:`);
-        console.log(`     ✓ contentId: ${contentTopic.id !== undefined}`);
-        console.log(`     ✓ title: ${contentTopic.title !== undefined}`);
-        console.log(`     ✓ publishTime: ${contentTopic.createdTime !== undefined}`);
-        console.log(`     ✓ lastCrawlTime: ${contentTopic.lastMessageTime !== undefined}`);
-        console.log(`     ✓ messageCount: ${contentTopic.messageCount !== undefined}`);
+        console.log(`     �?contentId: ${contentTopic.id !== undefined}`);
+        console.log(`     �?title: ${contentTopic.title !== undefined}`);
+        console.log(`     �?publishTime: ${contentTopic.createdTime !== undefined}`);
+        console.log(`     �?lastCrawlTime: ${contentTopic.lastMessageTime !== undefined}`);
+        console.log(`     �?messageCount: ${contentTopic.messageCount !== undefined}`);
       }
 
       // 验证会话主题字段
       if (testResults.conversationTopics.length > 0) {
         const conversationTopic = testResults.conversationTopics[0];
         console.log(`   会话主题字段:`);
-        console.log(`     ✓ conversationId: ${conversationTopic.id !== undefined}`);
-        console.log(`     ✓ userName: ${conversationTopic.title !== undefined}`);
-        console.log(`     ✓ createdAt: ${conversationTopic.createdTime !== undefined}`);
-        console.log(`     ✓ updatedAt: ${conversationTopic.lastMessageTime !== undefined}`);
-        console.log(`     ✓ unreadCount: ${conversationTopic.unreadCount !== undefined}`);
+        console.log(`     �?conversationId: ${conversationTopic.id !== undefined}`);
+        console.log(`     �?userName: ${conversationTopic.title !== undefined}`);
+        console.log(`     �?createdAt: ${conversationTopic.createdTime !== undefined}`);
+        console.log(`     �?updatedAt: ${conversationTopic.lastMessageTime !== undefined}`);
+        console.log(`     �?unreadCount: ${conversationTopic.unreadCount !== undefined}`);
       }
 
       // 验证评论消息字段
       if (testResults.commentMessages.length > 0) {
         const comment = testResults.commentMessages[0];
         console.log(`   评论消息字段:`);
-        console.log(`     ✓ commentId: ${comment.id !== undefined}`);
-        console.log(`     ✓ authorName: ${comment.fromName !== undefined}`);
-        console.log(`     ✓ authorId: ${comment.fromId !== undefined}`);
-        console.log(`     ✓ content: ${comment.content !== undefined}`);
-        console.log(`     ✓ createdAt: ${comment.timestamp !== undefined}`);
-        console.log(`     ✓ parentCommentId: ${comment.replyToId !== undefined || comment.replyToId === null}`);
+        console.log(`     �?commentId: ${comment.id !== undefined}`);
+        console.log(`     �?authorName: ${comment.fromName !== undefined}`);
+        console.log(`     �?authorId: ${comment.fromId !== undefined}`);
+        console.log(`     �?content: ${comment.content !== undefined}`);
+        console.log(`     �?createdAt: ${comment.timestamp !== undefined}`);
+        console.log(`     �?parentCommentId: ${comment.replyToId !== undefined || comment.replyToId === null}`);
       }
 
       // 验证私信消息字段
       if (testResults.dmMessages.length > 0) {
         const dm = testResults.dmMessages[0];
         console.log(`   私信消息字段:`);
-        console.log(`     ✓ messageId: ${dm.id !== undefined}`);
-        console.log(`     ✓ senderName: ${dm.fromName !== undefined}`);
-        console.log(`     ✓ senderId: ${dm.fromId !== undefined}`);
-        console.log(`     ✓ content: ${dm.content !== undefined}`);
-        console.log(`     ✓ messageType: ${dm.type !== undefined}`);
-        console.log(`     ✓ createdAt: ${dm.timestamp !== undefined}`);
+        console.log(`     �?messageId: ${dm.id !== undefined}`);
+        console.log(`     �?senderName: ${dm.fromName !== undefined}`);
+        console.log(`     �?senderId: ${dm.fromId !== undefined}`);
+        console.log(`     �?content: ${dm.content !== undefined}`);
+        console.log(`     �?messageType: ${dm.type !== undefined}`);
+        console.log(`     �?createdAt: ${dm.timestamp !== undefined}`);
       }
 
-      console.log('\n✅ 核心功能验证:');
-      console.log(`   ✓ PC IM 可以连接到 Master`);
-      console.log(`   ✓ 可以注册监控客户端`);
-      console.log(`   ✓ 可以获取频道列表`);
-      console.log(`   ✓ 可以获取主题列表（作品和会话）`);
-      console.log(`   ✓ 可以获取消息列表（评论和私信）`);
-      console.log(`   ✓ 所有 camelCase 字段正确映射`);
+      console.log('\n�?核心功能验证:');
+      console.log(`   �?PC IM 可以连接�?Master`);
+      console.log(`   �?可以注册监控客户端`);
+      console.log(`   �?可以获取频道列表`);
+      console.log(`   �?可以获取主题列表（作品和会话）`);
+      console.log(`   �?可以获取消息列表（评论和私信）`);
+      console.log(`   �?所�?camelCase 字段正确映射`);
 
       console.log('\n========================================');
-      console.log('验证完成 - Worker → Master → PC IM 数据流 100% 打通！');
+      console.log('验证完成 - Worker �?Master �?PC IM 数据�?100% 打通！');
       console.log('========================================\n');
     }
 
     socket.on('disconnect', () => {
-      console.log('✓ 已断开连接\n');
+      console.log('�?已断开连接\n');
     });
 
     socket.on('error', (error) => {
-      console.error('❌ Socket 连接错误:', error);
+      console.error('�?Socket 连接错误:', error);
       reject(error);
     });
 
     // 超时处理
     setTimeout(() => {
-      console.log('\n⚠️  测试超时（30秒）\n');
+      console.log('\n⚠️  测试超时�?0秒）\n');
       socket.disconnect();
       reject(new Error('Test timeout'));
     }, 30000);
@@ -285,6 +282,6 @@ testFullDataRetrieval()
     process.exit(0);
   })
   .catch((error) => {
-    console.error('❌ 测试失败:', error.message);
+    console.error('�?测试失败:', error.message);
     process.exit(1);
   });

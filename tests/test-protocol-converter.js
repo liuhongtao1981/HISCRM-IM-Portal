@@ -2,13 +2,13 @@
  * Protocol Converter 验证脚本
  *
  * 这个脚本验证协议转换器的核心功能
- * 用于快速验证 Master ↔ crm 协议转换的正确性
+ * 用于快速验�?Master �?crm 协议转换的正确�?
  */
 
-// 由于这是 CommonJS，我们导入转换逻辑的原始实现
-// 在实际应用中，TypeScript 会处理转换
+// 由于这是 CommonJS，我们导入转换逻辑的原始实�?
+// 在实际应用中，TypeScript 会处理转�?
 
-// 模拟转换函数（纯 JavaScript 版本用于测试）
+// 模拟转换函数（纯 JavaScript 版本用于测试�?
 function convertMasterToCrm(masterMessage) {
   const payload = masterMessage.payload || masterMessage
 
@@ -20,7 +20,7 @@ function convertMasterToCrm(masterMessage) {
     topic: payload.account_id || payload.topic || 'default',
     content: payload.content || '',
     type: convertMessageType(payload.type || 'TEXT', true),
-    timestamp: (payload.created_at || payload.timestamp || Math.floor(Date.now() / 1000)) * 1000, // 秒 → 毫秒
+    timestamp: (payload.created_at || payload.timestamp || Math.floor(Date.now() / 1000)) * 1000, // �?�?毫秒
     fileUrl: payload.file_url || payload.fileUrl || undefined,
     fileName: payload.file_name || payload.fileName || undefined,
   }
@@ -73,7 +73,7 @@ function convertMessageType(masterType, isMasterToCrm = true) {
 // 测试用例
 const tests = [
   {
-    name: 'Test 1: Master TEXT 消息转换为 crm',
+    name: 'Test 1: Master TEXT 消息转换�?crm',
     input: {
       id: 'msg-123',
       account_id: 'account-456',
@@ -117,7 +117,7 @@ const tests = [
     },
   },
   {
-    name: 'Test 3: crm 消息转换为 Master',
+    name: 'Test 3: crm 消息转换�?Master',
     input: {
       id: 'crm-msg-123',
       fromId: 'user-123',
@@ -140,7 +140,7 @@ const tests = [
     },
   },
   {
-    name: 'Test 4: 往返转换（Master → crm → Master）',
+    name: 'Test 4: 往返转换（Master �?crm �?Master�?,
     input: {
       id: 'msg-round-trip',
       account_id: 'account-rt',
@@ -180,14 +180,14 @@ tests.forEach((test, index) => {
     let result
 
     if (test.roundTrip) {
-      // 往返转换
+      // 往返转�?
       const crm = convertMasterToCrm(test.input)
       result = convertCrmToMaster(crm)
     } else if (test.isCrmInput) {
-      // crm → Master
+      // crm �?Master
       result = convertCrmToMaster(test.input)
     } else {
-      // Master → crm
+      // Master �?crm
       result = convertMasterToCrm(test.input)
     }
 
@@ -199,22 +199,22 @@ tests.forEach((test, index) => {
       const actualValue = result[field]
       if (actualValue !== expectedValue) {
         isValid = false
-        errors.push(`  ❌ ${field}: 期望 ${expectedValue}, 得到 ${actualValue}`)
+        errors.push(`  �?${field}: 期望 ${expectedValue}, 得到 ${actualValue}`)
       } else {
-        console.log(`  ✅ ${field}: ${actualValue}`)
+        console.log(`  �?${field}: ${actualValue}`)
       }
     }
 
     if (isValid) {
-      console.log(`✅ 测试通过`)
+      console.log(`�?测试通过`)
       passedTests++
     } else {
-      console.log(`❌ 测试失败:`)
+      console.log(`�?测试失败:`)
       errors.forEach((e) => console.log(e))
       failedTests++
     }
   } catch (error) {
-    console.log(`❌ 测试异常: ${error.message}`)
+    console.log(`�?测试异常: ${error.message}`)
     failedTests++
   }
 })
@@ -222,9 +222,9 @@ tests.forEach((test, index) => {
 // 总结
 console.log('\n' + '='.repeat(60))
 console.log(`\n📊 测试结果`)
-console.log(`✅ 通过: ${passedTests}`)
-console.log(`❌ 失败: ${failedTests}`)
-console.log(`📈 成功率: ${((passedTests / (passedTests + failedTests)) * 100).toFixed(1)}%`)
+console.log(`�?通过: ${passedTests}`)
+console.log(`�?失败: ${failedTests}`)
+console.log(`📈 成功�? ${((passedTests / (passedTests + failedTests)) * 100).toFixed(1)}%`)
 
 if (failedTests === 0) {
   console.log('\n🎉 所有测试通过！协议转换器工作正常')

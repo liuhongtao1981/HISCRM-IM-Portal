@@ -1,6 +1,6 @@
 /**
  * 检查评论的 contentId 映射关系
- * 验证评论的 contentId 是否与作品的 contentId 匹配
+ * 验证评论�?contentId 是否与作品的 contentId 匹配
  */
 
 const io = require('socket.io-client');
@@ -9,7 +9,7 @@ const MASTER_URL = 'http://localhost:3000';
 
 async function checkContentIdMapping() {
   console.log('========================================');
-  console.log('检查评论 contentId 映射关系');
+  console.log('检查评�?contentId 映射关系');
   console.log('========================================\n');
 
   return new Promise((resolve, reject) => {
@@ -22,7 +22,7 @@ async function checkContentIdMapping() {
     let topicsWithComments = [];
 
     socket.on('connect', () => {
-      console.log('✓ 已连接到 Master\n');
+      console.log('�?已连接到 Master\n');
 
       socket.emit('monitor:register', {
         clientId: 'content-id-checker',
@@ -31,7 +31,7 @@ async function checkContentIdMapping() {
     });
 
     socket.on('monitor:registered', (data) => {
-      console.log(`✓ 注册成功\n`);
+      console.log(`�?注册成功\n`);
       socket.emit('monitor:request_channels');
     });
 
@@ -54,7 +54,7 @@ async function checkContentIdMapping() {
         t.description !== '私信会话' && t.messageCount > 0
       );
 
-      console.log(`找到 ${topicsWithComments.length} 个有评论的主题:\n`);
+      console.log(`找到 ${topicsWithComments.length} 个有评论的主�?\n`);
 
       topicsWithComments.forEach((topic, index) => {
         console.log(`[${index + 1}] ${topic.title.substring(0, 40)}...`);
@@ -64,8 +64,7 @@ async function checkContentIdMapping() {
       });
       console.log();
 
-      // 请求所有有评论主题的消息
-      testNextTopic(0);
+      // 请求所有有评论主题的消�?      testNextTopic(0);
     });
 
     let currentTopicIndex = 0;
@@ -73,17 +72,16 @@ async function checkContentIdMapping() {
 
     function testNextTopic(index) {
       if (index >= topicsWithComments.length) {
-        // 所有测试完成
-        printResults();
+        // 所有测试完�?        printResults();
         socket.disconnect();
         resolve();
         return;
       }
 
       const topic = topicsWithComments[index];
-      console.log(`\n[测试 ${index + 1}/${topicsWithComments.length}] 请求主题 "${topic.title.substring(0, 30)}..." 的消息...`);
+      console.log(`\n[测试 ${index + 1}/${topicsWithComments.length}] 请求主题 "${topic.title.substring(0, 30)}..." 的消�?..`);
       console.log(`  主题 ID: ${topic.id}`);
-      console.log(`  预期评论数: ${topic.messageCount}`);
+      console.log(`  预期评论�? ${topic.messageCount}`);
 
       currentTopicIndex = index;
       socket.emit('monitor:request_messages', { topicId: topic.id });
@@ -96,13 +94,13 @@ async function checkContentIdMapping() {
       console.log(`  实际返回: ${messages.length} 条消息`);
 
       if (messages.length > 0) {
-        console.log(`  ✅ 成功获取评论！`);
+        console.log(`  �?成功获取评论！`);
         messages.forEach((msg, i) => {
           console.log(`    [${i + 1}] ${msg.fromName}: ${msg.content.substring(0, 20)}`);
           console.log(`        commentId: ${msg.id}`);
         });
       } else {
-        console.log(`  ❌ 未获取到评论（但 messageCount = ${topic.messageCount}）`);
+        console.log(`  �?未获取到评论（但 messageCount = ${topic.messageCount}）`);
       }
 
       messageResults.push({
@@ -112,13 +110,12 @@ async function checkContentIdMapping() {
         success: messages.length > 0,
       });
 
-      // 测试下一个
-      setTimeout(() => testNextTopic(currentTopicIndex + 1), 100);
+      // 测试下一�?      setTimeout(() => testNextTopic(currentTopicIndex + 1), 100);
     });
 
     function printResults() {
       console.log('\n========================================');
-      console.log('映射关系检查结果');
+      console.log('映射关系检查结�?);
       console.log('========================================\n');
 
       const successCount = messageResults.filter(r => r.success).length;
@@ -127,36 +124,36 @@ async function checkContentIdMapping() {
       console.log(`总测试数: ${totalCount}`);
       console.log(`成功获取: ${successCount}`);
       console.log(`失败获取: ${totalCount - successCount}`);
-      console.log(`成功率: ${(successCount / totalCount * 100).toFixed(1)}%\n`);
+      console.log(`成功�? ${(successCount / totalCount * 100).toFixed(1)}%\n`);
 
       console.log('详细结果:');
       messageResults.forEach((result, index) => {
-        const status = result.success ? '✅' : '❌';
+        const status = result.success ? '�? : '�?;
         console.log(`${status} 主题 ${index + 1}: 期望 ${result.expectedCount} 条，实际 ${result.actualCount} 条`);
       });
 
       if (successCount < totalCount) {
-        console.log('\n⚠️  存在映射问题！');
+        console.log('\n⚠️  存在映射问题�?);
         console.log('可能原因:');
-        console.log('1. comment.contentId 与 topic.id 的数据类型不匹配（String vs Number）');
-        console.log('2. comment.contentId 的值与 content.contentId 不一致');
-        console.log('3. DataStore 中的 comments Map 的 key 与 contentId 不对应');
+        console.log('1. comment.contentId �?topic.id 的数据类型不匹配（String vs Number�?);
+        console.log('2. comment.contentId 的值与 content.contentId 不一�?);
+        console.log('3. DataStore 中的 comments Map �?key �?contentId 不对�?);
       } else {
-        console.log('\n✅ 所有映射关系正确！');
+        console.log('\n�?所有映射关系正确！');
       }
     }
 
     socket.on('disconnect', () => {
-      console.log('\n✓ 已断开连接\n');
+      console.log('\n�?已断开连接\n');
     });
 
     socket.on('error', (error) => {
-      console.error('❌ Socket 连接错误:', error);
+      console.error('�?Socket 连接错误:', error);
       reject(error);
     });
 
     setTimeout(() => {
-      console.log('\n⚠️  测试超时（30秒）\n');
+      console.log('\n⚠️  测试超时�?0秒）\n');
       socket.disconnect();
       reject(new Error('Test timeout'));
     }, 30000);
@@ -168,6 +165,6 @@ checkContentIdMapping()
     process.exit(0);
   })
   .catch((error) => {
-    console.error('❌ 测试失败:', error.message);
+    console.error('�?测试失败:', error.message);
     process.exit(1);
   });

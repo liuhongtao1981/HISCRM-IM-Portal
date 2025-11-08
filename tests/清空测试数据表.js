@@ -1,7 +1,5 @@
 /**
- * 清空测试数据表
- * 清空：contents（作品）、discussions（讨论）、comments（评论）、
- *      direct_messages（私信）、conversations（会话）
+ * 清空测试数据�? * 清空：contents（作品）、discussions（讨论）、comments（评论）�? *      direct_messages（私信）、conversations（会话）
  */
 
 const path = require('path');
@@ -16,8 +14,7 @@ console.log('='.repeat(80));
 console.log('');
 
 try {
-  // 查询清空前的数据量
-  console.log('📊 清空前数据统计:');
+  // 查询清空前的数据�?  console.log('📊 清空前数据统�?');
   console.log('-'.repeat(80));
 
   const beforeStats = {
@@ -37,15 +34,14 @@ try {
   console.log(`  抖音视频(contents): ${beforeStats.contents.count} 条`);
   console.log('');
 
-  // 开始事务
-  db.prepare('BEGIN TRANSACTION').run();
+  // 开始事�?  db.prepare('BEGIN TRANSACTION').run();
 
-  console.log('🗑️  开始清空数据表...');
+  console.log('🗑�? 开始清空数据表...');
   console.log('-'.repeat(80));
 
   // 清空表（按依赖顺序，先删除子表）
   const tables = [
-    'discussions',      // 依赖 comments 和 contents
+    'discussions',      // 依赖 comments �?contents
     'comments',
     'direct_messages',
     'conversations',
@@ -56,9 +52,9 @@ try {
   for (const table of tables) {
     try {
       const result = db.prepare(`DELETE FROM ${table}`).run();
-      console.log(`  ✅ ${table}: 删除了 ${result.changes} 条记录`);
+      console.log(`  �?${table}: 删除�?${result.changes} 条记录`);
     } catch (error) {
-      console.error(`  ❌ ${table}: 删除失败 - ${error.message}`);
+      console.error(`  �?${table}: 删除失败 - ${error.message}`);
       throw error;
     }
   }
@@ -67,7 +63,7 @@ try {
   db.prepare('COMMIT').run();
 
   console.log('');
-  console.log('📊 清空后数据统计:');
+  console.log('📊 清空后数据统�?');
   console.log('-'.repeat(80));
 
   const afterStats = {
@@ -88,16 +84,16 @@ try {
   console.log('');
 
   console.log('='.repeat(80));
-  console.log('✅ 数据表清空完成！');
+  console.log('�?数据表清空完成！');
   console.log('='.repeat(80));
 
 } catch (error) {
   // 回滚事务
   try {
     db.prepare('ROLLBACK').run();
-    console.error('\n❌ 清空失败，已回滚事务');
+    console.error('\n�?清空失败，已回滚事务');
   } catch (rollbackError) {
-    console.error('\n❌ 回滚失败:', rollbackError);
+    console.error('\n�?回滚失败:', rollbackError);
   }
   console.error('错误详情:', error);
   process.exit(1);

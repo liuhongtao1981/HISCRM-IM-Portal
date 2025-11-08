@@ -1,6 +1,5 @@
 /**
- * 检查 cache_conversations 表结构
- */
+ * 检�?cache_conversations 表结�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -8,8 +7,8 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath);
 
-console.log('\n═══════════════════════════════════════════════════════');
-console.log('  cache_conversations 表结构');
+console.log('\n══════════════════════════════════════════════════════�?);
+console.log('  cache_conversations 表结�?);
 console.log('═══════════════════════════════════════════════════════\n');
 
 const columns = db.prepare('PRAGMA table_info(cache_conversations)').all();
@@ -17,7 +16,7 @@ columns.forEach(col => {
   console.log(`${col.name.padEnd(30)} ${col.type.padEnd(15)} ${col.notnull ? 'NOT NULL' : ''} ${col.pk ? 'PRIMARY KEY' : ''}`);
 });
 
-console.log('\n═══════════════════════════════════════════════════════');
+console.log('\n══════════════════════════════════════════════════════�?);
 console.log('  cache_conversations 数据总数');
 console.log('═══════════════════════════════════════════════════════\n');
 
@@ -25,8 +24,8 @@ const count = db.prepare('SELECT COUNT(*) as count FROM cache_conversations').ge
 console.log(`总计: ${count.count} 条记录\n`);
 
 if (count.count > 0) {
-  console.log('═══════════════════════════════════════════════════════');
-  console.log('  前 10 条记录 (按更新时间排序)');
+  console.log('══════════════════════════════════════════════════════�?);
+  console.log('  �?10 条记�?(按更新时间排�?');
   console.log('═══════════════════════════════════════════════════════\n');
 
   const rows = db.prepare(`

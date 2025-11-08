@@ -1,11 +1,11 @@
 /**
- * 测试脚本：监控 DataManager 数据内容日志
+ * 测试脚本：监�?DataManager 数据内容日志
  *
- * 功能：
+ * 功能�?
  * 1. 实时监控 Worker 日志目录
- * 2. 检测新创建的 data-manager 和 douyin-data 日志文件
- * 3. 显示实际数据 upsert 操作的日志内容
- * 4. 验证数据完整性
+ * 2. 检测新创建�?data-manager �?douyin-data 日志文件
+ * 3. 显示实际数据 upsert 操作的日志内�?
+ * 4. 验证数据完整�?
  */
 
 const fs = require('fs');
@@ -25,12 +25,12 @@ const targetPatterns = [
   /^douyin-data_acc-.+\.log$/
 ];
 
-console.log('🔍 监控目标文件模式：');
+console.log('🔍 监控目标文件模式�?);
 targetPatterns.forEach(pattern => {
   console.log(`   - ${pattern}`);
 });
 
-// 存储已监控的文件和它们的最后读取位置
+// 存储已监控的文件和它们的最后读取位�?
 const monitoredFiles = new Map();
 
 /**
@@ -51,7 +51,7 @@ function scanLogDirectory() {
 }
 
 /**
- * 读取文件的新增内容
+ * 读取文件的新增内�?
  */
 function readNewContent(filePath, lastPosition) {
   const stats = fs.statSync(filePath);
@@ -79,7 +79,7 @@ function readNewContent(filePath, lastPosition) {
 }
 
 /**
- * 解析并格式化日志行
+ * 解析并格式化日志�?
  */
 function formatLogLine(line) {
   try {
@@ -96,21 +96,21 @@ function formatLogLine(line) {
     } else if (message.includes('Update')) {
       highlight = '🔄 数据更新';
     } else if (message.includes('Delete')) {
-      highlight = '🗑️  数据删除';
+      highlight = '🗑�? 数据删除';
     } else if (message.includes('Fetch')) {
       highlight = '📥 数据获取';
     } else if (message.includes('Sync')) {
       highlight = '🔄 数据同步';
     }
 
-    // 构建格式化输出
+    // 构建格式化输�?
     let output = `  ${timestamp} [${service}] [${level}]`;
     if (highlight) {
       output += ` ${highlight}`;
     }
     output += `\n    ${message}`;
 
-    // 如果有额外的元数据，也显示出来
+    // 如果有额外的元数据，也显示出�?
     const extraKeys = Object.keys(log).filter(k =>
       !['timestamp', 'level', 'service', 'message'].includes(k)
     );
@@ -135,7 +135,7 @@ async function monitorFile(fileName) {
   const filePath = path.join(WORKER_LOG_DIR, fileName);
 
   if (!monitoredFiles.has(fileName)) {
-    console.log(`\n✅ 检测到新文件: ${fileName}`);
+    console.log(`\n�?检测到新文�? ${fileName}`);
     monitoredFiles.set(fileName, 0);
   }
 
@@ -160,12 +160,12 @@ async function monitorFile(fileName) {
 
     monitoredFiles.set(fileName, newPosition);
   } catch (error) {
-    console.error(`❌ 读取文件失败: ${fileName}`, error.message);
+    console.error(`�?读取文件失败: ${fileName}`, error.message);
   }
 }
 
 /**
- * 主监控循环
+ * 主监控循�?
  */
 async function monitorLoop() {
   const matchedFiles = scanLogDirectory();
@@ -176,36 +176,36 @@ async function monitorLoop() {
 }
 
 // 启动监控
-console.log('\n🚀 开始监控...\n');
-console.log('提示：请在另一个终端运行 Master 或 Worker，本脚本将实时显示数据日志。');
-console.log('按 Ctrl+C 停止监控。\n');
+console.log('\n🚀 开始监�?..\n');
+console.log('提示：请在另一个终端运�?Master �?Worker，本脚本将实时显示数据日志�?);
+console.log('�?Ctrl+C 停止监控。\n');
 
 let monitorCount = 0;
 const monitorInterval = setInterval(async () => {
   monitorCount++;
 
-  // 每 10 次输出一次心跳
+  // �?10 次输出一次心�?
   if (monitorCount % 10 === 0) {
     const fileCount = monitoredFiles.size;
     if (fileCount === 0) {
-      console.log(`[${new Date().toLocaleTimeString()}] ⏳ 等待日志文件创建... (已等待 ${monitorCount * 2}秒)`);
+      console.log(`[${new Date().toLocaleTimeString()}] �?等待日志文件创建... (已等�?${monitorCount * 2}�?`);
     } else {
-      console.log(`[${new Date().toLocaleTimeString()}] 💓 监控中 (${fileCount} 个文件)`);
+      console.log(`[${new Date().toLocaleTimeString()}] 💓 监控�?(${fileCount} 个文�?`);
     }
   }
 
   await monitorLoop();
-}, 2000); // 每 2 秒检查一次
+}, 2000); // �?2 秒检查一�?
 
-// 优雅退出
+// 优雅退�?
 process.on('SIGINT', () => {
   console.log('\n\n⏹️  停止监控');
   clearInterval(monitorInterval);
 
-  console.log('\n📊 监控统计：');
-  console.log(`   监控文件数: ${monitoredFiles.size}`);
+  console.log('\n📊 监控统计�?);
+  console.log(`   监控文件�? ${monitoredFiles.size}`);
   monitoredFiles.forEach((position, fileName) => {
-    console.log(`   - ${fileName}: 读取了 ${position} 字节`);
+    console.log(`   - ${fileName}: 读取�?${position} 字节`);
   });
 
   process.exit(0);

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Cache Handler
  * T053: 缓存处理器 - 防止重复检测
  */
@@ -100,7 +100,6 @@ class CacheHandler {
         newMessages.push(message);
         this.add(accountId, messageId);
       } else {
-        logger.debug(`Skipping duplicate message: ${messageId}`);
       }
     }
 

@@ -1,6 +1,6 @@
 /**
- * 诊断私信消息的 DOM 结构和 React Fiber 数据
- * 目的: 找出为什么消息提取返回 0 条
+ * 诊断私信消息�?DOM 结构�?React Fiber 数据
+ * 目的: 找出为什么消息提取返�?0 �?
  */
 
 const path = require('path');
@@ -10,21 +10,21 @@ const { chromium } = require('playwright');
 async function diagnoseDMStructure() {
   console.log('🔍 诊断私信消息 DOM 结构\n');
 
-  // 1. 连接数据库
+  // 1. 连接数据�?
   const dbPath = path.join(__dirname, '../packages/master/data/master.db');
   const db = new Database(dbPath);
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     process.exit(1);
   }
 
-  console.log(`✅ 账户: ${account.platform_username} (ID: ${account.id})\n`);
+  console.log(`�?账户: ${account.platform_username} (ID: ${account.id})\n`);
 
-  // 2. 启动浏览器
+  // 2. 启动浏览�?
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -34,19 +34,19 @@ async function diagnoseDMStructure() {
   const page = await context.newPage();
 
   try {
-    // 3. 导航到私信页面
-    console.log('📍 导航到私信页面...');
+    // 3. 导航到私信页�?
+    console.log('📍 导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    console.log('⏳ 等待页面加载...');
+    console.log('�?等待页面加载...');
     await page.waitForTimeout(5000);
 
     // 4. 等待会话列表
     await page.waitForSelector('[role="list-item"]', { timeout: 10000 });
-    console.log('✅ 会话列表已加载\n');
+    console.log('�?会话列表已加载\n');
 
     // 5. 获取第一个会话（应该是最后测试中的第 4 个会话）
     const conversations = await page.locator('[role="list-item"]').all();
@@ -65,16 +65,16 @@ async function diagnoseDMStructure() {
       return document.querySelector('[contenteditable="true"]') !== null;
     });
 
-    console.log(`输入框存在: ${hasContentEditable ? '✅' : '❌'}\n`);
+    console.log(`输入框存�? ${hasContentEditable ? '�? : '�?}\n`);
 
     if (!hasContentEditable) {
-      console.log('❌ 会话未成功打开，停止诊断');
+      console.log('�?会话未成功打开，停止诊�?);
       return;
     }
 
-    // 8. 第一步: 查找消息容器
+    // 8. 第一�? 查找消息容器
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔍 第一步: 查找消息容器');
+    console.log('🔍 第一�? 查找消息容器');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const containerAnalysis = await page.evaluate(() => {
@@ -96,9 +96,9 @@ async function diagnoseDMStructure() {
     console.log(`  [class*="item"]: ${containerAnalysis.itemClass} 个`);
     console.log(`  [role*="article"]: ${containerAnalysis.roleArticle} 个\n`);
 
-    // 9. 第二步: 检查 React Fiber
+    // 9. 第二�? 检�?React Fiber
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔬 第二步: 检查 React Fiber 数据');
+    console.log('🔬 第二�? 检�?React Fiber 数据');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const fiberAnalysis = await page.evaluate(() => {
@@ -113,13 +113,13 @@ async function diagnoseDMStructure() {
       results.totalElements = allElements.length;
 
       allElements.forEach((element, index) => {
-        // 检查是否有 React Fiber 键
+        // 检查是否有 React Fiber �?
         const fiberKey = Object.keys(element).find(key => key.startsWith('__react'));
 
         if (fiberKey) {
           results.elementsWithFiber++;
 
-          // 只检查前 5 个元素作为样本
+          // 只检查前 5 个元素作为样�?
           if (results.fiberSamples.length < 5) {
             let current = element[fiberKey];
             let depth = 0;
@@ -131,12 +131,12 @@ async function diagnoseDMStructure() {
               propsFound: [],
             };
 
-            // 向上遍历 Fiber 树
+            // 向上遍历 Fiber �?
             while (current && depth < 20) {
               if (current.memoizedProps) {
                 const props = current.memoizedProps;
 
-                // 记录找到的 props
+                // 记录找到�?props
                 const foundProps = {};
                 if (props.conversationId) foundProps.conversationId = props.conversationId;
                 if (props.serverId) foundProps.serverId = props.serverId;
@@ -190,12 +190,12 @@ async function diagnoseDMStructure() {
     });
 
     console.log(`总元素数: ${fiberAnalysis.totalElements}`);
-    console.log(`有 Fiber 数据的元素: ${fiberAnalysis.elementsWithFiber}`);
-    console.log(`找到的消息: ${fiberAnalysis.messagesFound.length} 条\n`);
+    console.log(`�?Fiber 数据的元�? ${fiberAnalysis.elementsWithFiber}`);
+    console.log(`找到的消�? ${fiberAnalysis.messagesFound.length} 条\n`);
 
     if (fiberAnalysis.messagesFound.length > 0) {
-      console.log('✅ 成功通过 React Fiber 提取到消息!\n');
-      console.log('前 5 条消息:');
+      console.log('�?成功通过 React Fiber 提取到消�?\n');
+      console.log('�?5 条消�?');
       fiberAnalysis.messagesFound.slice(0, 5).forEach((msg, i) => {
         console.log(`  ${i + 1}. ID: ${msg.messageId}`);
         console.log(`     内容: ${msg.content}`);
@@ -203,36 +203,36 @@ async function diagnoseDMStructure() {
         console.log(`     会话ID: ${msg.conversationId}\n`);
       });
     } else {
-      console.log('❌ 未通过 React Fiber 提取到任何消息\n');
-      console.log('Fiber 样本分析 (前 5 个元素):');
+      console.log('�?未通过 React Fiber 提取到任何消息\n');
+      console.log('Fiber 样本分析 (�?5 个元�?:');
       fiberAnalysis.fiberSamples.forEach((sample, i) => {
         console.log(`  样本 ${i + 1}:`);
         console.log(`    元素索引: ${sample.elementIndex}`);
         console.log(`    元素 class: ${sample.elementClass}`);
-        console.log(`    Fiber 键: ${sample.fiberKey}`);
-        console.log(`    找到消息数据: ${sample.foundMessageData ? '✅' : '❌'}`);
-        console.log(`    找到的 props (${sample.propsFound.length} 个):`);
+        console.log(`    Fiber �? ${sample.fiberKey}`);
+        console.log(`    找到消息数据: ${sample.foundMessageData ? '�? : '�?}`);
+        console.log(`    找到�?props (${sample.propsFound.length} �?:`);
 
         if (sample.propsFound.length > 0) {
           sample.propsFound.slice(0, 3).forEach((propEntry, j) => {
             console.log(`      深度 ${propEntry.depth}:`, JSON.stringify(propEntry.props, null, 2));
           });
         } else {
-          console.log('      (无相关 props)');
+          console.log('      (无相�?props)');
         }
         console.log('');
       });
     }
 
-    // 10. 第三步: 直接查看 DOM 内容
+    // 10. 第三�? 直接查看 DOM 内容
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('📝 第三步: 直接查看 DOM 内容');
+    console.log('📝 第三�? 直接查看 DOM 内容');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const domContent = await page.evaluate(() => {
       const messages = [];
 
-      // 尝试多种选择器
+      // 尝试多种选择�?
       const selectors = [
         '[class*="message"]',
         '[class*="item"]',
@@ -262,30 +262,30 @@ async function diagnoseDMStructure() {
 
     console.log('DOM 内容分析:');
     domContent.forEach(result => {
-      console.log(`\n选择器: ${result.selector}`);
+      console.log(`\n选择�? ${result.selector}`);
       console.log(`元素数量: ${result.count}`);
-      console.log('前 3 个样本:');
+      console.log('�?3 个样�?');
       result.samples.forEach((sample, i) => {
         console.log(`  ${i + 1}. <${sample.tag}> class="${sample.classes}"`);
         console.log(`     文本: ${sample.text}`);
-        console.log(`     属性: ${sample.attributes.join(', ')}\n`);
+        console.log(`     属�? ${sample.attributes.join(', ')}\n`);
       });
     });
 
   } catch (error) {
-    console.error('\n❌ 诊断失败:', error);
+    console.error('\n�?诊断失败:', error);
     console.error(error.stack);
   } finally {
-    console.log('\n⏸️  等待 15 秒后关闭浏览器...');
+    console.log('\n⏸️  等待 15 秒后关闭浏览�?..');
     await page.waitForTimeout(15000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 诊断完成');
+    console.log('\n�?诊断完成');
   }
 }
 
 diagnoseDMStructure().catch(error => {
-  console.error('❌ 脚本执行失败:', error);
+  console.error('�?脚本执行失败:', error);
   process.exit(1);
 });

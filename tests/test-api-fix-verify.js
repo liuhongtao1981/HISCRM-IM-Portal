@@ -30,9 +30,9 @@ function makeRequest(body) {
     account_id: 'acc-40dab768-fee1-4718-b64b-eb3a7c23beac',
     target_type: 'comment',
     target_id: '@j/du7rRFQE76t8pb8rzov81/qyyUYCj+J6spN6Rgi65hkia+W5A7RJEoPQpq6PZlDYg5SHKaINpmyvOJ84Gvsw==',
-    reply_content: 'API拦截修复后的测试 - 检查API响应是否被成功拦截'
+    reply_content: 'API拦截修复后的测试 - 检查API响应是否被成功拦�?
   });
-  console.log('✅ Reply ID:', res.reply_id);
+  console.log('�?Reply ID:', res.reply_id);
   console.log('Status:', res.status);
   console.log('\n现在等待 50 秒让 Worker 处理...\n');
 })();

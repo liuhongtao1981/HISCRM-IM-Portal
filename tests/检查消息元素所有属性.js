@@ -1,5 +1,5 @@
 /**
- * 检查私信消息元素中的所有可用属性
+ * 检查私信消息元素中的所有可用属�?
  * 包括：头像、昵称、用户信息等
  */
 
@@ -15,7 +15,7 @@ async function checkAllMessageProperties() {
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ?').get('douyin');
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     return;
   }
@@ -31,8 +31,8 @@ async function checkAllMessageProperties() {
   const page = await context.newPage();
 
   try {
-    // 导航到私信页面
-    console.log('🌐 导航到私信页面...');
+    // 导航到私信页�?
+    console.log('🌐 导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -40,10 +40,10 @@ async function checkAllMessageProperties() {
 
     await page.waitForTimeout(3000);
 
-    // 点击第一个会话
+    // 点击第一个会�?
     console.log('\n📋 查找会话列表...');
 
-    // 尝试多种选择器
+    // 尝试多种选择�?
     const selectors = [
       '[class*="conversation-item"]',
       '[class*="session-item"]',
@@ -56,15 +56,15 @@ async function checkAllMessageProperties() {
     for (const selector of selectors) {
       conversations = await page.$$(selector);
       if (conversations.length > 0) {
-        console.log(`✅ 使用选择器 "${selector}" 找到 ${conversations.length} 个会话`);
+        console.log(`�?使用选择�?"${selector}" 找到 ${conversations.length} 个会话`);
         break;
       }
     }
 
     if (conversations.length === 0) {
-      console.log('❌ 未找到会话，尝试查看页面结构...');
+      console.log('�?未找到会话，尝试查看页面结构...');
 
-      // 打印页面的主要结构
+      // 打印页面的主要结�?
       const structure = await page.evaluate(() => {
         const selectors = ['[class*="list"]', '[class*="conversation"]', '[role="list"]', '[role="listitem"]'];
         return selectors.map(sel => ({
@@ -79,22 +79,22 @@ async function checkAllMessageProperties() {
       return;
     }
 
-    console.log(`✅ 找到 ${conversations.length} 个会话\n`);
-    console.log('🖱️ 点击第一个会话...');
+    console.log(`�?找到 ${conversations.length} 个会话\n`);
+    console.log('🖱�?点击第一个会�?..');
     await conversations[0].click();
     await page.waitForTimeout(3000);
 
     // 等待消息加载
-    console.log('⏳ 等待消息加载...');
+    console.log('�?等待消息加载...');
     try {
       await page.waitForSelector('[class*="message"]', { timeout: 5000 });
     } catch (e) {
-      console.log('⚠️ 未检测到消息元素，继续尝试...');
+      console.log('⚠️ 未检测到消息元素，继续尝�?..');
     }
     await page.waitForTimeout(2000);
 
-    // 提取所有消息元素的完整属性
-    console.log('\n🔍 分析消息元素的所有属性...\n');
+    // 提取所有消息元素的完整属�?
+    console.log('\n🔍 分析消息元素的所有属�?..\n');
 
     const result = await page.evaluate(() => {
       const allElements = document.querySelectorAll('[class*="message"], [class*="item"], [role*="article"]');
@@ -111,7 +111,7 @@ async function checkAllMessageProperties() {
         let depth = 0;
         let found = false;
 
-        // 向上遍历 Fiber 树
+        // 向上遍历 Fiber �?
         while (current && depth < 20 && !found) {
           if (current.memoizedProps) {
             const props = current.memoizedProps;
@@ -120,11 +120,11 @@ async function checkAllMessageProperties() {
             if (props.conversationId || props.serverId || props.content || props.message) {
               analyzed++;
 
-              // 提取所有可能的属性
+              // 提取所有可能的属�?
               const messageData = {
                 index: index,
                 depth: depth,
-                // 核心属性
+                // 核心属�?
                 serverId: props.serverId,
                 conversationId: props.conversationId,
                 messageId: props.messageId,
@@ -157,25 +157,25 @@ async function checkAllMessageProperties() {
                 userName: props.userName,
                 name: props.name,
 
-                // 其他可能的字段
+                // 其他可能的字�?
                 status: props.status,
                 read: props.read,
                 messageType: props.messageType,
 
-                // 打印所有 props 的键
+                // 打印所�?props 的键
                 allPropsKeys: Object.keys(props)
               };
 
               messages.push(messageData);
               found = true;
 
-              // 只分析前 5 条消息
+              // 只分析前 5 条消�?
               if (analyzed <= 5) {
                 console.log(`\n📝 消息 ${analyzed} (元素 ${index}, 深度 ${depth}):`);
                 console.log('所有属性键:', Object.keys(props).join(', '));
 
-                // 打印完整的 props 对象（只打印前两层）
-                console.log('\n完整属性结构:');
+                // 打印完整�?props 对象（只打印前两层）
+                console.log('\n完整属性结�?');
                 Object.keys(props).forEach(key => {
                   const value = props[key];
                   if (value && typeof value === 'object') {
@@ -201,11 +201,11 @@ async function checkAllMessageProperties() {
     });
 
     console.log('\n' + '='.repeat(60));
-    console.log('📊 分析结果汇总');
+    console.log('📊 分析结果汇�?);
     console.log('='.repeat(60));
     console.log(`总元素数: ${result.totalElements}`);
-    console.log(`有效消息数: ${result.analyzedMessages}`);
-    console.log(`\n前 5 条消息的完整数据:\n`);
+    console.log(`有效消息�? ${result.analyzedMessages}`);
+    console.log(`\n�?5 条消息的完整数据:\n`);
 
     result.messages.slice(0, 5).forEach((msg, i) => {
       console.log(`\n消息 ${i + 1}:`);
@@ -228,7 +228,7 @@ async function checkAllMessageProperties() {
       console.log(`  fromUser: ${JSON.stringify(msg.fromUser)}`);
       console.log(`  toUser: ${JSON.stringify(msg.toUser)}`);
 
-      console.log(`\n头像和昵称:`);
+      console.log(`\n头像和昵�?`);
       console.log(`  avatar: ${msg.avatar}`);
       console.log(`  avatarUrl: ${msg.avatarUrl}`);
       console.log(`  senderAvatar: ${msg.senderAvatar}`);
@@ -237,7 +237,7 @@ async function checkAllMessageProperties() {
       console.log(`  userName: ${msg.userName}`);
       console.log(`  name: ${msg.name}`);
 
-      console.log(`\n所有属性键 (${msg.allPropsKeys.length} 个):`);
+      console.log(`\n所有属性键 (${msg.allPropsKeys.length} �?:`);
       console.log(`  ${msg.allPropsKeys.join(', ')}`);
     });
 
@@ -249,14 +249,14 @@ async function checkAllMessageProperties() {
     const hasAvatar = result.messages.some(m => m.avatar || m.avatarUrl || m.senderAvatar);
     const hasNickname = result.messages.some(m => m.nickname || m.senderNickname || m.userName);
 
-    console.log(`用户信息: ${hasUserInfo ? '✅ 有' : '❌ 无'}`);
-    console.log(`头像: ${hasAvatar ? '✅ 有' : '❌ 无'}`);
-    console.log(`昵称: ${hasNickname ? '✅ 有' : '❌ 无'}`);
+    console.log(`用户信息: ${hasUserInfo ? '�?�? : '�?�?}`);
+    console.log(`头像: ${hasAvatar ? '�?�? : '�?�?}`);
+    console.log(`昵称: ${hasNickname ? '�?�? : '�?�?}`);
 
   } catch (error) {
-    console.error('\n❌ 错误:', error.message);
+    console.error('\n�?错误:', error.message);
   } finally {
-    console.log('\n\n⏳ 等待 10 秒后关闭浏览器...');
+    console.log('\n\n�?等待 10 秒后关闭浏览�?..');
     await page.waitForTimeout(10000);
     await context.close();
     db.close();

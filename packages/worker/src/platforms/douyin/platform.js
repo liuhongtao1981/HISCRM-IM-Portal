@@ -1,10 +1,10 @@
-/**
+﻿/**
  * Douyin Platform - 抖音平台脚本
  * 基于现有 DouyinLoginHandler 重构为平台模式
  */
 
 const PlatformBase = require('../base/platform-base');
-const DouyinLoginHandler = require('../../browser/douyin-login-handler');
+const DouyinLoginHandler = require('./login-handler');
 const IncrementalCrawlService = require('../../services/incremental-crawl-service');
 const { getCacheManager } = require('../../services/cache-manager');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -18,7 +18,7 @@ const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
 const { onWorksListAPI, onWorkDetailAPI } = require('./crawler-contents');
-const { onCommentsListAPI, onDiscussionsListAPI } = require('./crawler-comments');
+const { onCommentsListAPI, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
 const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
 
 // 导入实时监控管理器
@@ -93,13 +93,14 @@ class DouyinPlatform extends PlatformBase {
     // 评论相关 API
     manager.register('**/comment/list/select/**', onCommentsListAPI);  // 修正：匹配 /comment/list/select/
     manager.register('**/comment/reply/list/**', onDiscussionsListAPI);  // 修正：更宽松的模式
+    manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 通知详情 API（评论通知）
 
     // 私信相关 API
     manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
     manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // ✅ 修正：匹配实际的会话 API
     manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
-    logger.info(`✅ API handlers registered (7 total) for account ${accountId}`);
+    logger.info(`✅ API handlers registered (8 total) for account ${accountId}`);
   }
 
   /**
@@ -2984,7 +2985,8 @@ class DouyinPlatform extends PlatformBase {
         // 如果没找到，强制创建新的独立 Tab
         if (!realtimePage) {
           logger.info(`创建独立的实时监控 Tab (账户: ${account.id})`);
-          const result = await this.browserManager.tabManager.getPageForTask(
+          // ⭐ 使用 getPageWithAPI 自动设置 API 拦截器
+          const result = await this.getPageWithAPI(
             account.id,
             {
               tag: TabTag.REALTIME_MONITOR,
@@ -2996,10 +2998,11 @@ class DouyinPlatform extends PlatformBase {
           realtimePage = result.page;
           realtimeTabId = result.tabId;
           logger.info(`✅ 独立实时监控 Tab 创建成功 (tabId: ${realtimeTabId})`);
+          logger.info(`✅ API 拦截器已自动设置 (tag: ${TabTag.REALTIME_MONITOR})`);
         }
       }
 
-      // 2. 导航到抖音首页（实时监控在首页监听 Redux Store）
+      // 2. 导航到抖音首页（实时监控在首页监听通知）
       const targetUrl = 'https://www.douyin.com/';
       const currentUrl = realtimePage.url();
 
@@ -3078,8 +3081,8 @@ class DouyinPlatform extends PlatformBase {
     // 默认配置
     const defaultConfig = {
       enableRealtimeMonitor: true,
-      crawlIntervalMin: 5,
-      crawlIntervalMax: 10
+      crawlIntervalMin: 0.5,  // 0.5分钟 = 30秒
+      crawlIntervalMax: 0.5   // 0.5分钟 = 30秒
     };
 
     if (!account.monitoring_config) {

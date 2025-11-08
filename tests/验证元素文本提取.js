@@ -1,5 +1,5 @@
 /**
- * 验证load-more元素的文本提取
+ * 验证load-more元素的文本提�?
  */
 
 const path = require('path');
@@ -13,7 +13,7 @@ async function testTextExtraction() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
@@ -27,8 +27,8 @@ async function testTextExtraction() {
   const page = await context.newPage();
 
   try {
-    // 导航到评论页面
-    console.log('📍 导航到评论管理页面...');
+    // 导航到评论页�?
+    console.log('📍 导航到评论管理页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -53,8 +53,8 @@ async function testTextExtraction() {
 
     await page.waitForTimeout(3000);
 
-    // 滚动到底部
-    console.log('📜 滚动到底部...');
+    // 滚动到底�?
+    console.log('📜 滚动到底�?..');
     await page.evaluate(() => {
       const tabpanel = document.querySelector('[role="tabpanel"]');
       if (tabpanel) {
@@ -74,7 +74,7 @@ async function testTextExtraction() {
       const buttons = document.querySelectorAll('[class*="load-more"]');
 
       buttons.forEach((el, index) => {
-        // 获取各种文本属性
+        // 获取各种文本属�?
         results.push({
           index,
           textContent: el.textContent,
@@ -101,9 +101,9 @@ async function testTextExtraction() {
     });
 
     if (analysis.length === 0) {
-      console.log('❌ 没有找到 load-more 元素\n');
+      console.log('�?没有找到 load-more 元素\n');
     } else {
-      console.log(`✅ 找到 ${analysis.length} 个 load-more 元素\n`);
+      console.log(`�?找到 ${analysis.length} �?load-more 元素\n`);
 
       analysis.forEach((item, i) => {
         console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
@@ -113,7 +113,7 @@ async function testTextExtraction() {
         console.log(`标签: <${item.tagName}>`);
         console.log(`类名: ${item.className}\n`);
 
-        console.log('文本属性:');
+        console.log('文本属�?');
         console.log(`  textContent: "${item.textContent}"`);
         console.log(`  textContent.trim(): "${item.textContentTrim}"`);
         console.log(`  innerText: "${item.innerText}"`);
@@ -123,7 +123,7 @@ async function testTextExtraction() {
         console.log(`  ${item.innerHTML}`);
         console.log('');
 
-        console.log(`子节点 (${item.childNodes.length} 个):`);
+        console.log(`子节�?(${item.childNodes.length} �?:`);
         item.childNodes.forEach((node, j) => {
           console.log(`  ${j + 1}. ${node.nodeName} (type: ${node.nodeType})`);
           if (node.nodeType === 3) { // TEXT_NODE
@@ -134,7 +134,7 @@ async function testTextExtraction() {
         });
         console.log('');
 
-        console.log(`子元素 (${item.children.length} 个):`);
+        console.log(`子元�?(${item.children.length} �?:`);
         item.children.forEach((child, j) => {
           console.log(`  ${j + 1}. <${child.tagName}> ${child.className}`);
           console.log(`     textContent: "${child.textContent}"`);
@@ -142,27 +142,27 @@ async function testTextExtraction() {
         console.log('');
 
         // 正则匹配测试
-        const match = item.textContentTrim.match(/^查看(\d+)条回复$/);
+        const match = item.textContentTrim.match(/^查看(\d+)条回�?/);
         console.log('正则匹配测试:');
-        console.log(`  模式: /^查看(\\d+)条回复$/`);
-        console.log(`  结果: ${match ? `✅ 匹配成功, 回复数=${match[1]}` : '❌ 不匹配'}`);
+        console.log(`  模式: /^查看(\\d+)条回�?/`);
+        console.log(`  结果: ${match ? `�?匹配成功, 回复�?${match[1]}` : '�?不匹�?}`);
         console.log('');
       });
     }
 
   } catch (error) {
-    console.error('❌ 测试失败:', error);
+    console.error('�?测试失败:', error);
   } finally {
-    console.log('⏸️  等待10秒后关闭浏览器...');
+    console.log('⏸️  等待10秒后关闭浏览�?..');
     await page.waitForTimeout(10000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 测试完成');
+    console.log('\n�?测试完成');
   }
 }
 
 testTextExtraction().catch(error => {
-  console.error('❌ 测试脚本执行失败:', error);
+  console.error('�?测试脚本执行失败:', error);
   process.exit(1);
 });

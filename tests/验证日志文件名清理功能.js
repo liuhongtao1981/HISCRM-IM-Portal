@@ -1,7 +1,7 @@
 /**
  * 测试脚本：验证日志文件名清理功能
  *
- * 测试目标：
+ * 测试目标�?
  * 1. 验证包含非法字符的服务名称能正确创建日志文件
  * 2. 验证文件名清理函数的转换规则
  * 3. 验证实际日志写入功能
@@ -21,7 +21,7 @@ const testCases = [
     name: '冒号字符',
     serviceName: 'data-manager:acc-001',
     expectedFileName: 'data-manager_acc-001.log',
-    description: '最常见的场景 - DataManager 日志'
+    description: '最常见的场�?- DataManager 日志'
   },
   {
     name: '多个冒号',
@@ -33,19 +33,19 @@ const testCases = [
     name: '斜杠字符',
     serviceName: 'worker/platform',
     expectedFileName: 'worker_platform.log',
-    description: '路径分隔符'
+    description: '路径分隔�?
   },
   {
-    name: '反斜杠字符',
+    name: '反斜杠字�?,
     serviceName: 'test\\service',
     expectedFileName: 'test_service.log',
-    description: 'Windows 路径分隔符'
+    description: 'Windows 路径分隔�?
   },
   {
     name: '星号字符',
     serviceName: 'crawler*v2',
     expectedFileName: 'crawler_v2.log',
-    description: '通配符'
+    description: '通配�?
   },
   {
     name: '问号字符',
@@ -57,26 +57,26 @@ const testCases = [
     name: '多种非法字符组合',
     serviceName: 'service<>:"/\\|?*test',
     expectedFileName: 'service_________test.log',
-    description: '所有 Windows 非法字符'
+    description: '所�?Windows 非法字符'
   },
   {
-    name: '正常服务名',
+    name: '正常服务�?,
     serviceName: 'normal-service-name',
     expectedFileName: 'normal-service-name.log',
-    description: '不包含非法字符'
+    description: '不包含非法字�?
   }
 ];
 
 let passCount = 0;
 let failCount = 0;
 
-console.log('\n📝 测试用例列表：');
+console.log('\n📝 测试用例列表�?);
 testCases.forEach((tc, idx) => {
-  console.log(`  ${idx + 1}. ${tc.name}: ${tc.serviceName} → ${tc.expectedFileName}`);
+  console.log(`  ${idx + 1}. ${tc.name}: ${tc.serviceName} �?${tc.expectedFileName}`);
 });
 
 console.log('\n' + '='.repeat(80));
-console.log('开始测试...\n');
+console.log('开始测�?..\n');
 
 // 创建临时测试目录
 const testLogDir = path.join(__dirname, '../logs/test-logger-sanitize');
@@ -86,8 +86,8 @@ if (!fs.existsSync(testLogDir)) {
 
 testCases.forEach((testCase, index) => {
   console.log(`\n[测试 ${index + 1}/${testCases.length}] ${testCase.name}`);
-  console.log(`  服务名: ${testCase.serviceName}`);
-  console.log(`  期望文件名: ${testCase.expectedFileName}`);
+  console.log(`  服务�? ${testCase.serviceName}`);
+  console.log(`  期望文件�? ${testCase.expectedFileName}`);
   console.log(`  说明: ${testCase.description}`);
 
   try {
@@ -105,15 +105,15 @@ testCases.forEach((testCase, index) => {
 
     // 等待日志写入
     setTimeout(() => {
-      // 检查文件是否创建
+      // 检查文件是否创�?
       const expectedFilePath = path.join(testLogDir, testCase.expectedFileName);
       const expectedErrorFilePath = path.join(testLogDir, testCase.expectedFileName.replace('.log', '-error.log'));
 
       const fileExists = fs.existsSync(expectedFilePath);
       const errorFileExists = fs.existsSync(expectedErrorFilePath);
 
-      console.log(`  ✓ 检查文件: ${expectedFilePath}`);
-      console.log(`    文件存在: ${fileExists ? '✅' : '❌'}`);
+      console.log(`  �?检查文�? ${expectedFilePath}`);
+      console.log(`    文件存在: ${fileExists ? '�? : '�?}`);
 
       if (fileExists) {
         const stats = fs.statSync(expectedFilePath);
@@ -128,12 +128,12 @@ testCases.forEach((testCase, index) => {
         const hasInfoLog = content.includes(testMessage);
         const hasDebugLog = content.includes('Debug level message');
 
-        console.log(`    包含 INFO 日志: ${hasInfoLog ? '✅' : '❌'}`);
-        console.log(`    包含 DEBUG 日志: ${hasDebugLog ? '✅' : '❌'}`);
+        console.log(`    包含 INFO 日志: ${hasInfoLog ? '�? : '�?}`);
+        console.log(`    包含 DEBUG 日志: ${hasDebugLog ? '�? : '�?}`);
 
-        // 检查 error 文件
-        console.log(`  ✓ 检查错误日志: ${expectedErrorFilePath}`);
-        console.log(`    错误文件存在: ${errorFileExists ? '✅' : '❌'}`);
+        // 检�?error 文件
+        console.log(`  �?检查错误日�? ${expectedErrorFilePath}`);
+        console.log(`    错误文件存在: ${errorFileExists ? '�? : '�?}`);
 
         if (errorFileExists) {
           const errorStats = fs.statSync(expectedErrorFilePath);
@@ -141,21 +141,21 @@ testCases.forEach((testCase, index) => {
 
           const errorContent = fs.readFileSync(expectedErrorFilePath, 'utf-8');
           const hasErrorLog = errorContent.includes('Error level message');
-          console.log(`    包含 ERROR 日志: ${hasErrorLog ? '✅' : '❌'}`);
+          console.log(`    包含 ERROR 日志: ${hasErrorLog ? '�? : '�?}`);
 
           if (fileExists && hasInfoLog && hasDebugLog && errorFileExists && hasErrorLog) {
-            console.log(`\n  ✅ 测试通过`);
+            console.log(`\n  �?测试通过`);
             passCount++;
           } else {
-            console.log(`\n  ❌ 测试失败：日志内容不完整`);
+            console.log(`\n  �?测试失败：日志内容不完整`);
             failCount++;
           }
         } else {
-          console.log(`\n  ❌ 测试失败：错误日志文件未创建`);
+          console.log(`\n  �?测试失败：错误日志文件未创建`);
           failCount++;
         }
       } else {
-        console.log(`\n  ❌ 测试失败：日志文件未创建`);
+        console.log(`\n  �?测试失败：日志文件未创建`);
         failCount++;
       }
 
@@ -168,16 +168,16 @@ testCases.forEach((testCase, index) => {
           console.log(`总测试数: ${testCases.length}`);
           console.log(`通过: ${passCount} ✅`);
           console.log(`失败: ${failCount} ❌`);
-          console.log(`成功率: ${((passCount / testCases.length) * 100).toFixed(1)}%`);
+          console.log(`成功�? ${((passCount / testCases.length) * 100).toFixed(1)}%`);
 
           if (failCount === 0) {
-            console.log('\n🎉 所有测试通过！日志文件名清理功能正常工作。');
+            console.log('\n🎉 所有测试通过！日志文件名清理功能正常工作�?);
           } else {
-            console.log('\n⚠️  部分测试失败，请检查日志配置。');
+            console.log('\n⚠️  部分测试失败，请检查日志配置�?);
           }
 
           console.log('\n📁 测试日志目录:', testLogDir);
-          console.log('   可以查看该目录验证生成的日志文件。');
+          console.log('   可以查看该目录验证生成的日志文件�?);
 
           // 清理环境变量
           delete process.env.LOG_DIR;
@@ -186,7 +186,7 @@ testCases.forEach((testCase, index) => {
     }, 200);
 
   } catch (error) {
-    console.log(`\n  ❌ 测试失败：${error.message}`);
+    console.log(`\n  �?测试失败�?{error.message}`);
     failCount++;
   }
 });

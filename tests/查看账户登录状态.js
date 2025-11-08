@@ -4,7 +4,7 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath, { readonly: true });
 
-console.log('\n=== 账户登录状态查询 ===\n');
+console.log('\n=== 账户登录状态查�?===\n');
 
 const account = db.prepare(`
   SELECT
@@ -23,22 +23,22 @@ if (account) {
   console.log('  ID:', account.id);
   console.log('  账号:', account.account_id);
   console.log('  平台:', account.platform);
-  console.log('  登录状态:', account.login_status);
-  console.log('  Worker状态:', account.worker_status);
+  console.log('  登录状�?', account.login_status);
+  console.log('  Worker状�?', account.worker_status);
   console.log('  更新时间:', account.updated_at);
   console.log('');
 
   if (account.login_status === 'not_logged_in' && account.worker_status === 'offline') {
-    console.log('✅ 登录状态检测正确! 账户显示为未登录且离线');
+    console.log('�?登录状态检测正�? 账户显示为未登录且离�?);
   } else if (account.login_status === 'logged_in' && account.worker_status === 'online') {
-    console.log('❌ 登录状态错误! 账户显示为已登录且在线(实际未登录)');
+    console.log('�?登录状态错�? 账户显示为已登录且在�?实际未登�?');
   } else {
-    console.log('⚠️  状态不一致:');
+    console.log('⚠️  状态不一�?');
     console.log('   login_status:', account.login_status);
     console.log('   worker_status:', account.worker_status);
   }
 } else {
-  console.log('❌ 未找到账户');
+  console.log('�?未找到账�?);
 }
 
 db.close();

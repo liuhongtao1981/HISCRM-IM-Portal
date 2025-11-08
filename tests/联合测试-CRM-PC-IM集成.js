@@ -1,12 +1,7 @@
 /**
- * 联合测试 - CRM PC IM 与 Master IM API 集成
+ * 联合测试 - CRM PC IM �?Master IM API 集成
  *
- * 测试场景：
- * 1. Master 服务器运行状态
- * 2. CRM PC IM 前端服务运行状态
- * 3. IM API 接口可访问性
- * 4. 数据格式兼容性
- */
+ * 测试场景�? * 1. Master 服务器运行状�? * 2. CRM PC IM 前端服务运行状�? * 3. IM API 接口可访问�? * 4. 数据格式兼容�? */
 
 const http = require('http');
 
@@ -60,10 +55,9 @@ function httpGet(url) {
   });
 }
 
-// 测试 1: Master 服务器状态
-async function testMasterStatus() {
+// 测试 1: Master 服务器状�?async function testMasterStatus() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('测试 1/4: Master 服务器状态');
+  console.log('测试 1/4: Master 服务器状�?);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   try {
@@ -71,26 +65,25 @@ async function testMasterStatus() {
 
     if (statusCode === 200 && data.success) {
       results.master.status = 'passed';
-      console.log('✅ Master 服务器: 运行正常');
+      console.log('�?Master 服务�? 运行正常');
       console.log('   地址: http://localhost:3000');
       console.log('   端口: 3000');
     } else {
       results.master.status = 'failed';
-      console.log('❌ Master 服务器: 响应异常');
+      console.log('�?Master 服务�? 响应异常');
     }
   } catch (err) {
     results.master.status = 'failed';
-    console.log('❌ Master 服务器: 无法连接');
+    console.log('�?Master 服务�? 无法连接');
     console.log('   错误:', err.message);
   }
 
   console.log();
 }
 
-// 测试 2: CRM PC IM 前端服务状态
-async function testFrontendStatus() {
+// 测试 2: CRM PC IM 前端服务状�?async function testFrontendStatus() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('测试 2/4: CRM PC IM 前端服务状态');
+  console.log('测试 2/4: CRM PC IM 前端服务状�?);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   try {
@@ -98,18 +91,18 @@ async function testFrontendStatus() {
 
     if (statusCode === 200) {
       results.frontend.status = 'passed';
-      console.log('✅ CRM PC IM 前端: 运行正常');
+      console.log('�?CRM PC IM 前端: 运行正常');
       console.log('   地址: http://localhost:5173');
       console.log('   框架: React + Vite');
     } else {
       results.frontend.status = 'failed';
-      console.log('❌ CRM PC IM 前端: 响应异常');
+      console.log('�?CRM PC IM 前端: 响应异常');
     }
   } catch (err) {
     results.frontend.status = 'failed';
-    console.log('❌ CRM PC IM 前端: 无法连接');
+    console.log('�?CRM PC IM 前端: 无法连接');
     console.log('   错误:', err.message);
-    console.log('   提示: 请运行 "cd packages/crm-pc-im && npm run dev"');
+    console.log('   提示: 请运�?"cd packages/crm-pc-im && npm run dev"');
   }
 
   console.log();
@@ -118,7 +111,7 @@ async function testFrontendStatus() {
 // 测试 3: IM API 接口测试
 async function testIMApis() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('测试 3/4: IM API 接口可访问性');
+  console.log('测试 3/4: IM API 接口可访问�?);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const apis = [
@@ -165,7 +158,7 @@ async function testIMApis() {
           count: items.length,
           format: 'IM 格式',
         });
-        console.log(`✅ ${api.name} API: 正常 (${items.length} 条数据)`);
+        console.log(`�?${api.name} API: 正常 (${items.length} 条数�?`);
       } else {
         failed++;
         results.imApis.push({
@@ -173,7 +166,7 @@ async function testIMApis() {
           status: 'failed',
           error: `HTTP ${statusCode}`,
         });
-        console.log(`❌ ${api.name} API: 失败 (HTTP ${statusCode})`);
+        console.log(`�?${api.name} API: 失败 (HTTP ${statusCode})`);
       }
     } catch (err) {
       failed++;
@@ -182,7 +175,7 @@ async function testIMApis() {
         status: 'failed',
         error: err.message,
       });
-      console.log(`❌ ${api.name} API: 错误 (${err.message})`);
+      console.log(`�?${api.name} API: 错误 (${err.message})`);
     }
   }
 
@@ -190,10 +183,9 @@ async function testIMApis() {
   console.log();
 }
 
-// 测试 4: 数据格式兼容性
-async function testDataFormat() {
+// 测试 4: 数据格式兼容�?async function testDataFormat() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('测试 4/4: 数据格式兼容性验证');
+  console.log('测试 4/4: 数据格式兼容性验�?);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   try {
@@ -203,7 +195,7 @@ async function testDataFormat() {
 
     if (statusCode !== 200) {
       results.dataFormat.status = 'failed';
-      console.log('❌ 数据格式: 无法获取数据');
+      console.log('�?数据格式: 无法获取数据');
       return;
     }
 
@@ -213,15 +205,15 @@ async function testDataFormat() {
     const hasCursor = data.data.cursor !== undefined;
     const hasHasMore = data.data.has_more !== undefined;
 
-    console.log('数据格式检查:');
-    console.log('  data 字段:', hasData ? '✅' : '❌');
-    console.log('  status_code 字段:', hasStatusCode ? '✅' : '❌');
-    console.log('  cursor 字段:', hasCursor ? '✅' : '❌');
-    console.log('  has_more 字段:', hasHasMore ? '✅' : '❌');
+    console.log('数据格式检�?');
+    console.log('  data 字段:', hasData ? '�? : '�?);
+    console.log('  status_code 字段:', hasStatusCode ? '�? : '�?);
+    console.log('  cursor 字段:', hasCursor ? '�? : '�?);
+    console.log('  has_more 字段:', hasHasMore ? '�? : '�?);
 
     if (hasData && hasStatusCode && hasCursor && hasHasMore) {
       results.dataFormat.status = 'passed';
-      console.log('\n✅ 数据格式: 完全兼容 IM 格式');
+      console.log('\n�?数据格式: 完全兼容 IM 格式');
     } else {
       results.dataFormat.status = 'partial';
       console.log('\n⚠️  数据格式: 部分兼容');
@@ -240,21 +232,20 @@ async function testDataFormat() {
 
   } catch (err) {
     results.dataFormat.status = 'failed';
-    console.log('❌ 数据格式: 验证失败');
+    console.log('�?数据格式: 验证失败');
     console.log('   错误:', err.message);
   }
 
   console.log();
 }
 
-// 打印最终报告
-function printFinalReport() {
+// 打印最终报�?function printFinalReport() {
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log('联合测试最终报告');
+  console.log('联合测试最终报�?);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   const allTests = [
-    { name: 'Master 服务器', status: results.master.status },
+    { name: 'Master 服务�?, status: results.master.status },
     { name: 'CRM PC IM 前端', status: results.frontend.status },
     { name: 'IM API 接口', status: results.imApis.every(a => a.status === 'passed') ? 'passed' : 'failed' },
     { name: '数据格式兼容', status: results.dataFormat.status },
@@ -267,32 +258,32 @@ function printFinalReport() {
   console.log(`  总测试项: ${total}`);
   console.log(`  通过: ${passed} ✅`);
   console.log(`  失败: ${total - passed} ❌`);
-  console.log(`  成功率: ${Math.round(passed / total * 100)}%`);
+  console.log(`  成功�? ${Math.round(passed / total * 100)}%`);
 
   console.log('\n📋 详细结果:');
   allTests.forEach((test, index) => {
-    const icon = test.status === 'passed' ? '✅' :
-                 test.status === 'partial' ? '⚠️ ' : '❌';
+    const icon = test.status === 'passed' ? '�? :
+                 test.status === 'partial' ? '⚠️ ' : '�?;
     console.log(`  ${index + 1}. ${test.name}: ${icon}`);
   });
 
   console.log('\n💡 CRM PC IM 使用指南:');
-  console.log('  1. 打开浏览器访问: http://localhost:5173');
-  console.log('  2. 客户端会自动连接到 Master (http://localhost:3000/api/im)');
+  console.log('  1. 打开浏览器访�? http://localhost:5173');
+  console.log('  2. 客户端会自动连接�?Master (http://localhost:3000/api/im)');
   console.log('  3. 调用 IM API 接口获取数据');
-  console.log('  4. 数据格式完全兼容原 IM 系统');
+  console.log('  4. 数据格式完全兼容�?IM 系统');
 
-  console.log('\n🎯 集成状态:');
+  console.log('\n🎯 集成状�?');
   if (passed === total) {
-    console.log('  🎉 完美！CRM PC IM 与 Master 集成成功！');
+    console.log('  🎉 完美！CRM PC IM �?Master 集成成功�?);
   } else if (passed >= total * 0.75) {
-    console.log('  ✅ 良好！主要功能集成正常，部分需要调整');
+    console.log('  �?良好！主要功能集成正常，部分需要调�?);
   } else {
-    console.log('  ⚠️  需要处理集成问题');
+    console.log('  ⚠️  需要处理集成问�?);
   }
 
   console.log('\n📚 相关文档:');
-  console.log('  - docs/项目最终完成报告.md - 完整项目文档');
+  console.log('  - docs/项目最终完成报�?md - 完整项目文档');
   console.log('  - docs/IM接口集成测试完成报告.md - API 文档');
   console.log('  - packages/crm-pc-im/src/services/api.ts - API 调用代码');
 
@@ -302,8 +293,7 @@ function printFinalReport() {
   process.exit(passed === total ? 0 : 1);
 }
 
-// 主测试流程
-async function runTests() {
+// 主测试流�?async function runTests() {
   try {
     await testMasterStatus();
     await testFrontendStatus();
@@ -312,7 +302,7 @@ async function runTests() {
 
     printFinalReport();
   } catch (err) {
-    console.error('\n❌ 测试执行失败:', err);
+    console.error('\n�?测试执行失败:', err);
     process.exit(1);
   }
 }

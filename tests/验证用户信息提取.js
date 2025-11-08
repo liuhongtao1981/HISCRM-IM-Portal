@@ -1,6 +1,6 @@
 /**
- * 验证私信爬虫的用户信息提取功能
- * 测试 sender_avatar 和 sender_nickname 字段
+ * 验证私信爬虫的用户信息提取功�?
+ * 测试 sender_avatar �?sender_nickname 字段
  */
 
 const { chromium } = require('playwright');
@@ -15,7 +15,7 @@ async function testUserInfoExtraction() {
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ?').get('douyin');
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     return;
   }
@@ -27,7 +27,7 @@ async function testUserInfoExtraction() {
 
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
 
-  console.log('🌐 启动浏览器...');
+  console.log('🌐 启动浏览�?..');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     viewport: { width: 1280, height: 720 },
@@ -36,7 +36,7 @@ async function testUserInfoExtraction() {
   const page = await context.newPage();
 
   try {
-    console.log('🕷️ 开始爬取私信...\n');
+    console.log('🕷�?开始爬取私�?..\n');
 
     const result = await crawlDirectMessagesV2(page, account);
 
@@ -47,7 +47,7 @@ async function testUserInfoExtraction() {
     console.log(`消息数量: ${result.directMessages.length}\n`);
 
     if (result.directMessages.length === 0) {
-      console.log('❌ 未提取到任何消息');
+      console.log('�?未提取到任何消息');
       await context.close();
       db.close();
       return;
@@ -74,31 +74,31 @@ async function testUserInfoExtraction() {
       }
     });
 
-    console.log('📈 用户信息提取统计：');
+    console.log('📈 用户信息提取统计�?);
     console.log(`  有效 platform_sender_id: ${hasSenderId}/${result.directMessages.length} (${(hasSenderId / result.directMessages.length * 100).toFixed(1)}%)`);
-    console.log(`  有 sender_avatar: ${hasAvatar}/${result.directMessages.length} (${(hasAvatar / result.directMessages.length * 100).toFixed(1)}%)`);
-    console.log(`  有 sender_nickname: ${hasNickname}/${result.directMessages.length} (${(hasNickname / result.directMessages.length * 100).toFixed(1)}%)`);
-    console.log(`  对方消息有头像: ${inboundWithAvatar}`);
-    console.log(`  自己消息有头像: ${outboundWithAvatar}`);
+    console.log(`  �?sender_avatar: ${hasAvatar}/${result.directMessages.length} (${(hasAvatar / result.directMessages.length * 100).toFixed(1)}%)`);
+    console.log(`  �?sender_nickname: ${hasNickname}/${result.directMessages.length} (${(hasNickname / result.directMessages.length * 100).toFixed(1)}%)`);
+    console.log(`  对方消息有头�? ${inboundWithAvatar}`);
+    console.log(`  自己消息有头�? ${outboundWithAvatar}`);
 
-    // 显示前 5 条消息的详细信息
+    // 显示�?5 条消息的详细信息
     console.log('\n' + '='.repeat(60));
-    console.log('📝 前 5 条消息详情');
+    console.log('📝 �?5 条消息详�?);
     console.log('='.repeat(60));
 
     result.directMessages.slice(0, 5).forEach((msg, i) => {
       console.log(`\n消息 ${i + 1}:`);
       console.log(`  ID: ${msg.platform_message_id}`);
-      console.log(`  方向: ${msg.direction === 'inbound' ? '接收' : '发送'}`);
-      console.log(`  发送者ID: ${msg.platform_sender_id || '(无)'}`);
-      console.log(`  发送者昵称: ${msg.sender_nickname || '(无)'}`);
-      console.log(`  发送者头像: ${msg.sender_avatar ? '有 (' + msg.sender_avatar.substring(0, 50) + '...)' : '(无)'}`);
+      console.log(`  方向: ${msg.direction === 'inbound' ? '接收' : '发�?}`);
+      console.log(`  发送者ID: ${msg.platform_sender_id || '(�?'}`);
+      console.log(`  发送者昵�? ${msg.sender_nickname || '(�?'}`);
+      console.log(`  发送者头�? ${msg.sender_avatar ? '�?(' + msg.sender_avatar.substring(0, 50) + '...)' : '(�?'}`);
       console.log(`  内容: ${(msg.content || '').substring(0, 50)}...`);
     });
 
     // 验证结果
     console.log('\n' + '='.repeat(60));
-    console.log('✅ 验证结果');
+    console.log('�?验证结果');
     console.log('='.repeat(60));
 
     const tests = [
@@ -120,9 +120,9 @@ async function testUserInfoExtraction() {
     ];
 
     tests.forEach((test, i) => {
-      const status = test.pass ? '✅ 通过' : '❌ 失败';
+      const status = test.pass ? '�?通过' : '�?失败';
       console.log(`${i + 1}. ${test.name}: ${status}`);
-      console.log(`   实际值: ${test.actual}`);
+      console.log(`   实际�? ${test.actual}`);
     });
 
     const allPassed = tests.every(t => t.pass);
@@ -131,18 +131,18 @@ async function testUserInfoExtraction() {
     if (allPassed) {
       console.log('🎉 所有测试通过！用户信息提取功能正常！');
     } else {
-      console.log('⚠️ 部分测试失败，请检查爬虫实现');
+      console.log('⚠️ 部分测试失败，请检查爬虫实�?);
     }
     console.log('='.repeat(60));
 
   } catch (error) {
-    console.error('\n❌ 测试出错:', error.message);
+    console.error('\n�?测试出错:', error.message);
     console.error(error.stack);
   } finally {
-    console.log('\n⏳ 等待 5 秒后关闭浏览器...');
+    console.log('\n�?等待 5 秒后关闭浏览�?..');
     await page.waitForTimeout(5000);
 
-    console.log('🔒 关闭浏览器...');
+    console.log('🔒 关闭浏览�?..');
     await context.close();
     db.close();
   }

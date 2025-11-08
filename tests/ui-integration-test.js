@@ -1,18 +1,18 @@
 #!/usr/bin/env node
 
 /**
- * UI 集成测试: crm-pc-im 与 Master 的完整 UI 流程测试
+ * UI 集成测试: crm-pc-im �?Master 的完�?UI 流程测试
  *
- * 用途: 验证 crm-pc-im 应用与 Master 服务器的实际交互
- * 测试方式: 通过 Socket.IO 客户端模拟用户交互
+ * 用�? 验证 crm-pc-im 应用�?Master 服务器的实际交互
+ * 测试方式: 通过 Socket.IO 客户端模拟用户交�?
  *
  * 测试场景:
- *   1. 应用初始化
+ *   1. 应用初始�?
  *   2. WebSocket 连接建立
- *   3. 客户端注册
+ *   3. 客户端注�?
  *   4. 心跳保活
- *   5. 接收推送消息
- *   6. 消息显示和处理
+ *   5. 接收推送消�?
+ *   6. 消息显示和处�?
  */
 
 const io = require('socket.io-client')
@@ -46,7 +46,7 @@ function log(level, message, data = null) {
       break
     case 'success':
       color = colors.green
-      prefix = '✅'
+      prefix = '�?
       break
     case 'warn':
       color = colors.yellow
@@ -54,7 +54,7 @@ function log(level, message, data = null) {
       break
     case 'error':
       color = colors.red
-      prefix = '❌'
+      prefix = '�?
       break
     case 'debug':
       color = colors.cyan
@@ -82,9 +82,9 @@ class UIIntegrationTest {
   async run() {
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                                                                            ║
-║      🎨 UI 集成测试: crm-pc-im ↔ Master 实际交互验证                       ║
-║                                                                            ║
+�?                                                                           �?
+�?     🎨 UI 集成测试: crm-pc-im �?Master 实际交互验证                       �?
+�?                                                                           �?
 ╚════════════════════════════════════════════════════════════════════════════╝
 `)
 
@@ -92,16 +92,16 @@ class UIIntegrationTest {
       // 步骤 1: 检查开发服务器
       await this.checkDevServer()
 
-      // 步骤 2: 模拟应用启动 - 连接到 Master
+      // 步骤 2: 模拟应用启动 - 连接�?Master
       await this.connectToMaster()
 
-      // 步骤 3: 执行客户端注册
+      // 步骤 3: 执行客户端注�?
       await this.registerClient()
 
       // 步骤 4: 启动心跳监听
       await this.monitorHeartbeat()
 
-      // 步骤 5: 推送测试消息到客户端
+      // 步骤 5: 推送测试消息到客户�?
       await this.pushTestMessages()
 
       // 步骤 6: 验证消息接收
@@ -126,19 +126,19 @@ class UIIntegrationTest {
 
     try {
       const response = await axios.get(DEV_SERVER_URL, { timeout: 5000 })
-      log('success', `✓ crm-pc-im dev 服务器可用: ${DEV_SERVER_URL}`)
+      log('success', `�?crm-pc-im dev 服务器可�? ${DEV_SERVER_URL}`)
       this.testResults.tests.push({
-        name: '开发服务器可用性',
+        name: '开发服务器可用�?,
         status: 'PASS',
       })
       this.testResults.passed++
     } catch (error) {
-      log('warn', `开发服务器响应缓慢或不可用，继续测试...`)
+      log('warn', `开发服务器响应缓慢或不可用，继续测�?..`)
     }
   }
 
   async connectToMaster() {
-    log('info', '步骤 2️⃣ : 模拟应用启动 - 连接到 Master')
+    log('info', '步骤 2️⃣ : 模拟应用启动 - 连接�?Master')
 
     return new Promise((resolve, reject) => {
       this.client = io(`${MASTER_URL}/client`, {
@@ -156,14 +156,14 @@ class UIIntegrationTest {
 
       this.client.on('connect', () => {
         clearTimeout(timeout)
-        log('success', `✓ WebSocket 连接成功: ${this.client.id}`)
+        log('success', `�?WebSocket 连接成功: ${this.client.id}`)
         this.testResults.tests.push({
           name: 'WebSocket 连接',
           status: 'PASS',
         })
         this.testResults.passed++
 
-        // 设置消息监听器
+        // 设置消息监听�?
         this.setupMessageListeners()
 
         resolve()
@@ -177,24 +177,24 @@ class UIIntegrationTest {
   }
 
   setupMessageListeners() {
-    log('debug', '设置消息监听器...')
+    log('debug', '设置消息监听�?..')
 
     // 监听 message 事件
     this.client.on('message', (msg) => {
-      log('success', '📨 接收到消息:')
+      log('success', '📨 接收到消�?')
       console.log(JSON.stringify(msg, null, 2))
       this.messagesReceived.push(msg)
     })
 
-    // 监听服务器推送事件
+    // 监听服务器推送事�?
     this.client.on('new:comment', (msg) => {
-      log('success', '💬 新评论:')
+      log('success', '💬 新评�?')
       console.log(JSON.stringify(msg, null, 2))
       this.messagesReceived.push(msg)
     })
 
     this.client.on('new:message', (msg) => {
-      log('success', '💌 新私信:')
+      log('success', '💌 新私�?')
       console.log(JSON.stringify(msg, null, 2))
       this.messagesReceived.push(msg)
     })
@@ -205,7 +205,7 @@ class UIIntegrationTest {
   }
 
   async registerClient() {
-    log('info', '步骤 3️⃣ : 执行客户端注册')
+    log('info', '步骤 3️⃣ : 执行客户端注�?)
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -214,9 +214,9 @@ class UIIntegrationTest {
 
       const successHandler = (data) => {
         clearTimeout(timeout)
-        log('success', '✓ 客户端注册成功', data)
+        log('success', '�?客户端注册成�?, data)
         this.testResults.tests.push({
-          name: '客户端注册',
+          name: '客户端注�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -226,9 +226,9 @@ class UIIntegrationTest {
 
       const errorHandler = (error) => {
         clearTimeout(timeout)
-        log('error', '客户端注册失败:', error)
+        log('error', '客户端注册失�?', error)
         this.testResults.tests.push({
-          name: '客户端注册',
+          name: '客户端注�?,
           status: 'FAIL',
           error: error,
         })
@@ -240,14 +240,14 @@ class UIIntegrationTest {
       this.client.once('client:register:success', successHandler)
       this.client.once('client:register:error', errorHandler)
 
-      // 模拟应用的注册流程
+      // 模拟应用的注册流�?
       this.client.emit('client:register', {
         device_id: TEST_DEVICE_ID,
         device_type: 'desktop',
         device_name: 'CRM PC IM (UI Test)',
       })
 
-      log('debug', '已发送注册请求')
+      log('debug', '已发送注册请�?)
     })
   }
 
@@ -256,14 +256,14 @@ class UIIntegrationTest {
 
     let heartbeatCount = 0
 
-    // 发送第一次心跳
+    // 发送第一次心�?
     this.client.emit('client:heartbeat', {
       client_id: TEST_DEVICE_ID,
       timestamp: Date.now(),
     })
 
     return new Promise((resolve) => {
-      // 定期发送心跳
+      // 定期发送心�?
       const heartbeatInterval = setInterval(() => {
         heartbeatCount++
         this.client.emit('client:heartbeat', {
@@ -273,7 +273,7 @@ class UIIntegrationTest {
 
         if (heartbeatCount >= 2) {
           clearInterval(heartbeatInterval)
-          log('success', `✓ 心跳机制运行正常 (${heartbeatCount} 次心跳)`)
+          log('success', `�?心跳机制运行正常 (${heartbeatCount} 次心�?`)
           this.testResults.tests.push({
             name: '心跳保活机制',
             status: 'PASS',
@@ -287,7 +287,7 @@ class UIIntegrationTest {
       setTimeout(() => {
         clearInterval(heartbeatInterval)
         if (heartbeatCount > 0) {
-          log('success', `✓ 心跳机制运行正常 (${heartbeatCount} 次心跳)`)
+          log('success', `�?心跳机制运行正常 (${heartbeatCount} 次心�?`)
           this.testResults.tests.push({
             name: '心跳保活机制',
             status: 'PASS',
@@ -300,10 +300,10 @@ class UIIntegrationTest {
   }
 
   async pushTestMessages() {
-    log('info', '步骤 5️⃣ : 推送测试消息到客户端')
+    log('info', '步骤 5️⃣ : 推送测试消息到客户�?)
 
     try {
-      // 使用 Master 的 DEBUG API 推送消息
+      // 使用 Master �?DEBUG API 推送消�?
       const testMessage = {
         account_id: 'test-account-001',
         sender_id: 'test-user-001',
@@ -318,9 +318,9 @@ class UIIntegrationTest {
 
       try {
         const response = await axios.post(`${MASTER_URL}/api/debug/push-notification`, testMessage)
-        log('success', `✓ 测试消息已推送`, response.data)
+        log('success', `�?测试消息已推送`, response.data)
         this.testResults.tests.push({
-          name: '推送测试消息',
+          name: '推送测试消�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -331,7 +331,7 @@ class UIIntegrationTest {
       // 给予时间接收消息
       await new Promise((resolve) => setTimeout(resolve, 3000))
     } catch (error) {
-      log('warn', `推送消息失败: ${error.message}`)
+      log('warn', `推送消息失�? ${error.message}`)
     }
   }
 
@@ -339,14 +339,14 @@ class UIIntegrationTest {
     log('info', '步骤 6️⃣ : 验证消息接收')
 
     if (this.messagesReceived.length > 0) {
-      log('success', `✓ 接收到 ${this.messagesReceived.length} 条消息`)
+      log('success', `�?接收�?${this.messagesReceived.length} 条消息`)
       this.testResults.tests.push({
         name: '消息接收',
         status: 'PASS',
       })
       this.testResults.passed++
     } else {
-      log('success', `✓ 消息监听器已准备就绪（无消息推送时正常）`)
+      log('success', `�?消息监听器已准备就绪（无消息推送时正常）`)
       this.testResults.tests.push({
         name: '消息接收',
         status: 'PASS',
@@ -365,14 +365,14 @@ class UIIntegrationTest {
         notification_id: msg.id,
       })
 
-      log('success', `✓ 已发送消息确认`)
+      log('success', `�?已发送消息确认`)
       this.testResults.tests.push({
         name: '消息确认',
         status: 'PASS',
       })
       this.testResults.passed++
     } else {
-      log('success', `✓ 消息确认机制已准备就绪`)
+      log('success', `�?消息确认机制已准备就绪`)
       this.testResults.tests.push({
         name: '消息确认',
         status: 'PASS',
@@ -387,7 +387,7 @@ class UIIntegrationTest {
 
     if (this.client) {
       this.client.disconnect()
-      log('success', `✓ 客户端已断开连接`)
+      log('success', `�?客户端已断开连接`)
       this.testResults.tests.push({
         name: '资源清理',
         status: 'PASS',
@@ -399,19 +399,19 @@ class UIIntegrationTest {
   displayResults() {
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                       📊 UI 集成测试结果报告
+�?                      📊 UI 集成测试结果报告
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 测试统计:
-  ✅ 通过: ${this.testResults.passed}
-  ❌ 失败: ${this.testResults.failed}
-  📈 成功率: ${Math.round((this.testResults.passed / this.testResults.tests.length) * 100)}%
+  �?通过: ${this.testResults.passed}
+  �?失败: ${this.testResults.failed}
+  📈 成功�? ${Math.round((this.testResults.passed / this.testResults.tests.length) * 100)}%
 
 详细结果:
 `)
 
     this.testResults.tests.forEach((test, index) => {
-      const status = test.status === 'PASS' ? '✅' : '❌'
+      const status = test.status === 'PASS' ? '�? : '�?
       console.log(`  ${index + 1}. ${status} ${test.name}`)
       if (test.notes) {
         console.log(`     📝 ${test.notes}`)
@@ -420,32 +420,32 @@ class UIIntegrationTest {
 
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                    ✅ UI 集成测试完成
+�?                   �?UI 集成测试完成
 ╚════════════════════════════════════════════════════════════════════════════╝
 
-📋 关键验证项:
-  ✅ 开发服务器可用
-  ✅ WebSocket 连接建立
-  ✅ 客户端注册成功
-  ✅ 心跳机制运行正常
-  ✅ 消息监听准备就绪
-  ✅ 消息确认机制准备就绪
-  ✅ 资源正确清理
+📋 关键验证�?
+  �?开发服务器可用
+  �?WebSocket 连接建立
+  �?客户端注册成�?
+  �?心跳机制运行正常
+  �?消息监听准备就绪
+  �?消息确认机制准备就绪
+  �?资源正确清理
 
 🎯 结论:
-  crm-pc-im UI 与 Master 服务器的集成已验证!
+  crm-pc-im UI �?Master 服务器的集成已验�?
 
   系统已准备好:
-  • 在 UI 中显示推送消息
-  • 自动转换协议格式
-  • 用户交互和消息处理
-  • 完整的应用生命周期管理
+  �?�?UI 中显示推送消�?
+  �?自动转换协议格式
+  �?用户交互和消息处�?
+  �?完整的应用生命周期管�?
 
-📌 接下来:
+📌 接下�?
   1. 在浏览器中打开 http://localhost:5173
   2. 检查浏览器控制台是否有 WebSocket 连接
-  3. 验证消息是否在 UI 中显示
-  4. 测试用户交互和消息发送
+  3. 验证消息是否�?UI 中显�?
+  4. 测试用户交互和消息发�?
 
 `)
   }

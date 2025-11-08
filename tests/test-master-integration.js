@@ -1,7 +1,7 @@
 /**
- * Master → crm-pc-im 集成测试脚本
+ * Master �?crm-pc-im 集成测试脚本
  *
- * 模拟 Master 推送消息到 crm-pc-im 客户端
+ * 模拟 Master 推送消息到 crm-pc-im 客户�?
  * 验证完整的通信流程
  */
 
@@ -9,7 +9,7 @@ const http = require('http')
 const { Server } = require('socket.io')
 const ioClient = require('socket.io-client')
 
-// 协议转换函数（与 protocol-converter.ts 相同逻辑）
+// 协议转换函数（与 protocol-converter.ts 相同逻辑�?
 function convertMasterToCrm(masterMessage) {
   const payload = masterMessage.payload || masterMessage
   return {
@@ -53,7 +53,7 @@ function convertMessageType(masterType, isMasterToCrm = true) {
   }
 }
 
-// 模拟 Master 服务器
+// 模拟 Master 服务�?
 class MockMaster {
   constructor(port = 3001) {
     this.port = port
@@ -70,13 +70,13 @@ class MockMaster {
           cors: { origin: '*' },
         })
 
-        // 处理客户端连接
+        // 处理客户端连�?
         this.io.on('connection', (socket) => {
-          console.log(`[Master] 客户端连接: ${socket.id}`)
+          console.log(`[Master] 客户端连�? ${socket.id}`)
 
-          // 处理客户端注册
+          // 处理客户端注�?
           socket.on('client:register', (data) => {
-            console.log(`[Master] 客户端注册: ${data.device_id}`)
+            console.log(`[Master] 客户端注�? ${data.device_id}`)
             this.clients.set(socket.id, data)
 
             socket.emit('client:register:success', {
@@ -93,7 +93,7 @@ class MockMaster {
 
           // 处理消息确认
           socket.on('client:notification:ack', (data) => {
-            console.log(`[Master] 消息已确认: ${data.notification_id}`)
+            console.log(`[Master] 消息已确�? ${data.notification_id}`)
           })
 
           // 处理客户端断开
@@ -113,9 +113,9 @@ class MockMaster {
     })
   }
 
-  // 向所有连接的客户端推送消息
+  // 向所有连接的客户端推送消�?
   pushMessageToClients(masterMessage) {
-    console.log(`[Master] 向客户端推送消息: ${masterMessage.content}`)
+    console.log(`[Master] 向客户端推送消�? ${masterMessage.content}`)
     this.io.emit('message', masterMessage)
   }
 
@@ -133,7 +133,7 @@ class MockMaster {
   }
 }
 
-// 模拟 crm-pc-im 客户端
+// 模拟 crm-pc-im 客户�?
 class MockCrmClient {
   constructor(url = 'http://localhost:3001') {
     this.url = url
@@ -162,13 +162,13 @@ class MockCrmClient {
         this.socket.on('message', (masterMessage) => {
           console.log(`[Client] 收到 Master 消息: ${masterMessage.content}`)
 
-          // 转换为 crm 格式
+          // 转换�?crm 格式
           const crmMessage = convertMasterToCrm(masterMessage)
           this.receivedMessages.push(crmMessage)
 
           console.log(`[Client] 已转换为 crm 格式: ${JSON.stringify(crmMessage, null, 2)}`)
 
-          // 发送确认
+          // 发送确�?
           this.socket.emit('client:notification:ack', {
             notification_id: masterMessage.id,
             client_id: 'test-client',
@@ -204,7 +204,7 @@ class MockCrmClient {
         app_version: '0.0.1',
       })
 
-      // 30 秒超时
+      // 30 秒超�?
       setTimeout(() => {
         this.socket.off('client:register:success', successHandler)
         this.socket.off('client:register:error', errorHandler)
@@ -222,7 +222,7 @@ class MockCrmClient {
           timestamp: Date.now(),
         })
       }
-    }, 5000) // 每 5 秒（测试用）
+    }, 5000) // �?5 秒（测试用）
   }
 
   stopHeartbeat() {
@@ -247,7 +247,7 @@ class MockCrmClient {
 
 // 运行集成测试
 async function runIntegrationTest() {
-  console.log('🧪 Master ↔ crm-pc-im 集成测试\n')
+  console.log('🧪 Master �?crm-pc-im 集成测试\n')
   console.log('='.repeat(60))
 
   let master = null
@@ -255,28 +255,28 @@ async function runIntegrationTest() {
 
   try {
     // 1. 启动 Master
-    console.log('\n📍 Step 1: 启动 Master 服务器')
+    console.log('\n📍 Step 1: 启动 Master 服务�?)
     master = new MockMaster(3001)
     await master.start()
 
-    // 2. 连接客户端
+    // 2. 连接客户�?
     console.log('\n📍 Step 2: 连接客户端到 Master')
     client = new MockCrmClient('http://localhost:3001')
     await client.connect()
 
-    // 3. 注册客户端
-    console.log('\n📍 Step 3: 向 Master 注册客户端')
+    // 3. 注册客户�?
+    console.log('\n📍 Step 3: �?Master 注册客户�?)
     await client.register()
 
     // 4. 启动心跳
-    console.log('\n📍 Step 4: 启动客户端心跳')
+    console.log('\n📍 Step 4: 启动客户端心�?)
     client.startHeartbeat()
 
-    // 5. 等待一下确保都已连接
+    // 5. 等待一下确保都已连�?
     await new Promise((resolve) => setTimeout(resolve, 1000))
 
-    // 6. Master 推送测试消息
-    console.log('\n📍 Step 5: Master 推送测试消息到客户端')
+    // 6. Master 推送测试消�?
+    console.log('\n📍 Step 5: Master 推送测试消息到客户�?)
     const testMessages = [
       {
         id: 'msg-test-1',
@@ -306,18 +306,18 @@ async function runIntegrationTest() {
 
     for (const msg of testMessages) {
       master.pushMessageToClients(msg)
-      // 等待一下让消息传递
+      // 等待一下让消息传�?
       await new Promise((resolve) => setTimeout(resolve, 500))
     }
 
-    // 7. 等待客户端处理
-    console.log('\n📍 Step 6: 等待客户端处理消息')
+    // 7. 等待客户端处�?
+    console.log('\n📍 Step 6: 等待客户端处理消�?)
     await new Promise((resolve) => setTimeout(resolve, 2000))
 
     // 8. 验证结果
     console.log('\n📍 Step 7: 验证测试结果')
     const receivedMessages = client.getReceivedMessages()
-    console.log(`\n已收到 ${receivedMessages.length} 条消息:\n`)
+    console.log(`\n已收�?${receivedMessages.length} 条消�?\n`)
 
     let allValid = true
     receivedMessages.forEach((msg, index) => {
@@ -335,32 +335,32 @@ async function runIntegrationTest() {
       console.log('')
     })
 
-    // 9. 验证消息完整性
+    // 9. 验证消息完整�?
     if (receivedMessages.length === 2) {
       const msg1 = receivedMessages[0]
       const msg2 = receivedMessages[1]
 
       if (msg1.type === 'text' && msg1.content === 'Hello from Master!') {
-        console.log('✅ 消息 1 验证通过 (TEXT 类型)')
+        console.log('�?消息 1 验证通过 (TEXT 类型)')
       } else {
-        console.log('❌ 消息 1 验证失败')
+        console.log('�?消息 1 验证失败')
         allValid = false
       }
 
       if (msg2.type === 'file' && msg2.fileUrl === 'http://example.com/test.pdf') {
-        console.log('✅ 消息 2 验证通过 (FILE 类型)')
+        console.log('�?消息 2 验证通过 (FILE 类型)')
       } else {
-        console.log('❌ 消息 2 验证失败')
+        console.log('�?消息 2 验证失败')
         allValid = false
       }
 
       if (allValid) {
-        console.log('\n✅ 集成测试通过！Master 和 crm-pc-im 通信正常')
+        console.log('\n�?集成测试通过！Master �?crm-pc-im 通信正常')
       } else {
-        console.log('\n❌ 集成测试失败！部分消息验证不通过')
+        console.log('\n�?集成测试失败！部分消息验证不通过')
       }
     } else {
-      console.log(`❌ 预期收到 2 条消息，实际收到 ${receivedMessages.length} 条`)
+      console.log(`�?预期收到 2 条消息，实际收到 ${receivedMessages.length} 条`)
       allValid = false
     }
 
@@ -370,11 +370,11 @@ async function runIntegrationTest() {
     await master.stop()
 
     console.log('\n' + '='.repeat(60))
-    console.log(allValid ? '\n🎉 测试完成！' : '\n⚠️ 测试存在问题')
+    console.log(allValid ? '\n🎉 测试完成�? : '\n⚠️ 测试存在问题')
 
     return allValid ? 0 : 1
   } catch (error) {
-    console.error(`\n❌ 测试错误: ${error.message}`)
+    console.error(`\n�?测试错误: ${error.message}`)
     console.error(error.stack)
 
     // 清理

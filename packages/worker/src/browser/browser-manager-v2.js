@@ -340,24 +340,14 @@ class BrowserManagerV2 {
       // 启动 PersistentContext（会自动创建并管理 Browser）
       const context = await chromium.launchPersistentContext(userDataDir, launchOptions);
 
-      // 📌 获取第一个默认标签页并导航到创作者中心（用于登录检测）
+      // ⭐ 浏览器启动后会自动创建一个默认tab（about:blank）
+      // 不在这里进行导航，交由 AccountInitializer 统一管理
       const pages = context.pages();
       if (pages.length > 0) {
         const defaultPage = pages[0];
-        logger.info(`📌 Tab 1 (默认) 导航到创作者中心用于登录检测 - 账户 ${accountId}`);
-
-        // ⭐ 默认 Tab 直接打开创作者中心（而不是 douyin.com）
-        try {
-          await defaultPage.goto('https://creator.douyin.com/', {
-            waitUntil: 'domcontentloaded',
-            timeout: 30000
-          });
-          logger.info(`✅ 默认 Tab 已导航到创作者中心 - 账户 ${accountId}`);
-        } catch (navError) {
-          logger.warn(`导航到创作者中心失败，使用 about:blank: ${navError.message}`);
-        }
-
-        // 将默认页面设为 spider1（登录后会被spider1使用）
+        logger.info(`📌 Browser launched with default tab (about:blank) - account ${accountId}`);
+        
+        // 将默认页面保存到 spiderPages（稍后会被 AccountInitializer 使用）
         if (!this.spiderPages.has(accountId)) {
           this.spiderPages.set(accountId, {});
         }

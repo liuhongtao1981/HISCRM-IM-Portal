@@ -1,5 +1,5 @@
 /**
- * 对比 DataStore (内存) 和 数据库中的时间戳格式
+ * 对比 DataStore (内存) �?数据库中的时间戳格式
  */
 
 const Database = require('better-sqlite3');
@@ -8,8 +8,8 @@ const path = require('path');
 const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath, { readonly: true });
 
-console.log('\n╔═══════════════════════════════════════════════════════╗');
-console.log('║  检查 cache_contents 表中的时间戳格式                ║');
+console.log('\n╔═══════════════════════════════════════════════════════�?);
+console.log('�? 检�?cache_contents 表中的时间戳格式                �?);
 console.log('╚═══════════════════════════════════════════════════════╝\n');
 
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
@@ -36,41 +36,41 @@ if (contents.length > 0) {
   console.log('【作品时间戳检查】\n');
 
   contents.forEach((content, index) => {
-    console.log(`${index + 1}. 作品: ${content.title?.substring(0, 40) || '无标题'}...`);
+    console.log(`${index + 1}. 作品: ${content.title?.substring(0, 40) || '无标�?}...`);
     console.log(`   contentId: ${content.content_id}`);
     console.log('');
 
-    // 检查 publishTime
+    // 检�?publishTime
     if (content.publish_time !== null) {
       const isMilliseconds = content.publish_time >= 10000000000 && content.publish_time < 10000000000000;
-      const status = isMilliseconds ? '✅' : '❌';
+      const status = isMilliseconds ? '�? : '�?;
       console.log(`   ${status} publishTime: ${content.publish_time}`);
-      console.log(`      格式: ${isMilliseconds ? '毫秒级 (13位)' : content.publish_time < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-      console.log(`      转换为日期: ${new Date(content.publish_time).toLocaleString('zh-CN')}`);
+      console.log(`      格式: ${isMilliseconds ? '毫秒�?(13�?' : content.publish_time < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+      console.log(`      转换为日�? ${new Date(content.publish_time).toLocaleString('zh-CN')}`);
     } else {
       console.log(`   ⚠️  publishTime: null`);
     }
     console.log('');
 
-    // 检查 lastCrawlTime
+    // 检�?lastCrawlTime
     if (content.last_crawl_time !== null) {
       const isMilliseconds = content.last_crawl_time >= 10000000000 && content.last_crawl_time < 10000000000000;
-      const status = isMilliseconds ? '✅' : '❌';
+      const status = isMilliseconds ? '�? : '�?;
       console.log(`   ${status} lastCrawlTime: ${content.last_crawl_time}`);
-      console.log(`      格式: ${isMilliseconds ? '毫秒级 (13位)' : content.last_crawl_time < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-      console.log(`      转换为日期: ${new Date(content.last_crawl_time).toLocaleString('zh-CN')}`);
+      console.log(`      格式: ${isMilliseconds ? '毫秒�?(13�?' : content.last_crawl_time < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+      console.log(`      转换为日�? ${new Date(content.last_crawl_time).toLocaleString('zh-CN')}`);
     } else {
       console.log(`   ⚠️  lastCrawlTime: null`);
     }
     console.log('');
 
-    // 检查 createdAt
+    // 检�?createdAt
     if (content.created_at !== null) {
       const isMilliseconds = content.created_at >= 10000000000 && content.created_at < 10000000000000;
-      const status = isMilliseconds ? '✅' : '❌';
+      const status = isMilliseconds ? '�? : '�?;
       console.log(`   ${status} createdAt: ${content.created_at}`);
-      console.log(`      格式: ${isMilliseconds ? '毫秒级 (13位)' : content.created_at < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-      console.log(`      转换为日期: ${new Date(content.created_at).toLocaleString('zh-CN')}`);
+      console.log(`      格式: ${isMilliseconds ? '毫秒�?(13�?' : content.created_at < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+      console.log(`      转换为日�? ${new Date(content.created_at).toLocaleString('zh-CN')}`);
     } else {
       console.log(`   ⚠️  createdAt: null`);
     }
@@ -82,8 +82,8 @@ if (contents.length > 0) {
 }
 
 // 查询会话对比
-console.log('\n╔═══════════════════════════════════════════════════════╗');
-console.log('║  检查 cache_conversations 表中的时间戳格式            ║');
+console.log('\n╔═══════════════════════════════════════════════════════�?);
+console.log('�? 检�?cache_conversations 表中的时间戳格式            �?);
 console.log('╚═══════════════════════════════════════════════════════╝\n');
 
 const conversations = db.prepare(`
@@ -110,25 +110,25 @@ if (conversations.length > 0) {
     console.log(`   conversationId: ${conv.conversation_id}`);
     console.log('');
 
-    // 检查 createdAt
+    // 检�?createdAt
     if (conv.created_at !== null) {
       const isMilliseconds = conv.created_at >= 10000000000 && conv.created_at < 10000000000000;
-      const status = isMilliseconds ? '✅' : '❌';
+      const status = isMilliseconds ? '�? : '�?;
       console.log(`   ${status} createdAt: ${conv.created_at}`);
-      console.log(`      格式: ${isMilliseconds ? '毫秒级 (13位)' : conv.created_at < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-      console.log(`      转换为日期: ${new Date(conv.created_at).toLocaleString('zh-CN')}`);
+      console.log(`      格式: ${isMilliseconds ? '毫秒�?(13�?' : conv.created_at < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+      console.log(`      转换为日�? ${new Date(conv.created_at).toLocaleString('zh-CN')}`);
     } else {
       console.log(`   ⚠️  createdAt: null`);
     }
     console.log('');
 
-    // 检查 lastMessageTime
+    // 检�?lastMessageTime
     if (conv.last_message_time !== null) {
       const isMilliseconds = conv.last_message_time >= 10000000000 && conv.last_message_time < 10000000000000;
-      const status = isMilliseconds ? '✅' : '❌';
+      const status = isMilliseconds ? '�? : '�?;
       console.log(`   ${status} lastMessageTime: ${conv.last_message_time}`);
-      console.log(`      格式: ${isMilliseconds ? '毫秒级 (13位)' : conv.last_message_time < 10000000000 ? '秒级 (10位) ❌' : '未知格式'}`);
-      console.log(`      转换为日期: ${new Date(conv.last_message_time).toLocaleString('zh-CN')}`);
+      console.log(`      格式: ${isMilliseconds ? '毫秒�?(13�?' : conv.last_message_time < 10000000000 ? '秒级 (10�? �? : '未知格式'}`);
+      console.log(`      转换为日�? ${new Date(conv.last_message_time).toLocaleString('zh-CN')}`);
     } else {
       console.log(`   ⚠️  lastMessageTime: null`);
     }

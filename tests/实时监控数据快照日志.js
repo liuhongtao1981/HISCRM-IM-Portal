@@ -2,14 +2,14 @@
  * 实时监控数据快照日志
  *
  * 用途：
- * - 实时显示 DataManager 的数据快照内容
+ * - 实时显示 DataManager 的数据快照内�?
  * - 解析并格式化显示 JSON 数据
- * - 显示数据统计和关键信息
+ * - 显示数据统计和关键信�?
  *
- * 使用方法：
- * 1. 先启动 Master: npm run start:master
- * 2. 等待账户登录并开始爬虫
- * 3. 运行此脚本: node tests/实时监控数据快照日志.js
+ * 使用方法�?
+ * 1. 先启�?Master: npm run start:master
+ * 2. 等待账户登录并开始爬�?
+ * 3. 运行此脚�? node tests/实时监控数据快照日志.js
  * 4. Ctrl+C 停止监控
  */
 
@@ -49,7 +49,7 @@ function formatTimestamp(isoString) {
 }
 
 /**
- * 打印分隔线
+ * 打印分隔�?
  */
 function printSeparator(char = '=', length = 80) {
   console.log(colors.dim + char.repeat(length) + colors.reset);
@@ -83,10 +83,10 @@ function printStats(stats) {
 
   // 账户信息
   if (stats.account) {
-    console.log(colors.green + '账户状态:' + colors.reset);
+    console.log(colors.green + '账户状�?' + colors.reset);
     console.log(`  ├─ ID: ${stats.account.id}`);
     console.log(`  ├─ 平台: ${stats.account.platform}`);
-    console.log(`  └─ 状态: ${stats.account.status}`);
+    console.log(`  └─ 状�? ${stats.account.status}`);
     console.log('');
   }
 
@@ -97,22 +97,22 @@ function printStats(stats) {
       const isLast = index === arr.length - 1;
       const prefix = isLast ? '  └─' : '  ├─';
       console.log(
-        `${prefix} ${type}: ${data.total} 条 ` +
+        `${prefix} ${type}: ${data.total} �?` +
         colors.dim +
-        `(新: ${data.new}, 已读: ${data.read}, 已回复: ${data.replied})` +
+        `(�? ${data.new}, 已读: ${data.read}, 已回�? ${data.replied})` +
         colors.reset
       );
     });
     console.log('');
   }
 
-  // 同步状态
+  // 同步状�?
   if (stats.sync) {
-    console.log(colors.green + '同步状态:' + colors.reset);
-    console.log(`  ├─ 自动同步: ${stats.sync.autoSync ? '✅ 是' : '❌ 否'}`);
+    console.log(colors.green + '同步状�?' + colors.reset);
+    console.log(`  ├─ 自动同步: ${stats.sync.autoSync ? '�?�? : '�?�?}`);
     console.log(`  ├─ 同步间隔: ${stats.sync.syncInterval}ms`);
-    console.log(`  ├─ 上次同步: ${stats.sync.lastSyncTime ? formatTimestamp(new Date(stats.sync.lastSyncTime).toISOString()) : '未同步'}`);
-    console.log(`  └─ 待同步: ${stats.sync.pendingSync} 条`);
+    console.log(`  ├─ 上次同步: ${stats.sync.lastSyncTime ? formatTimestamp(new Date(stats.sync.lastSyncTime).toISOString()) : '未同�?}`);
+    console.log(`  └─ 待同�? ${stats.sync.pendingSync} 条`);
   }
 }
 
@@ -121,7 +121,7 @@ function printStats(stats) {
  */
 function printConversations(conversations) {
   if (!conversations || conversations.length === 0) {
-    console.log('\n' + colors.dim + '(无会话数据)' + colors.reset);
+    console.log('\n' + colors.dim + '(无会话数�?' + colors.reset);
     return;
   }
 
@@ -137,11 +137,11 @@ function printConversations(conversations) {
       colors.dim + `(ID: ${conv.userId})` + colors.reset
     );
     console.log(
-      `     └─ 最后消息: ${colors.cyan}${conv.lastMessageContent || '(无消息)'}${colors.reset}`
+      `     └─ 最后消�? ${colors.cyan}${conv.lastMessageContent || '(无消�?'}${colors.reset}`
     );
     console.log(
       `        └─ 时间: ${formatTimestamp(new Date(conv.lastMessageTime).toISOString())} | ` +
-      `未读: ${conv.unreadCount} | 状态: ${conv.status}`
+      `未读: ${conv.unreadCount} | 状�? ${conv.status}`
     );
     if (!isLast) console.log('');
   });
@@ -152,11 +152,11 @@ function printConversations(conversations) {
  */
 function printMessages(messages) {
   if (!messages || messages.length === 0) {
-    console.log('\n' + colors.dim + '(无消息数据)' + colors.reset);
+    console.log('\n' + colors.dim + '(无消息数�?' + colors.reset);
     return;
   }
 
-  console.log('\n' + colors.bright + colors.blue + '💌 最近消息:' + colors.reset);
+  console.log('\n' + colors.bright + colors.blue + '💌 最近消�?' + colors.reset);
   printSeparator('-', 100);
 
   messages.forEach((msg, index) => {
@@ -169,11 +169,11 @@ function printMessages(messages) {
       colors.dim + `(${msg.type})` + colors.reset
     );
     console.log(
-      `     └─ ${colors.cyan}${msg.content || '(无内容)'}${colors.reset}`
+      `     └─ ${colors.cyan}${msg.content || '(无内�?'}${colors.reset}`
     );
     console.log(
       `        └─ 时间: ${formatTimestamp(new Date(msg.createdAt).toISOString())} | ` +
-      `状态: ${msg.status}`
+      `状�? ${msg.status}`
     );
     if (!isLast) console.log('');
   });
@@ -184,7 +184,7 @@ function printMessages(messages) {
  */
 function printContents(contents) {
   if (!contents || contents.length === 0) {
-    console.log('\n' + colors.dim + '(无作品数据)' + colors.reset);
+    console.log('\n' + colors.dim + '(无作品数�?' + colors.reset);
     return;
   }
 
@@ -196,17 +196,17 @@ function printContents(contents) {
     const prefix = isLast ? '  └─' : '  ├─';
 
     console.log(
-      `${prefix} ${colors.bright}${content.title || '(无标题)'}${colors.reset} ` +
+      `${prefix} ${colors.bright}${content.title || '(无标�?'}${colors.reset} ` +
       colors.dim + `(${content.type})` + colors.reset
     );
     if (content.description) {
       console.log(`     ├─ 描述: ${colors.cyan}${content.description}${colors.reset}`);
     }
     console.log(
-      `     └─ 👁️ ${content.viewCount || 0} | ` +
+      `     └─ 👁�?${content.viewCount || 0} | ` +
       `❤️ ${content.likeCount || 0} | ` +
       `💬 ${content.commentCount || 0} | ` +
-      `状态: ${content.status}`
+      `状�? ${content.status}`
     );
     if (!isLast) console.log('');
   });
@@ -217,11 +217,11 @@ function printContents(contents) {
  */
 function printComments(comments) {
   if (!comments || comments.length === 0) {
-    console.log('\n' + colors.dim + '(无评论数据)' + colors.reset);
+    console.log('\n' + colors.dim + '(无评论数�?' + colors.reset);
     return;
   }
 
-  console.log('\n' + colors.bright + colors.green + '💬 最近评论:' + colors.reset);
+  console.log('\n' + colors.bright + colors.green + '💬 最近评�?' + colors.reset);
   printSeparator('-', 100);
 
   comments.forEach((comment, index) => {
@@ -233,23 +233,23 @@ function printComments(comments) {
       colors.dim + `(ID: ${comment.authorId})` + colors.reset
     );
     console.log(
-      `     └─ ${colors.cyan}${comment.content || '(无内容)'}${colors.reset}`
+      `     └─ ${colors.cyan}${comment.content || '(无内�?'}${colors.reset}`
     );
     console.log(
       `        └─ ❤️ ${comment.likeCount || 0} | ` +
       `💬 ${comment.replyCount || 0} | ` +
-      `状态: ${comment.status}`
+      `状�? ${comment.status}`
     );
     if (!isLast) console.log('');
   });
 }
 
 /**
- * 解析并显示快照
+ * 解析并显示快�?
  */
 function parseAndDisplaySnapshot(line) {
   try {
-    // Winston JSON 格式：整行就是 JSON
+    // Winston JSON 格式：整行就�?JSON
     if (!line.includes('Data Snapshot')) return;
 
     const logEntry = JSON.parse(line);
@@ -269,7 +269,7 @@ function parseAndDisplaySnapshot(line) {
     }
 
     printSeparator('=', 100);
-    console.log(colors.dim + '等待下一次快照...' + colors.reset + '\n');
+    console.log(colors.dim + '等待下一次快�?..' + colors.reset + '\n');
 
   } catch (error) {
     console.error(colors.yellow + '⚠️  解析快照失败:' + colors.reset, error.message);
@@ -277,30 +277,30 @@ function parseAndDisplaySnapshot(line) {
 }
 
 /**
- * 主函数
+ * 主函�?
  */
 async function main() {
   console.clear();
   console.log(colors.bright + colors.cyan);
   console.log('╔════════════════════════════════════════════════════════════════════════════════════════════════╗');
-  console.log('║                          📸 DataManager 数据快照实时监控                                        ║');
+  console.log('�?                         📸 DataManager 数据快照实时监控                                        �?);
   console.log('╚════════════════════════════════════════════════════════════════════════════════════════════════╝');
   console.log(colors.reset);
 
   console.log(colors.yellow + '📂 监控目录:' + colors.reset, LOG_DIR);
   console.log(colors.yellow + '🔍 搜索模式:' + colors.reset, 'douyin-data_acc-*.log');
-  console.log(colors.yellow + '⏱️  快照间隔:' + colors.reset, '30 秒');
-  console.log(colors.dim + '\n按 Ctrl+C 停止监控\n' + colors.reset);
+  console.log(colors.yellow + '⏱️  快照间隔:' + colors.reset, '30 �?);
+  console.log(colors.dim + '\n�?Ctrl+C 停止监控\n' + colors.reset);
 
   printSeparator('=', 100);
 
-  // 检查日志目录是否存在
+  // 检查日志目录是否存�?
   if (!fs.existsSync(LOG_DIR)) {
     console.log(colors.yellow + '\n⚠️  日志目录不存在，正在创建...' + colors.reset);
     fs.mkdirSync(LOG_DIR, { recursive: true });
   }
 
-  // 查找所有抖音数据日志文件
+  // 查找所有抖音数据日志文�?
   const logFiles = fs.readdirSync(LOG_DIR)
     .filter(file => file.startsWith('douyin-data_acc-') && file.endsWith('.log'))
     .map(file => path.join(LOG_DIR, file));
@@ -317,16 +317,16 @@ async function main() {
     process.exit(1);
   }
 
-  console.log(colors.green + `\n✅ 找到 ${logFiles.length} 个日志文件:` + colors.reset);
+  console.log(colors.green + `\n�?找到 ${logFiles.length} 个日志文�?` + colors.reset);
   logFiles.forEach((file, index) => {
     const fileName = path.basename(file);
     console.log(`  ${index + 1}. ${fileName}`);
   });
 
   printSeparator('=', 100);
-  console.log(colors.cyan + '\n🎯 开始监控...\n' + colors.reset);
+  console.log(colors.cyan + '\n🎯 开始监�?..\n' + colors.reset);
 
-  // 使用 tail -f 监控所有日志文件
+  // 使用 tail -f 监控所有日志文�?
   const tail = spawn('tail', ['-f', ...logFiles], {
     stdio: ['ignore', 'pipe', 'pipe']
   });
@@ -345,11 +345,11 @@ async function main() {
   });
 
   tail.on('close', (code) => {
-    console.log(colors.yellow + `\n📛 监控已停止 (退出码: ${code})` + colors.reset);
+    console.log(colors.yellow + `\n📛 监控已停�?(退出码: ${code})` + colors.reset);
     process.exit(code);
   });
 
-  // 处理退出信号
+  // 处理退出信�?
   process.on('SIGINT', () => {
     console.log(colors.cyan + '\n\n👋 停止监控...' + colors.reset);
     tail.kill();
@@ -359,6 +359,6 @@ async function main() {
 
 // 运行
 main().catch(error => {
-  console.error(colors.yellow + '❌ 错误:' + colors.reset, error);
+  console.error(colors.yellow + '�?错误:' + colors.reset, error);
   process.exit(1);
 });

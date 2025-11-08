@@ -1,5 +1,5 @@
 /**
- * 使用 Playwright 连接到已存在的浏览器，检查消息属性
+ * 使用 Playwright 连接到已存在的浏览器，检查消息属�?
  */
 
 const { chromium } = require('playwright');
@@ -14,7 +14,7 @@ async function checkMessagePropertiesViaMCP() {
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ?').get('douyin');
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     return;
   }
@@ -23,7 +23,7 @@ async function checkMessagePropertiesViaMCP() {
 
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
 
-  console.log('🌐 启动浏览器...');
+  console.log('🌐 启动浏览�?..');
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
     viewport: { width: 1280, height: 720 },
@@ -37,7 +37,7 @@ async function checkMessagePropertiesViaMCP() {
 
     // 如果不在私信页面，导航到私信页面
     if (!page.url().includes('chat')) {
-      console.log('🌐 导航到私信页面...');
+      console.log('🌐 导航到私信页�?..');
       await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
         waitUntil: 'domcontentloaded',
         timeout: 30000
@@ -46,7 +46,7 @@ async function checkMessagePropertiesViaMCP() {
     }
 
     console.log('\n' + '='.repeat(60));
-    console.log('📋 步骤 1: 查找并点击会话');
+    console.log('📋 步骤 1: 查找并点击会�?);
     console.log('='.repeat(60));
 
     // 等待会话列表加载
@@ -69,30 +69,30 @@ async function checkMessagePropertiesViaMCP() {
       if (elements.length > 0 && elements.length < 100) {  // 避免匹配过多
         conversations = elements;
         usedSelector = selector;
-        console.log(`✅ 使用选择器 "${selector}" 找到 ${elements.length} 个会话`);
+        console.log(`�?使用选择�?"${selector}" 找到 ${elements.length} 个会话`);
         break;
       }
     }
 
     if (!conversations || conversations.length === 0) {
-      console.log('❌ 未找到会话');
+      console.log('�?未找到会�?);
 
       // 尝试截图
       await page.screenshot({ path: 'tests/debug-no-conversations.png' });
-      console.log('📸 已保存截图: tests/debug-no-conversations.png');
+      console.log('📸 已保存截�? tests/debug-no-conversations.png');
 
       await context.close();
       db.close();
       return;
     }
 
-    // 点击第一个会话
-    console.log(`\n🖱️ 点击第一个会话...`);
+    // 点击第一个会�?
+    console.log(`\n🖱�?点击第一个会�?..`);
     await conversations[0].click();
     await page.waitForTimeout(3000);
 
     console.log('\n' + '='.repeat(60));
-    console.log('📋 步骤 2: 提取消息元素的所有属性');
+    console.log('📋 步骤 2: 提取消息元素的所有属�?);
     console.log('='.repeat(60) + '\n');
 
     // 执行提取逻辑
@@ -121,12 +121,12 @@ async function checkMessagePropertiesViaMCP() {
               const msgContent = props.content || {};
               const textContent = msgContent.text || '';
 
-              // 提取所有可能的用户相关属性
+              // 提取所有可能的用户相关属�?
               const messageData = {
                 index: index,
                 depth: depth,
 
-                // 核心属性
+                // 核心属�?
                 serverId: props.serverId,
                 conversationId: props.conversationId,
                 messageId: props.messageId,
@@ -179,16 +179,16 @@ async function checkMessagePropertiesViaMCP() {
     });
 
     console.log(`总元素数: ${result.totalElements}`);
-    console.log(`有效消息数: ${result.analyzedMessages}\n`);
+    console.log(`有效消息�? ${result.analyzedMessages}\n`);
 
     if (result.messages.length === 0) {
-      console.log('❌ 未提取到任何消息数据');
+      console.log('�?未提取到任何消息数据');
       await page.screenshot({ path: 'tests/debug-no-messages.png' });
-      console.log('📸 已保存截图: tests/debug-no-messages.png');
+      console.log('📸 已保存截�? tests/debug-no-messages.png');
     } else {
-      console.log('✅ 成功提取消息数据\n');
+      console.log('�?成功提取消息数据\n');
 
-      // 分析前 5 条消息
+      // 分析�?5 条消�?
       result.messages.slice(0, 5).forEach((msg, i) => {
         console.log(`\n${'='.repeat(60)}`);
         console.log(`📝 消息 ${i + 1}`);
@@ -217,7 +217,7 @@ async function checkMessagePropertiesViaMCP() {
         console.log(`  userName:`, msg.userName);
         console.log(`  name:`, msg.name);
 
-        console.log(`\n【所有属性键】 (${msg.allPropsKeys.length} 个)`);
+        console.log(`\n【所有属性键�?(${msg.allPropsKeys.length} �?`);
         console.log(`  ${msg.allPropsKeys.join(', ')}`);
       });
 
@@ -230,9 +230,9 @@ async function checkMessagePropertiesViaMCP() {
       const hasAvatar = result.messages.filter(m => m.avatar || m.avatarUrl || m.senderAvatar).length;
       const hasNickname = result.messages.filter(m => m.nickname || m.senderNickname || m.userName || m.name).length;
 
-      console.log(`\n包含用户信息的消息: ${hasUser}/${result.messages.length} ${hasUser > 0 ? '✅' : '❌'}`);
-      console.log(`包含头像的消息: ${hasAvatar}/${result.messages.length} ${hasAvatar > 0 ? '✅' : '❌'}`);
-      console.log(`包含昵称的消息: ${hasNickname}/${result.messages.length} ${hasNickname > 0 ? '✅' : '❌'}`);
+      console.log(`\n包含用户信息的消�? ${hasUser}/${result.messages.length} ${hasUser > 0 ? '�? : '�?}`);
+      console.log(`包含头像的消�? ${hasAvatar}/${result.messages.length} ${hasAvatar > 0 ? '�? : '�?}`);
+      console.log(`包含昵称的消�? ${hasNickname}/${result.messages.length} ${hasNickname > 0 ? '�? : '�?}`);
 
       // 导出完整数据
       const fs = require('fs');
@@ -244,13 +244,13 @@ async function checkMessagePropertiesViaMCP() {
     }
 
   } catch (error) {
-    console.error('\n❌ 错误:', error.message);
+    console.error('\n�?错误:', error.message);
     console.error(error.stack);
   } finally {
-    console.log('\n\n⏳ 保持浏览器打开 30 秒，请手动查看...');
+    console.log('\n\n�?保持浏览器打开 30 秒，请手动查�?..');
     await page.waitForTimeout(30000);
 
-    console.log('🔒 关闭浏览器...');
+    console.log('🔒 关闭浏览�?..');
     await context.close();
     db.close();
   }

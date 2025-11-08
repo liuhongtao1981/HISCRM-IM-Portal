@@ -96,3 +96,4 @@ packages/*/out/
 
 # editor / system temp
 *.local
+packages/master/data/master.db

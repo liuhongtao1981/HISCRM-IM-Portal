@@ -1,8 +1,6 @@
 /**
  * 完全自动化的分析流程
- * 1. 打开浏览器
- * 2. 导航到私信页面
- * 3. 等待登录（60秒）
+ * 1. 打开浏览�? * 2. 导航到私信页�? * 3. 等待登录�?0秒）
  * 4. 自动点击会话
  * 5. 分析虚拟列表
  */
@@ -19,7 +17,7 @@ async function fullAutoAnalysis() {
 
   let context;
   try {
-    console.log('启动浏览器...');
+    console.log('启动浏览�?..');
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: [
@@ -29,34 +27,33 @@ async function fullAutoAnalysis() {
       ]
     });
 
-    console.log('✅ 浏览器已启动\n');
+    console.log('�?浏览器已启动\n');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    console.log('导航到私信页面...');
+    console.log('导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(2000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
     console.log('='.repeat(80));
     console.log('请在接下来的 60 秒内扫码登录（如果需要）');
     console.log('='.repeat(80) + '\n');
 
-    // 倒计时
-    for (let i = 60; i > 0; i -= 10) {
-      console.log(`还剩 ${i} 秒...`);
+    // 倒计�?    for (let i = 60; i > 0; i -= 10) {
+      console.log(`还剩 ${i} �?..`);
       await page.waitForTimeout(10000);
     }
 
-    console.log('\n开始自动操作...\n');
+    console.log('\n开始自动操�?..\n');
 
     // 自动点击会话
-    console.log('查找并点击会话...');
+    console.log('查找并点击会�?..');
 
     const clickResult = await page.evaluate(() => {
       // 查找所有可能的会话元素
@@ -77,8 +74,7 @@ async function fullAutoAnalysis() {
             !text.includes('互动管理') &&
             !text.includes('粉丝管理')) {
 
-          // 检查是否可能是会话项
-          const hasClickableParent = item.onclick || item.parentElement?.onclick;
+          // 检查是否可能是会话�?          const hasClickableParent = item.onclick || item.parentElement?.onclick;
           const hasConversationHint = text.includes('昨天') || text.includes('今天') || text.includes(':');
 
           if (hasClickableParent || hasConversationHint) {
@@ -96,11 +92,11 @@ async function fullAutoAnalysis() {
     });
 
     if (!clickResult.success) {
-      console.log('❌ 没有找到可点击的会话\n');
+      console.log('�?没有找到可点击的会话\n');
       console.log('请手动点击一个会话，然后等待分析...\n');
       await page.waitForTimeout(10000);
     } else {
-      console.log(`✅ 已点击: ${clickResult.text}...\n`);
+      console.log(`�?已点�? ${clickResult.text}...\n`);
       await page.waitForTimeout(3000);
     }
 
@@ -140,7 +136,7 @@ async function fullAutoAnalysis() {
     console.log(`找到 ${containers.length} 个虚拟列表容器\n`);
 
     if (containers.length === 0) {
-      console.log('❌ 没有找到虚拟列表容器\n');
+      console.log('�?没有找到虚拟列表容器\n');
     } else {
       containers.forEach(c => {
         console.log(`容器 #${c.index}:`);
@@ -158,14 +154,14 @@ async function fullAutoAnalysis() {
       console.log('='.repeat(80) + '\n');
 
       for (let containerIdx = 0; containerIdx < containers.length; containerIdx++) {
-        console.log(`\n【容器 #${containerIdx}】\n`);
+        console.log(`\n【容�?#${containerIdx}】\n`);
 
         const analysis = await page.evaluate((idx) => {
           const grids = document.querySelectorAll('[role="grid"]');
           const grid = grids[idx];
 
           if (!grid || !grid.children[0]) {
-            return { error: '容器不存在' };
+            return { error: '容器不存�? };
           }
 
           const innerContainer = grid.children[0];
@@ -249,24 +245,24 @@ async function fullAutoAnalysis() {
         }, containerIdx);
 
         if (analysis.error) {
-          console.log(`  ❌ ${analysis.error}\n`);
+          console.log(`  �?${analysis.error}\n`);
           continue;
         }
 
         console.log(`  子元素总数: ${analysis.totalChildren}`);
-        console.log(`  包含数据的元素: ${analysis.elementsWithData}\n`);
+        console.log(`  包含数据的元�? ${analysis.elementsWithData}\n`);
 
         if (analysis.elementsWithData > 0) {
-          console.log(`  ✅✅✅ 找到消息数据！\n`);
+          console.log(`  ✅✅�?找到消息数据！\n`);
 
           analysis.allFindings.forEach(elem => {
             console.log(`  元素 #${elem.elementIndex}:`);
 
             elem.findings.forEach((finding, idx) => {
               console.log(`    发现 #${idx + 1} (深度 ${finding.depth}):`);
-              console.log(`      总Props数: ${finding.totalKeys}`);
-              console.log(`      所有Props键: ${finding.allKeys.join(', ')}`);
-              console.log(`      消息相关键 (${finding.msgKeys.length}个): ${finding.msgKeys.join(', ')}`);
+              console.log(`      总Props�? ${finding.totalKeys}`);
+              console.log(`      所有Props�? ${finding.allKeys.join(', ')}`);
+              console.log(`      消息相关�?(${finding.msgKeys.length}�?: ${finding.msgKeys.join(', ')}`);
               console.log(`      数据样本:`);
               Object.entries(finding.sample).forEach(([k, v]) => {
                 console.log(`        📌 ${k}: ${v}`);
@@ -275,22 +271,22 @@ async function fullAutoAnalysis() {
             });
           });
         } else {
-          console.log(`  ❌ 未找到消息数据\n`);
+          console.log(`  �?未找到消息数据\n`);
         }
       }
     }
 
     console.log('='.repeat(80));
-    console.log('分析完成！浏览器将保持打开 90 秒');
+    console.log('分析完成！浏览器将保持打开 90 �?);
     console.log('='.repeat(80) + '\n');
 
     await page.waitForTimeout(90000);
 
     await context.close();
-    console.log('✅ 完成\n');
+    console.log('�?完成\n');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
     if (context) {
       await context.close().catch(() => {});

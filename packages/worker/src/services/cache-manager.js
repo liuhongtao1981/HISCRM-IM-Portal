@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 缓存管理器
  * 为每个账号维护评论、私信、视频的 ID 缓存，用于去重
  */
@@ -32,7 +32,6 @@ class CacheManager {
         videos: new Set(),
         directMessages: new Set(),
       });
-      logger.debug(`Created new cache for account ${accountId}`);
     }
     return this.accountCaches.get(accountId);
   }
@@ -158,17 +157,14 @@ class CacheManager {
 
     if (existingData.commentIds) {
       existingData.commentIds.forEach(id => cache.comments.add(id));
-      logger.debug(`Preloaded ${existingData.commentIds.length} comment IDs for account ${accountId}`);
     }
 
     if (existingData.videoIds) {
       existingData.videoIds.forEach(id => cache.videos.add(id));
-      logger.debug(`Preloaded ${existingData.videoIds.length} video IDs for account ${accountId}`);
     }
 
     if (existingData.messageIds) {
       existingData.messageIds.forEach(id => cache.directMessages.add(id));
-      logger.debug(`Preloaded ${existingData.messageIds.length} message IDs for account ${accountId}`);
     }
 
     logger.info(`Cache preloaded for account ${accountId}: ${existingData.commentIds?.length || 0} comments, ${existingData.videoIds?.length || 0} videos, ${existingData.messageIds?.length || 0} messages`);

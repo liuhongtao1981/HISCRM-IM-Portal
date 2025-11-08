@@ -1,11 +1,11 @@
 /**
- * 调试工具：检查 Master 推送给客户端的 Channel 数据
+ * 调试工具：检�?Master 推送给客户端的 Channel 数据
  */
 const io = require('socket.io-client');
 
 const MASTER_URL = 'http://localhost:3000';
 
-console.log('=== 连接到 Master IM WebSocket 服务器 ===\n');
+console.log('=== 连接�?Master IM WebSocket 服务�?===\n');
 
 const socket = io(`${MASTER_URL}/client`, {
   transports: ['websocket'],
@@ -13,7 +13,7 @@ const socket = io(`${MASTER_URL}/client`, {
 });
 
 socket.on('connect', () => {
-  console.log('✅ 已连接到 Master\n');
+  console.log('�?已连接到 Master\n');
 
   // 请求频道列表
   socket.emit('client:sync', {});
@@ -40,10 +40,10 @@ socket.on('channels:update', (channels) => {
         console.log(`    - platformUserId: ${userInfo.platformUserId || 'null'}`);
         console.log(`    - avatar: ${userInfo.avatar ? userInfo.avatar.substring(0, 60) + '...' : 'null'}`);
       } catch (e) {
-        console.log(`  ❌ JSON 解析失败: ${e.message}`);
+        console.log(`  �?JSON 解析失败: ${e.message}`);
       }
     } else {
-      console.log(`  ❌ userInfo 字段不存在或为空`);
+      console.log(`  �?userInfo 字段不存在或为空`);
     }
     console.log('');
   });
@@ -53,7 +53,7 @@ socket.on('channels:update', (channels) => {
 });
 
 socket.on('connect_error', (error) => {
-  console.error('❌ 连接失败:', error.message);
+  console.error('�?连接失败:', error.message);
   process.exit(1);
 });
 

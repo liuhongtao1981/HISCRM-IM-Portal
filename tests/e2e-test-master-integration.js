@@ -1,21 +1,21 @@
 #!/usr/bin/env node
 
 /**
- * E2E 测试: crm-pc-im ↔ 真实 Master 服务器集成测试
+ * E2E 测试: crm-pc-im �?真实 Master 服务器集成测�?
  *
- * 用途: 验证 crm-pc-im 客户端与真实 Master 系统的完整通信流程
+ * 用�? 验证 crm-pc-im 客户端与真实 Master 系统的完整通信流程
  *
  * 前置条件:
  *   1. Master 服务器运行在 http://localhost:3000
- *   2. 数据库已初始化 (packages/master/data/master.db)
+ *   2. 数据库已初始�?(packages/master/data/master.db)
  *
  * 测试场景:
  *   1. 客户端连接和注册
  *   2. 心跳机制验证
- *   3. Master 推送消息到客户端
+ *   3. Master 推送消息到客户�?
  *   4. 客户端接收并转换消息
- *   5. 客户端自动发送确认
- *   6. 消息发送功能 (crm → Master)
+ *   5. 客户端自动发送确�?
+ *   6. 消息发送功�?(crm �?Master)
  */
 
 const io = require('socket.io-client')
@@ -52,7 +52,7 @@ function log(level, message, data = null) {
       break
     case 'success':
       color = colors.green
-      prefix = '✅'
+      prefix = '�?
       break
     case 'warn':
       color = colors.yellow
@@ -60,7 +60,7 @@ function log(level, message, data = null) {
       break
     case 'error':
       color = colors.red
-      prefix = '❌'
+      prefix = '�?
       break
     case 'debug':
       color = colors.cyan
@@ -89,35 +89,35 @@ class E2ETest {
   async run() {
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                                                                            ║
-║        🧪 E2E 测试: crm-pc-im ↔ 真实 Master 服务器集成测试                  ║
-║                                                                            ║
+�?                                                                           �?
+�?       🧪 E2E 测试: crm-pc-im �?真实 Master 服务器集成测�?                 �?
+�?                                                                           �?
 ╚════════════════════════════════════════════════════════════════════════════╝
 `)
 
     try {
-      // 步骤 1: 检查 Master 可用性
+      // 步骤 1: 检�?Master 可用�?
       await this.checkMasterAvailability()
 
-      // 步骤 2: 连接客户端
+      // 步骤 2: 连接客户�?
       await this.connectClient()
 
-      // 步骤 3: 注册客户端
+      // 步骤 3: 注册客户�?
       await this.registerClient()
 
       // 步骤 4: 启动心跳监听
       await this.monitorHeartbeat()
 
-      // 步骤 5: 向 Master 数据库添加测试账户
+      // 步骤 5: �?Master 数据库添加测试账�?
       await this.setupTestAccount()
 
-      // 步骤 6: 推送测试消息到客户端
+      // 步骤 6: 推送测试消息到客户�?
       await this.pushTestMessagesToClient()
 
       // 步骤 7: 验证客户端接收和确认
       await this.verifyClientReception()
 
-      // 步骤 8: 测试客户端发送消息
+      // 步骤 8: 测试客户端发送消�?
       await this.testClientSendMessage()
 
       // 步骤 9: 清理资源
@@ -135,7 +135,7 @@ class E2ETest {
   }
 
   async checkMasterAvailability() {
-    log('info', '步骤 1️⃣ : 检查 Master 服务器可用性')
+    log('info', '步骤 1️⃣ : 检�?Master 服务器可用�?)
 
     try {
       const response = await axios.get(`${MASTER_URL}/api/health`, {
@@ -143,9 +143,9 @@ class E2ETest {
       })
 
       if (response.status === 200) {
-        log('success', `Master 服务器可用: ${MASTER_URL}`)
+        log('success', `Master 服务器可�? ${MASTER_URL}`)
         this.testResults.tests.push({
-          name: 'Master 服务器可用性',
+          name: 'Master 服务器可用�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -153,7 +153,7 @@ class E2ETest {
     } catch (error) {
       // Master 可能没有 /api/health 端点，这不是致命错误
       // 继续尝试连接 Socket.IO
-      log('warn', 'Master 健康检查端点不可用，继续进行 Socket.IO 连接测试')
+      log('warn', 'Master 健康检查端点不可用，继续进�?Socket.IO 连接测试')
     }
   }
 
@@ -161,7 +161,7 @@ class E2ETest {
     log('info', '步骤 2️⃣ : 连接客户端到 Master')
 
     return new Promise((resolve, reject) => {
-      // 连接到 /client 命名空间（而不是根命名空间）
+      // 连接�?/client 命名空间（而不是根命名空间�?
       this.client = io(`${MASTER_URL}/client`, {
         path: '/socket.io/',
         reconnection: true,
@@ -183,7 +183,7 @@ class E2ETest {
         clearTimeout(timeout)
         log('success', `客户端已连接: ${this.client.id}`)
         this.testResults.tests.push({
-          name: '客户端连接',
+          name: '客户端连�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -198,7 +198,7 @@ class E2ETest {
   }
 
   async registerClient() {
-    log('info', '步骤 3️⃣ : 向 Master 注册客户端')
+    log('info', '步骤 3️⃣ : �?Master 注册客户�?)
 
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
@@ -207,9 +207,9 @@ class E2ETest {
 
       const successHandler = (data) => {
         clearTimeout(timeout)
-        log('success', '客户端注册成功', data)
+        log('success', '客户端注册成�?, data)
         this.testResults.tests.push({
-          name: '客户端注册',
+          name: '客户端注�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -219,9 +219,9 @@ class E2ETest {
 
       const errorHandler = (error) => {
         clearTimeout(timeout)
-        log('error', '客户端注册失败:', error)
+        log('error', '客户端注册失�?', error)
         this.testResults.tests.push({
-          name: '客户端注册',
+          name: '客户端注�?,
           status: 'FAIL',
           error: error,
         })
@@ -257,7 +257,7 @@ class E2ETest {
 
           if (heartbeatCount >= 3) {
             clearInterval(interval)
-            log('success', `心跳机制运行正常 (${heartbeatCount} 次心跳)`)
+            log('success', `心跳机制运行正常 (${heartbeatCount} 次心�?`)
             this.testResults.tests.push({
               name: '心跳机制',
               status: 'PASS',
@@ -268,11 +268,11 @@ class E2ETest {
         }
       }, 2000)
 
-      // 5 秒后如果还没有足够的心跳，仍然继续
+      // 5 秒后如果还没有足够的心跳，仍然继�?
       setTimeout(() => {
         clearInterval(interval)
         if (heartbeatCount > 0) {
-          log('success', `心跳机制运行正常 (${heartbeatCount} 次心跳)`)
+          log('success', `心跳机制运行正常 (${heartbeatCount} 次心�?`)
           this.testResults.tests.push({
             name: '心跳机制',
             status: 'PASS',
@@ -285,7 +285,7 @@ class E2ETest {
   }
 
   async setupTestAccount() {
-    log('info', '步骤 5️⃣ : 设置测试账户 (仅日志)')
+    log('info', '步骤 5️⃣ : 设置测试账户 (仅日�?')
 
     log('debug', '测试账户信息:', {
       account_id: TEST_ACCOUNT_ID,
@@ -301,14 +301,14 @@ class E2ETest {
   }
 
   async pushTestMessagesToClient() {
-    log('info', '步骤 6️⃣ : 推送测试消息到客户端')
+    log('info', '步骤 6️⃣ : 推送测试消息到客户�?)
 
     // 监听消息
     this.client.on('message', (masterMessage) => {
       log('debug', '客户端接收到 Master 消息:', masterMessage)
       this.masterMessages.push(masterMessage)
 
-      // 自动发送确认
+      // 自动发送确�?
       if (masterMessage.id) {
         this.client.emit('client:notification:ack', {
           notification_id: masterMessage.id,
@@ -319,10 +319,10 @@ class E2ETest {
       }
     })
 
-    // 手动推送测试消息
-    log('info', '  发送 TEXT 测试消息...')
+    // 手动推送测试消�?
+    log('info', '  发�?TEXT 测试消息...')
 
-    // 注意: 在真实测试中，Master 会通过自己的业务逻辑推送消息
+    // 注意: 在真实测试中，Master 会通过自己的业务逻辑推送消�?
     // 这里我们模拟 Master 推送消息的场景
     const testMessages = [
       {
@@ -351,15 +351,15 @@ class E2ETest {
       },
     ]
 
-    // 等待客户端准备好后再推送消息
+    // 等待客户端准备好后再推送消�?
     return new Promise((resolve) => {
       setTimeout(() => {
-        // 注意: 在真实场景中，Master 会通过自己的业务逻辑推送这些消息
-        // 这里为了测试目的，我们直接在客户端模拟接收
-        log('info', '  (注: 在真实场景中，Master 会推送消息)')
+        // 注意: 在真实场景中，Master 会通过自己的业务逻辑推送这些消�?
+        // 这里为了测试目的，我们直接在客户端模拟接�?
+        log('info', '  (�? 在真实场景中，Master 会推送消�?')
         log('success', '测试消息设置完成')
         this.testResults.tests.push({
-          name: '推送测试消息',
+          name: '推送测试消�?,
           status: 'PASS',
         })
         this.testResults.passed++
@@ -371,20 +371,20 @@ class E2ETest {
   async verifyClientReception() {
     log('info', '步骤 7️⃣ : 验证客户端接收和确认')
 
-    // 如果没有接收到消息，这在真实测试中是正常的
+    // 如果没有接收到消息，这在真实测试中是正常�?
     // 因为 Master 需要有实际的推送逻辑
     if (this.masterMessages.length === 0) {
       log('warn', '未接收到消息 (这在无实际消息推送时是正常的)')
-      log('info', '验证点: 消息监听器已注册且准备就绪')
+      log('info', '验证�? 消息监听器已注册且准备就�?)
       this.testResults.tests.push({
-        name: '客户端接收',
+        name: '客户端接�?,
         status: 'PASS',
         note: 'Ready to receive (no messages pushed yet)',
       })
       this.testResults.passed++
     } else {
-      log('success', `已接收 ${this.masterMessages.length} 条消息`)
-      log('success', `已发送 ${this.clientAcks.length} 条确认`)
+      log('success', `已接�?${this.masterMessages.length} 条消息`)
+      log('success', `已发�?${this.clientAcks.length} 条确认`)
 
       if (this.masterMessages.length === this.clientAcks.length) {
         this.testResults.tests.push({
@@ -399,7 +399,7 @@ class E2ETest {
   }
 
   async testClientSendMessage() {
-    log('info', '步骤 8️⃣ : 测试客户端发送消息')
+    log('info', '步骤 8️⃣ : 测试客户端发送消�?)
 
     const testMessage = {
       id: `msg-client-send-${Date.now()}`,
@@ -417,9 +417,9 @@ class E2ETest {
     // 在真实场景中，这个消息会被发送到 Master
     // 这里我们验证通信通道已准备好
     if (this.client && this.client.connected) {
-      log('success', '客户端已准备好发送消息')
+      log('success', '客户端已准备好发送消�?)
       this.testResults.tests.push({
-        name: '客户端发送消息',
+        name: '客户端发送消�?,
         status: 'PASS',
         message: testMessage,
       })
@@ -427,7 +427,7 @@ class E2ETest {
     } else {
       log('error', '客户端未连接')
       this.testResults.tests.push({
-        name: '客户端发送消息',
+        name: '客户端发送消�?,
         status: 'FAIL',
       })
       this.testResults.failed++
@@ -454,19 +454,19 @@ class E2ETest {
 
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                         📊 E2E 测试结果报告
+�?                        📊 E2E 测试结果报告
 ╚════════════════════════════════════════════════════════════════════════════╝
 
 测试统计:
-  ✅ 通过: ${this.testResults.passed}
-  ❌ 失败: ${this.testResults.failed}
-  📈 成功率: ${Math.round((this.testResults.passed / (this.testResults.passed + this.testResults.failed)) * 100)}%
+  �?通过: ${this.testResults.passed}
+  �?失败: ${this.testResults.failed}
+  📈 成功�? ${Math.round((this.testResults.passed / (this.testResults.passed + this.testResults.failed)) * 100)}%
 
 详细结果:
 `)
 
     this.testResults.tests.forEach((test, index) => {
-      const status = test.status === 'PASS' ? '✅' : '❌'
+      const status = test.status === 'PASS' ? '�? : '�?
       console.log(`  ${index + 1}. ${status} ${test.name}`)
       if (test.note) {
         console.log(`     📝 ${test.note}`)
@@ -475,31 +475,31 @@ class E2ETest {
 
     console.log(`
 ╔════════════════════════════════════════════════════════════════════════════╗
-║                         ✅ E2E 测试完成
+�?                        �?E2E 测试完成
 ╚════════════════════════════════════════════════════════════════════════════╝
 
-📋 关键验证项:
-  ✅ Master 服务器可用
-  ✅ Socket.IO 连接建立
-  ✅ 客户端注册成功
-  ✅ 心跳机制运行正常
-  ✅ 消息监听准备就绪
-  ✅ 确认机制准备就绪
-  ✅ 资源正确清理
+📋 关键验证�?
+  �?Master 服务器可�?
+  �?Socket.IO 连接建立
+  �?客户端注册成�?
+  �?心跳机制运行正常
+  �?消息监听准备就绪
+  �?确认机制准备就绪
+  �?资源正确清理
 
 🎯 结论:
-  crm-pc-im 客户端与真实 Master 服务器的集成已验证!
+  crm-pc-im 客户端与真实 Master 服务器的集成已验�?
 
   系统已准备好:
-  • 接收 Master 推送的消息
-  • 自动转换协议格式
-  • 发送消息确认
-  • 定期发送心跳信号
+  �?接收 Master 推送的消息
+  �?自动转换协议格式
+  �?发送消息确�?
+  �?定期发送心跳信�?
 
-📌 下一步:
-  1. 在 Master 中配置账户和消息推送
-  2. 在 crm-pc-im UI 中集成消息处理
-  3. 验证完整的消息流程
+📌 下一�?
+  1. �?Master 中配置账户和消息推�?
+  2. �?crm-pc-im UI 中集成消息处�?
+  3. 验证完整的消息流�?
 
 `)
   }

@@ -1,8 +1,5 @@
 /**
- * 完整的私信消息分析流程
- * 1. 打开浏览器并导航到私信页面
- * 2. 点击第一个会话
- * 3. 深度分析消息虚拟列表结构
+ * 完整的私信消息分析流�? * 1. 打开浏览器并导航到私信页�? * 2. 点击第一个会�? * 3. 深度分析消息虚拟列表结构
  */
 
 const { chromium } = require('playwright');
@@ -25,40 +22,37 @@ async function completeAnalysis() {
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
-    console.log('✅ 浏览器已启动\n');
+    console.log('�?浏览器已启动\n');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    // 步骤 1: 导航到私信页面
-    console.log('📍 步骤 1: 导航到私信页面...');
+    // 步骤 1: 导航到私信页�?    console.log('📍 步骤 1: 导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(3000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
-    // 步骤 2: 点击第一个会话
-    console.log('📍 步骤 2: 点击第一个会话...');
+    // 步骤 2: 点击第一个会�?    console.log('📍 步骤 2: 点击第一个会�?..');
 
     const conversations = await page.$$('li[class*="item"]');
     let clicked = false;
 
     for (let i = 0; i < Math.min(conversations.length, 40); i++) {
       const text = await conversations[i].textContent();
-      // 跳过导航项
-      if (text && text.length > 15 && !text.includes('首页') && !text.includes('管理') && !text.includes('中心')) {
+      // 跳过导航�?      if (text && text.length > 15 && !text.includes('首页') && !text.includes('管理') && !text.includes('中心')) {
         await conversations[i].click();
-        console.log(`✅ 已点击会话 #${i}: ${text.substring(0, 40)}...\n`);
+        console.log(`�?已点击会�?#${i}: ${text.substring(0, 40)}...\n`);
         clicked = true;
         break;
       }
     }
 
     if (!clicked) {
-      console.log('❌ 没有找到可点击的会话');
+      console.log('�?没有找到可点击的会话');
       await context.close();
       return;
     }
@@ -110,8 +104,7 @@ async function completeAnalysis() {
             }
           });
 
-          if (Object.keys(messageFields).length > 2) {  // 至少有2个消息字段
-            return {
+          if (Object.keys(messageFields).length > 2) {  // 至少�?个消息字�?            return {
               messageFields,
               depth,
               totalPropsCount: Object.keys(props).length,
@@ -120,8 +113,7 @@ async function completeAnalysis() {
           }
         }
 
-        // 递归子节点
-        if (fiber.child) {
+        // 递归子节�?        if (fiber.child) {
           const result = deepSearchMessage(fiber.child, depth + 1, maxDepth);
           if (result) return result;
         }
@@ -137,7 +129,7 @@ async function completeAnalysis() {
 
       const samples = [];
 
-      // 分析前20个子元素
+      // 分析�?0个子元素
       for (let i = 0; i < Math.min(20, children.length); i++) {
         const child = children[i];
 
@@ -183,7 +175,7 @@ async function completeAnalysis() {
     });
 
     if (analysis.error) {
-      console.log(`❌ ${analysis.error}\n`);
+      console.log(`�?${analysis.error}\n`);
       await context.close();
       return;
     }
@@ -198,18 +190,18 @@ async function completeAnalysis() {
     console.log('');
 
     console.log('='.repeat(80));
-    console.log(`分析前 ${analysis.samples.length} 个子元素:`);
+    console.log(`分析�?${analysis.samples.length} 个子元素:`);
     console.log('='.repeat(80) + '\n');
 
     let foundMessageCount = 0;
 
     analysis.samples.forEach(sample => {
-      console.log(`【元素 #${sample.index}】`);
+      console.log(`【元�?#${sample.index}】`);
       console.log(`  标签: ${sample.tagName}`);
-      console.log(`  类名: ${sample.className || '(无)'}`);
+      console.log(`  类名: ${sample.className || '(�?'}`);
       console.log(`  位置: position=${sample.style.position}, top=${sample.style.top}, height=${sample.style.height}`);
-      console.log(`  文本: ${sample.textPreview || '(无)'}`);
-      console.log(`  React Fiber: ${sample.hasFiber ? '✅' : '❌'}`);
+      console.log(`  文本: ${sample.textPreview || '(�?'}`);
+      console.log(`  React Fiber: ${sample.hasFiber ? '�? : '�?}`);
 
       if (sample.immediatePropKeys && sample.immediatePropKeys.length > 0) {
         const msgKeys = sample.immediatePropKeys.filter(k =>
@@ -217,14 +209,14 @@ async function completeAnalysis() {
         );
 
         if (msgKeys.length > 0) {
-          console.log(`  直接Props中的消息键: ${msgKeys.join(', ')}`);
+          console.log(`  直接Props中的消息�? ${msgKeys.join(', ')}`);
         }
       }
 
       if (sample.messageData) {
         foundMessageCount++;
-        console.log(`  ✅✅✅ 找到消息数据！(深度: ${sample.messageData.depth}, Props总数: ${sample.messageData.totalPropsCount})`);
-        console.log(`  所有Props键: ${sample.messageData.allPropsKeys.join(', ')}`);
+        console.log(`  ✅✅�?找到消息数据�?深度: ${sample.messageData.depth}, Props总数: ${sample.messageData.totalPropsCount})`);
+        console.log(`  所有Props�? ${sample.messageData.allPropsKeys.join(', ')}`);
         console.log(`  消息数据:`);
         Object.entries(sample.messageData.messageFields).forEach(([key, value]) => {
           console.log(`    📌 ${key}: ${value}`);
@@ -235,26 +227,26 @@ async function completeAnalysis() {
     });
 
     console.log('='.repeat(80));
-    console.log(`✨ 总结: 在 ${analysis.samples.length} 个元素中找到 ${foundMessageCount} 个包含消息数据的元素`);
+    console.log(`�?总结: �?${analysis.samples.length} 个元素中找到 ${foundMessageCount} 个包含消息数据的元素`);
     console.log('='.repeat(80) + '\n');
 
     if (foundMessageCount > 0) {
       console.log('🎉 成功！找到了消息数据的位置和结构！\n');
     } else {
       console.log('⚠️ 警告：没有找到消息数据，可能需要：');
-      console.log('  1. 增加深度搜索的层数');
+      console.log('  1. 增加深度搜索的层�?);
       console.log('  2. 检查是否有iframe');
       console.log('  3. 检查消息是否通过API动态加载\n');
     }
 
-    console.log('浏览器将保持打开 90 秒，请手动检查页面...\n');
+    console.log('浏览器将保持打开 90 秒，请手动检查页�?..\n');
     await page.waitForTimeout(90000);
 
     await context.close();
-    console.log('✅ 分析完成\n');
+    console.log('�?分析完成\n');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
   }
 }

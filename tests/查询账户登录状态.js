@@ -1,6 +1,5 @@
 /**
- * 查询账户登录状态
- */
+ * 查询账户登录状�? */
 
 const Database = require('better-sqlite3');
 const path = require('path');
@@ -9,7 +8,7 @@ const dbPath = path.join(__dirname, '../packages/master/data/master.db');
 const db = new Database(dbPath, { readonly: true });
 
 console.log('========================================');
-console.log('查询账户登录状态');
+console.log('查询账户登录状�?);
 console.log('========================================\n');
 
 const accounts = db.prepare(`
@@ -26,7 +25,7 @@ const accounts = db.prepare(`
   WHERE platform = 'douyin'
 `).all();
 
-console.log(`找到 ${accounts.length} 个抖音账户:\n`);
+console.log(`找到 ${accounts.length} 个抖音账�?\n`);
 
 accounts.forEach((account, index) => {
   console.log(`账户 ${index + 1}:`);

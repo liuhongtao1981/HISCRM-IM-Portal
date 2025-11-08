@@ -1,5 +1,5 @@
 /**
- * 验证 Master API 返回的消息数据中的 secSender 字段
+ * 验证 Master API 返回的消息数据中�?secSender 字段
  */
 
 const http = require('http');
@@ -52,7 +52,7 @@ async function main() {
 
     console.log('📊 数据统计:');
     console.log('  总消息数:', total);
-    console.log('  返回消息数:', messages.length);
+    console.log('  返回消息�?', messages.length);
     console.log('');
 
     if (messages.length === 0) {
@@ -61,26 +61,26 @@ async function main() {
     }
 
     console.log('='.repeat(80));
-    console.log('📋 前5条消息详情:');
+    console.log('📋 �?条消息详�?');
     console.log('='.repeat(80));
     console.log('');
 
     messages.slice(0, 5).forEach((msg, idx) => {
       console.log(`消息 #${idx + 1}:`);
       console.log('  ID:', msg.id);
-      console.log('  conversation_id:', msg.conversation_id ? msg.conversation_id.substring(0, 60) : '无');
-      console.log('  sender_id:', msg.sender_id ? msg.sender_id.substring(0, 60) : '无');
-      console.log('  content:', msg.content ? msg.content.substring(0, 40) : '无');
+      console.log('  conversation_id:', msg.conversation_id ? msg.conversation_id.substring(0, 60) : '�?);
+      console.log('  sender_id:', msg.sender_id ? msg.sender_id.substring(0, 60) : '�?);
+      console.log('  content:', msg.content ? msg.content.substring(0, 40) : '�?);
 
-      // 检查 data 字段中的 rawData
+      // 检�?data 字段中的 rawData
       if (msg.data) {
         const dataObj = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
         if (dataObj.rawData) {
           const secSender = dataObj.rawData.secSender;
           if (secSender) {
-            console.log('  ⭐ rawData.secSender:', secSender.substring(0, 60) + (secSender.length > 60 ? '...' : ''));
+            console.log('  �?rawData.secSender:', secSender.substring(0, 60) + (secSender.length > 60 ? '...' : ''));
           } else {
-            console.log('  ❌ rawData.secSender: 无');
+            console.log('  �?rawData.secSender: �?);
           }
 
           // 显示其他 rawData 字段
@@ -96,7 +96,7 @@ async function main() {
     });
 
     console.log('='.repeat(80));
-    console.log('📊 统计所有消息:');
+    console.log('📊 统计所有消�?');
     console.log('='.repeat(80));
     console.log('');
 
@@ -109,7 +109,7 @@ async function main() {
       const convId = msg.conversation_id;
       const senderId = msg.sender_id;
 
-      // 检查 rawData.secSender
+      // 检�?rawData.secSender
       if (msg.data) {
         const dataObj = typeof msg.data === 'string' ? JSON.parse(msg.data) : msg.data;
         if (dataObj.rawData?.secSender) {
@@ -121,8 +121,7 @@ async function main() {
         noSecSender++;
       }
 
-      // 检查外层字段
-      if (convId && convId.startsWith('MS4wLjABAAAA')) {
+      // 检查外层字�?      if (convId && convId.startsWith('MS4wLjABAAAA')) {
         hasEncryptedConvId++;
       }
 
@@ -132,37 +131,37 @@ async function main() {
     });
 
     console.log('rawData.secSender 字段:');
-    console.log('  ✅ 有 secSender:', hasSecSender, '/', messages.length, '条', `(${(hasSecSender / messages.length * 100).toFixed(1)}%)`);
-    console.log('  ❌ 无 secSender:', noSecSender, '/', messages.length, '条', `(${(noSecSender / messages.length * 100).toFixed(1)}%)`);
+    console.log('  �?�?secSender:', hasSecSender, '/', messages.length, '�?, `(${(hasSecSender / messages.length * 100).toFixed(1)}%)`);
+    console.log('  �?�?secSender:', noSecSender, '/', messages.length, '�?, `(${(noSecSender / messages.length * 100).toFixed(1)}%)`);
     console.log('');
 
-    console.log('外层标准化字段:');
-    console.log('  conversation_id 使用加密ID:', hasEncryptedConvId, '/', messages.length, '条', `(${(hasEncryptedConvId / messages.length * 100).toFixed(1)}%)`);
-    console.log('  sender_id 使用加密ID:', hasEncryptedSenderId, '/', messages.length, '条', `(${(hasEncryptedSenderId / messages.length * 100).toFixed(1)}%)`);
+    console.log('外层标准化字�?');
+    console.log('  conversation_id 使用加密ID:', hasEncryptedConvId, '/', messages.length, '�?, `(${(hasEncryptedConvId / messages.length * 100).toFixed(1)}%)`);
+    console.log('  sender_id 使用加密ID:', hasEncryptedSenderId, '/', messages.length, '�?, `(${(hasEncryptedSenderId / messages.length * 100).toFixed(1)}%)`);
     console.log('');
 
     console.log('='.repeat(80));
-    console.log('🎯 最终结论:');
+    console.log('🎯 最终结�?');
     console.log('='.repeat(80));
     console.log('');
 
     if (hasSecSender === messages.length && hasEncryptedConvId === messages.length && hasEncryptedSenderId === messages.length) {
       console.log('🎉🎉🎉 完美！所有消息都符合标准化数据结构！');
-      console.log('  ✅ 100% 消息包含 rawData.secSender');
-      console.log('  ✅ 100% 消息的 conversation_id 使用加密ID');
-      console.log('  ✅ 100% 消息的 sender_id 使用加密ID');
+      console.log('  �?100% 消息包含 rawData.secSender');
+      console.log('  �?100% 消息�?conversation_id 使用加密ID');
+      console.log('  �?100% 消息�?sender_id 使用加密ID');
       console.log('');
-      console.log('✨ 代码修复成功验证！');
+      console.log('�?代码修复成功验证�?);
     } else {
-      console.log('⚠️ 数据结构需要优化:');
+      console.log('⚠️ 数据结构需要优�?');
       if (hasSecSender < messages.length) {
-        console.log(`  ❌ 仅 ${(hasSecSender / messages.length * 100).toFixed(1)}% 消息包含 rawData.secSender`);
+        console.log(`  �?�?${(hasSecSender / messages.length * 100).toFixed(1)}% 消息包含 rawData.secSender`);
       }
       if (hasEncryptedConvId < messages.length) {
-        console.log(`  ⚠️ 仅 ${(hasEncryptedConvId / messages.length * 100).toFixed(1)}% 消息的 conversation_id 使用加密ID`);
+        console.log(`  ⚠️ �?${(hasEncryptedConvId / messages.length * 100).toFixed(1)}% 消息�?conversation_id 使用加密ID`);
       }
       if (hasEncryptedSenderId < messages.length) {
-        console.log(`  ⚠️ 仅 ${(hasEncryptedSenderId / messages.length * 100).toFixed(1)}% 消息的 sender_id 使用加密ID`);
+        console.log(`  ⚠️ �?${(hasEncryptedSenderId / messages.length * 100).toFixed(1)}% 消息�?sender_id 使用加密ID`);
       }
     }
 
@@ -170,11 +169,11 @@ async function main() {
     console.log('='.repeat(80));
 
   } catch (error) {
-    console.error('❌ 请求失败:', error.message);
+    console.error('�?请求失败:', error.message);
     console.error('');
-    console.error('请确保:');
-    console.error('  1. Master 服务器正在运行 (端口 3000)');
-    console.error('  2. Worker 已经爬取了私信数据');
+    console.error('请确�?');
+    console.error('  1. Master 服务器正在运�?(端口 3000)');
+    console.error('  2. Worker 已经爬取了私信数�?);
   }
 }
 

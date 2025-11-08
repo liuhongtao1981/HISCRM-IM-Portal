@@ -24,10 +24,10 @@ try {
 
   if (comments.length > 0) {
     const comment = comments[0];
-    console.log('📝 找到评论数据：');
+    console.log('📝 找到评论数据�?);
     console.log(JSON.stringify(comment, null, 2));
   } else {
-    console.log('❌ 数据库中没有评论数据');
+    console.log('�?数据库中没有评论数据');
   }
 } catch (error) {
   console.error('错误:', error.message);

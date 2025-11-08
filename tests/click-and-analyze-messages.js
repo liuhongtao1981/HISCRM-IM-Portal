@@ -1,41 +1,39 @@
 /**
- * 点击会话并分析消息虚拟列表
- */
+ * 点击会话并分析消息虚拟列�? */
 
 const { chromium } = require('playwright');
 const path = require('path');
 
 async function clickAndAnalyze() {
   console.log('\n' + '='.repeat(80));
-  console.log('点击会话并分析消息虚拟列表');
+  console.log('点击会话并分析消息虚拟列�?);
   console.log('='.repeat(80) + '\n');
 
   const userDataDir = path.join(__dirname, '../test-browser-data-manual');
 
   let context;
   try {
-    console.log('启动浏览器...');
+    console.log('启动浏览�?..');
     context = await chromium.launchPersistentContext(userDataDir, {
       headless: false,
       args: ['--no-sandbox', '--disable-setuid-sandbox', '--disable-dev-shm-usage']
     });
 
-    console.log('✅ 浏览器已启动\n');
+    console.log('�?浏览器已启动\n');
 
     const pages = context.pages();
     const page = pages.length > 0 ? pages[0] : await context.newPage();
 
-    console.log('导航到私信页面...');
+    console.log('导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
     await page.waitForTimeout(3000);
-    console.log('✅ 页面已加载\n');
+    console.log('�?页面已加载\n');
 
-    // 查找并点击第一个有效会话
-    console.log('查找会话列表...');
+    // 查找并点击第一个有效会�?    console.log('查找会话列表...');
 
     const conversations = await page.$$('li[class*="item"]');
     console.log(`找到 ${conversations.length} 个列表项\n`);
@@ -59,19 +57,18 @@ async function clickAndAnalyze() {
     }
 
     if (!clicked) {
-      console.log('❌ 没有找到可点击的会话');
+      console.log('�?没有找到可点击的会话');
       await context.close();
       return;
     }
 
-    console.log('✅ 已点击会话\n');
+    console.log('�?已点击会话\n');
 
     // 等待消息加载
     console.log('等待消息加载...');
     await page.waitForTimeout(3000);
 
-    // 查找所有虚拟列表容器
-    console.log('='.repeat(80));
+    // 查找所有虚拟列表容�?    console.log('='.repeat(80));
     console.log('查找虚拟列表容器');
     console.log('='.repeat(80) + '\n');
 
@@ -121,14 +118,14 @@ async function clickAndAnalyze() {
     console.log('='.repeat(80) + '\n');
 
     for (let containerIdx = 0; containerIdx < containers.length; containerIdx++) {
-      console.log(`\n【容器 #${containerIdx}】\n`);
+      console.log(`\n【容�?#${containerIdx}】\n`);
 
       const analysis = await page.evaluate((idx) => {
         const grids = document.querySelectorAll('[role="grid"]');
         const grid = grids[idx];
 
         if (!grid || !grid.children[0]) {
-          return { error: '容器不存在' };
+          return { error: '容器不存�? };
         }
 
         const innerContainer = grid.children[0];
@@ -143,8 +140,7 @@ async function clickAndAnalyze() {
             const props = fiber.memoizedProps;
             const allKeys = Object.keys(props);
 
-            // 查找消息相关键
-            const msgKeys = allKeys.filter(k => {
+            // 查找消息相关�?            const msgKeys = allKeys.filter(k => {
               const lk = k.toLowerCase();
               return lk.includes('message') || lk.includes('content') ||
                      lk.includes('text') || lk.includes('msg') ||
@@ -190,7 +186,7 @@ async function clickAndAnalyze() {
 
         const allFindings = [];
 
-        // 分析前15个子元素
+        // 分析�?5个子元素
         for (let i = 0; i < Math.min(15, children.length); i++) {
           const child = children[i];
           const fiberKey = Object.keys(child).find(k => k.startsWith('__react'));
@@ -200,8 +196,7 @@ async function clickAndAnalyze() {
             if (findings.length > 0) {
               allFindings.push({
                 elementIndex: i,
-                findings: findings.slice(0, 3) // 每个元素只保留前3个发现
-              });
+                findings: findings.slice(0, 3) // 每个元素只保留前3个发�?              });
             }
           }
         }
@@ -214,24 +209,24 @@ async function clickAndAnalyze() {
       }, containerIdx);
 
       if (analysis.error) {
-        console.log(`  ❌ ${analysis.error}\n`);
+        console.log(`  �?${analysis.error}\n`);
         continue;
       }
 
       console.log(`  子元素总数: ${analysis.totalChildren}`);
-      console.log(`  包含数据的元素: ${analysis.elementsWithData}\n`);
+      console.log(`  包含数据的元�? ${analysis.elementsWithData}\n`);
 
       if (analysis.elementsWithData > 0) {
-        console.log(`  ✅✅✅ 找到消息数据！\n`);
+        console.log(`  ✅✅�?找到消息数据！\n`);
 
         analysis.allFindings.forEach(elem => {
           console.log(`  元素 #${elem.elementIndex}:`);
 
           elem.findings.forEach((finding, idx) => {
             console.log(`    发现 #${idx + 1} (深度 ${finding.depth}):`);
-            console.log(`      总Props数: ${finding.totalKeys}`);
-            console.log(`      所有Props键: ${finding.allKeys.join(', ')}`);
-            console.log(`      消息相关键 (${finding.msgKeys.length}个): ${finding.msgKeys.join(', ')}`);
+            console.log(`      总Props�? ${finding.totalKeys}`);
+            console.log(`      所有Props�? ${finding.allKeys.join(', ')}`);
+            console.log(`      消息相关�?(${finding.msgKeys.length}�?: ${finding.msgKeys.join(', ')}`);
             console.log(`      数据样本:`);
             Object.entries(finding.sample).forEach(([k, v]) => {
               console.log(`        📌 ${k}: ${v}`);
@@ -240,21 +235,21 @@ async function clickAndAnalyze() {
           });
         });
       } else {
-        console.log(`  ❌ 未找到消息数据\n`);
+        console.log(`  �?未找到消息数据\n`);
       }
     }
 
     console.log('='.repeat(80));
-    console.log('分析完成！浏览器将保持打开 120 秒');
+    console.log('分析完成！浏览器将保持打开 120 �?);
     console.log('='.repeat(80) + '\n');
 
     await page.waitForTimeout(120000);
 
     await context.close();
-    console.log('✅ 完成\n');
+    console.log('�?完成\n');
 
   } catch (error) {
-    console.error('\n❌ 出错:', error.message);
+    console.error('\n�?出错:', error.message);
     console.error(error.stack);
     if (context) {
       await context.close().catch(() => {});

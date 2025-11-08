@@ -1,6 +1,6 @@
 /**
  * 清空所有测试数据表
- * 包括: 作品、私信、评论、会话、讨论
+ * 包括: 作品、私信、评论、会话、讨�?
  */
 
 const Database = require('better-sqlite3');
@@ -11,7 +11,7 @@ const db = new Database(dbPath);
 
 console.log('🧹 清空所有测试数据表\n');
 
-// 要清空的表
+// 要清空的�?
 const tables = [
   'contents',             // 作品
   'direct_messages',   // 私信
@@ -21,7 +21,7 @@ const tables = [
 ];
 
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('📊 清空前统计');
+console.log('📊 清空前统�?);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 tables.forEach(table => {
@@ -29,26 +29,26 @@ tables.forEach(table => {
     const count = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get().count;
     console.log(`${table}: ${count} 条记录`);
   } catch (e) {
-    console.log(`${table}: ❌ 表不存在或查询失败`);
+    console.log(`${table}: �?表不存在或查询失败`);
   }
 });
 
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('🗑️  开始清空');
+console.log('🗑�? 开始清�?);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 // 清空所有表
 tables.forEach(table => {
   try {
     const result = db.prepare(`DELETE FROM ${table}`).run();
-    console.log(`✅ ${table}: 删除了 ${result.changes} 条记录`);
+    console.log(`�?${table}: 删除�?${result.changes} 条记录`);
   } catch (e) {
-    console.log(`❌ ${table}: 删除失败 - ${e.message}`);
+    console.log(`�?${table}: 删除失败 - ${e.message}`);
   }
 });
 
 console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('📊 清空后统计');
+console.log('📊 清空后统�?);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 tables.forEach(table => {
@@ -56,9 +56,9 @@ tables.forEach(table => {
     const count = db.prepare(`SELECT COUNT(*) as count FROM ${table}`).get().count;
     console.log(`${table}: ${count} 条记录`);
   } catch (e) {
-    console.log(`${table}: ❌ 表不存在或查询失败`);
+    console.log(`${table}: �?表不存在或查询失败`);
   }
 });
 
 db.close();
-console.log('\n✅ 清空完成!');
+console.log('\n�?清空完成!');

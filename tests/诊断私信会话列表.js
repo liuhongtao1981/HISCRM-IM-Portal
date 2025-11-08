@@ -10,21 +10,21 @@ const { chromium } = require('playwright');
 async function diagnoseConversationList() {
   console.log('🔍 诊断私信会话列表\n');
 
-  // 1. 连接数据库
+  // 1. 连接数据�?
   const dbPath = path.join(__dirname, '../packages/master/data/master.db');
   const db = new Database(dbPath);
 
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     db.close();
     process.exit(1);
   }
 
-  console.log(`✅ 账户: ${account.platform_username || account.id}\n`);
+  console.log(`�?账户: ${account.platform_username || account.id}\n`);
 
-  // 2. 启动浏览器
+  // 2. 启动浏览�?
   const userDataDir = path.join(__dirname, '../packages/worker/data/browser/worker-1/browser_' + account.id);
   const context = await chromium.launchPersistentContext(userDataDir, {
     headless: false,
@@ -34,21 +34,21 @@ async function diagnoseConversationList() {
   const page = await context.newPage();
 
   try {
-    // 3. 导航到私信页面
-    console.log('📍 导航到私信页面...');
+    // 3. 导航到私信页�?
+    console.log('📍 导航到私信页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
     });
 
-    console.log('⏳ 等待页面加载完成...');
+    console.log('�?等待页面加载完成...');
     await page.waitForTimeout(5000);
 
-    console.log(`✅ 当前 URL: ${page.url()}\n`);
+    console.log(`�?当前 URL: ${page.url()}\n`);
 
-    // 4. 尝试多种选择器查找会话列表
+    // 4. 尝试多种选择器查找会话列�?
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔬 测试多种会话列表选择器');
+    console.log('🔬 测试多种会话列表选择�?);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const selectors = [
@@ -81,7 +81,7 @@ async function diagnoseConversationList() {
       return findings;
     }, selectors);
 
-    console.log('选择器测试结果:\n');
+    console.log('选择器测试结�?\n');
     results.forEach((result, i) => {
       console.log(`${i + 1}. ${result.selector}`);
       console.log(`   找到: ${result.count} 个元素`);
@@ -90,11 +90,11 @@ async function diagnoseConversationList() {
         console.log(`   类名: ${result.sample.className}`);
         console.log(`   内容: ${result.sample.innerHTML.substring(0, 100)}...\n`);
       } else {
-        console.log('   ❌ 未找到任何元素\n');
+        console.log('   �?未找到任何元素\n');
       }
     });
 
-    // 5. 检查页面整体结构
+    // 5. 检查页面整体结�?
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
     console.log('📊 页面整体结构分析');
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
@@ -114,11 +114,11 @@ async function diagnoseConversationList() {
 
     console.log('页面信息:');
     console.log(`  总元素数: ${pageStructure.totalElements}`);
-    console.log(`  有登录提示: ${pageStructure.hasLoginIndicator ? '⚠️  是' : '✅ 否'}`);
+    console.log(`  有登录提�? ${pageStructure.hasLoginIndicator ? '⚠️  �? : '�?�?}`);
     console.log(`  [role="list"]: ${pageStructure.hasListRole} 个`);
     console.log(`  [role="list-item"]: ${pageStructure.hasListItemRole} 个`);
     console.log(`  [class*="semi"]: ${pageStructure.hasSemiPrefix} 个`);
-    console.log(`  主容器类名: ${pageStructure.mainContainerClasses}\n`);
+    console.log(`  主容器类�? ${pageStructure.mainContainerClasses}\n`);
 
     if (pageStructure.hasLoginIndicator) {
       console.log('⚠️  警告: 页面可能需要登录\n');
@@ -135,7 +135,7 @@ async function diagnoseConversationList() {
 
     const screenshotPath = path.join(__dirname, 'conversation-list-diagnosis.png');
     await page.screenshot({ path: screenshotPath, fullPage: true });
-    console.log(`✅ 截图已保存: ${screenshotPath}\n`);
+    console.log(`�?截图已保�? ${screenshotPath}\n`);
 
     // 7. 尝试使用 Playwright Locator 查找
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
@@ -148,18 +148,18 @@ async function diagnoseConversationList() {
       console.log(`Playwright Locator 找到: ${count} 个会话\n`);
 
       if (count > 0) {
-        console.log('✅ Playwright Locator 可以找到会话列表');
-        console.log('前3个会话:');
+        console.log('�?Playwright Locator 可以找到会话列表');
+        console.log('�?个会�?');
         const all = await locator.all();
         for (let i = 0; i < Math.min(3, all.length); i++) {
           const text = await all[i].innerText();
           console.log(`  ${i + 1}. ${text.substring(0, 100)}...`);
         }
       } else {
-        console.log('❌ Playwright Locator 未找到会话列表');
+        console.log('�?Playwright Locator 未找到会话列�?);
       }
     } catch (e) {
-      console.error('❌ Playwright Locator 查找失败:', e.message);
+      console.error('�?Playwright Locator 查找失败:', e.message);
     }
 
     // 8. 总结
@@ -169,35 +169,35 @@ async function diagnoseConversationList() {
 
     const bestSelector = results.find(r => r.count > 0);
     if (bestSelector) {
-      console.log(`✅ 建议使用选择器: ${bestSelector.selector}`);
+      console.log(`�?建议使用选择�? ${bestSelector.selector}`);
       console.log(`   找到 ${bestSelector.count} 个会话\n`);
     } else {
-      console.log('❌ 所有选择器都未找到会话元素\n');
+      console.log('�?所有选择器都未找到会话元素\n');
       console.log('可能原因:');
-      console.log('  1. 页面未完全加载');
+      console.log('  1. 页面未完全加�?);
       console.log('  2. 需要先登录');
       console.log('  3. 页面结构发生变化');
       console.log('  4. 等待时间不足\n');
       console.log('建议:');
-      console.log('  - 检查截图确认页面状态');
-      console.log('  - 手动打开浏览器查看页面');
+      console.log('  - 检查截图确认页面状�?);
+      console.log('  - 手动打开浏览器查看页�?);
       console.log('  - 增加等待时间\n');
     }
 
   } catch (error) {
-    console.error('\n❌ 诊断失败:', error);
+    console.error('\n�?诊断失败:', error);
     console.error(error.stack);
   } finally {
-    console.log('\n⏸️  等待15秒后关闭浏览器 (请查看页面状态)...');
+    console.log('\n⏸️  等待15秒后关闭浏览�?(请查看页面状�?...');
     await page.waitForTimeout(15000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 诊断完成');
+    console.log('\n�?诊断完成');
   }
 }
 
 diagnoseConversationList().catch(error => {
-  console.error('❌ 脚本执行失败:', error);
+  console.error('�?脚本执行失败:', error);
   process.exit(1);
 });

@@ -10,9 +10,9 @@ const db = new Database(dbPath);
 
 console.log('📊 数据库表结构和数据\n');
 
-// 查看 conversations 表结构
+// 查看 conversations 表结�?
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('📋 conversations 表结构');
+console.log('📋 conversations 表结�?);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 const convColumns = db.prepare("PRAGMA table_info(conversations)").all();
@@ -40,9 +40,9 @@ if (conversations.length === 0) {
   });
 }
 
-// 查看 direct_messages 表结构
+// 查看 direct_messages 表结�?
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-console.log('📋 direct_messages 表结构');
+console.log('📋 direct_messages 表结�?);
 console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
 const dmColumns = db.prepare("PRAGMA table_info(direct_messages)").all();
@@ -87,4 +87,4 @@ Object.entries(stats).forEach(([table, count]) => {
 });
 
 db.close();
-console.log('\n✅ 查询完成');
+console.log('\n�?查询完成');

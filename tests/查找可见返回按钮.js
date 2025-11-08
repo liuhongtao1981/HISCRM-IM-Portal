@@ -1,6 +1,6 @@
 /**
  * 查找讨论API的真实URL
- * 打印所有网络请求
+ * 打印所有网络请�?
  */
 
 const Database = require('better-sqlite3');
@@ -16,11 +16,11 @@ async function findDiscussionAPI() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
-  console.log(`✅ 找到账户: ${account.id}\n`);
+  console.log(`�?找到账户: ${account.id}\n`);
 
   // 2. 连接到浏览器
   const { chromium } = require('playwright');
@@ -58,13 +58,13 @@ async function findDiscussionAPI() {
           const json = await response.json();
           console.log(`  Response keys: ${Object.keys(json).join(', ')}`);
 
-          // 如果有reply_list,打印第一条
+          // 如果有reply_list,打印第一�?
           if (json.reply_list && json.reply_list.length > 0) {
-            console.log('\n📝 第一条回复数据:');
+            console.log('\n📝 第一条回复数�?');
             console.log(JSON.stringify(json.reply_list[0], null, 2).substring(0, 2000));
           }
 
-          // 如果有comment_info_list,只打印数量
+          // 如果有comment_info_list,只打印数�?
           if (json.comment_info_list) {
             console.log(`  评论数量: ${json.comment_info_list.length}`);
           }
@@ -77,17 +77,17 @@ async function findDiscussionAPI() {
     }
   });
 
-  console.log('✅ API拦截器已启动(记录所有creator.douyin.com JSON API)\n');
+  console.log('�?API拦截器已启动(记录所有creator.douyin.com JSON API)\n');
 
-  // 4. 导航到评论管理页面
-  console.log('📍 导航到评论管理页面...');
+  // 4. 导航到评论管理页�?
+  console.log('📍 导航到评论管理页�?..');
   await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
     waitUntil: 'domcontentloaded',
     timeout: 30000
   });
 
   await page.waitForTimeout(3000);
-  console.log('✅ 页面加载完成\n');
+  console.log('�?页面加载完成\n');
 
   // 5. 点击"选择作品"
   console.log('📍 点击"选择作品"...');
@@ -98,7 +98,7 @@ async function findDiscussionAPI() {
     console.log('⚠️  选择作品可能已打开\n');
   }
 
-  // 6. 选择第一个有评论的视频
+  // 6. 选择第一个有评论的视�?
   const videoClicked = await page.evaluate(() => {
     const containers = document.querySelectorAll('.container-Lkxos9');
     for (let i = 0; i < containers.length; i++) {
@@ -114,23 +114,23 @@ async function findDiscussionAPI() {
   });
 
   if (!videoClicked) {
-    console.log('❌ 没有找到有评论的视频');
+    console.log('�?没有找到有评论的视频');
     await context.close();
     db.close();
     return;
   }
 
-  console.log('✅ 已选择视频,等待评论加载...');
+  console.log('�?已选择视频,等待评论加载...');
   await page.waitForTimeout(3000);
 
-  // 7. 查找并点击第一个"查看X条回复"按钮
-  console.log('\n🖱️  查找并点击第一个"查看X条回复"按钮...\n');
+  // 7. 查找并点击第一�?查看X条回�?按钮
+  console.log('\n🖱�? 查找并点击第一�?查看X条回�?按钮...\n');
 
   const clicked = await page.evaluate(() => {
     const allElements = Array.from(document.querySelectorAll('*'));
     const target = allElements.find(el => {
       const text = el.textContent || '';
-      return /^查看\d+条回复$/.test(text) && el.offsetParent !== null;
+      return /^查看\d+条回�?/.test(text) && el.offsetParent !== null;
     });
 
     if (target) {
@@ -142,10 +142,10 @@ async function findDiscussionAPI() {
   });
 
   if (clicked) {
-    console.log('✅ 点击成功,等待API响应...\n');
+    console.log('�?点击成功,等待API响应...\n');
     await page.waitForTimeout(3000);
   } else {
-    console.log('❌ 没有找到"查看X条回复"按钮\n');
+    console.log('�?没有找到"查看X条回�?按钮\n');
   }
 
   // 8. 统计所有API
@@ -163,15 +163,15 @@ async function findDiscussionAPI() {
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
   // 等待查看
-  console.log('⏸️  等待 10 秒...');
+  console.log('⏸️  等待 10 �?..');
   await page.waitForTimeout(10000);
 
   await context.close();
   db.close();
-  console.log('\n✅ 测试完成');
+  console.log('\n�?测试完成');
 }
 
 findDiscussionAPI().catch(error => {
-  console.error('❌ 测试失败:', error);
+  console.error('�?测试失败:', error);
   process.exit(1);
 });

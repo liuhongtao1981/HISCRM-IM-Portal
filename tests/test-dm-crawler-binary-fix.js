@@ -3,8 +3,7 @@
  *
  * 验证点：
  * 1. API拦截器能否检测到二进制Protobuf响应
- * 2. DOM提取方案是否被正确触发
- * 3. 最终是否能提取到消息数据（> 0条）
+ * 2. DOM提取方案是否被正确触�? * 3. 最终是否能提取到消息数据（> 0条）
  */
 
 const path = require('path');
@@ -22,15 +21,12 @@ async function testDMCrawlerBinaryFix() {
   logger.info('🧪 开始测试私信爬虫二进制Protobuf修复...');
 
   try {
-    // 1. 导入必要的模块
-    const { chromium } = require('playwright');
+    // 1. 导入必要的模�?    const { chromium } = require('playwright');
     const crawlDirectMessagesV2 = require('../packages/worker/src/platforms/douyin/crawl-direct-messages-v2');
 
-    // 2. 创建浏览器实例（模拟Worker环境）
-    logger.info('启动测试浏览器...');
+    // 2. 创建浏览器实例（模拟Worker环境�?    logger.info('启动测试浏览�?..');
     const browser = await chromium.launch({
-      headless: false, // 显示浏览器以便观察
-      args: ['--disable-blink-features=AutomationControlled']
+      headless: false, // 显示浏览器以便观�?      args: ['--disable-blink-features=AutomationControlled']
     });
 
     const context = await browser.newContext({
@@ -56,7 +52,7 @@ async function testDMCrawlerBinaryFix() {
     // 等待用户登录
     await page.waitForTimeout(60000);
 
-    logger.info('✅ 假设登录成功，开始测试爬虫...');
+    logger.info('�?假设登录成功，开始测试爬�?..');
 
     // 4. 调用爬虫函数
     logger.info('📡 调用 crawlDirectMessagesV2...');
@@ -64,24 +60,23 @@ async function testDMCrawlerBinaryFix() {
 
     // 5. 验证结果
     logger.info('📊 爬取结果:');
-    logger.info(`  - 会话数: ${result.conversations.length}`);
-    logger.info(`  - 消息数: ${result.directMessages.length}`);
+    logger.info(`  - 会话�? ${result.conversations.length}`);
+    logger.info(`  - 消息�? ${result.directMessages.length}`);
     logger.info(`  - 数据来源: ${result.stats.dataSource || 'Unknown'}`);
     logger.info(`  - API响应计数: ${JSON.stringify(result.stats.apiResponseCounts)}`);
 
-    // 6. 验证点检查
-    const checks = {
+    // 6. 验证点检�?    const checks = {
       hasConversations: result.conversations.length > 0,
       hasMessages: result.directMessages.length > 0,
       isDOMMode: result.stats.dataSource?.includes('DOM'),
       hasBinaryDetection: result.stats.apiResponseCounts?.init > 0
     };
 
-    logger.info('\n✅ 验证结果:');
-    logger.info(`  - 是否提取到会话: ${checks.hasConversations ? '✅' : '❌'} (${result.conversations.length}个)`);
-    logger.info(`  - 是否提取到消息: ${checks.hasMessages ? '✅' : '❌'} (${result.directMessages.length}条)`);
-    logger.info(`  - 是否使用DOM模式: ${checks.isDOMMode ? '✅' : '❌'}`);
-    logger.info(`  - 是否检测到API响应: ${checks.hasBinaryDetection ? '✅' : '❌'}`);
+    logger.info('\n�?验证结果:');
+    logger.info(`  - 是否提取到会�? ${checks.hasConversations ? '�? : '�?} (${result.conversations.length}�?`);
+    logger.info(`  - 是否提取到消�? ${checks.hasMessages ? '�? : '�?} (${result.directMessages.length}�?`);
+    logger.info(`  - 是否使用DOM模式: ${checks.isDOMMode ? '�? : '�?}`);
+    logger.info(`  - 是否检测到API响应: ${checks.hasBinaryDetection ? '�? : '�?}`);
 
     // 7. 显示示例数据
     if (result.directMessages.length > 0) {
@@ -97,10 +92,10 @@ async function testDMCrawlerBinaryFix() {
     // 9. 总结
     const allPassed = Object.values(checks).every(v => v);
     if (allPassed) {
-      logger.info('\n🎉 所有测试通过！二进制Protobuf修复方案工作正常。');
+      logger.info('\n🎉 所有测试通过！二进制Protobuf修复方案工作正常�?);
       process.exit(0);
     } else {
-      logger.error('\n❌ 部分测试失败，请检查日志。');
+      logger.error('\n�?部分测试失败，请检查日志�?);
       process.exit(1);
     }
 

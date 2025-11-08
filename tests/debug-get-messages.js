@@ -19,7 +19,7 @@ console.log('模拟 DataStore 加载逻辑');
 console.log('='.repeat(80));
 console.log('');
 
-// 模拟 DataStore 的 messages Map
+// 模拟 DataStore �?messages Map
 const messages = new Map();
 messagesRows.forEach(row => {
   const message = JSON.parse(row.data);
@@ -29,7 +29,7 @@ messagesRows.forEach(row => {
 console.log(`DataStore messages Map 大小: ${messages.size}`);
 console.log('');
 
-// 打印前3个 key
+// 打印�?�?key
 let count = 0;
 for (const [key, value] of messages) {
   if (count < 3) {
@@ -43,7 +43,7 @@ console.log('');
 
 // 模拟 conversations
 const conversations = conversationsRows.map(row => JSON.parse(row.data));
-console.log(`会话数: ${conversations.length}`);
+console.log(`会话�? ${conversations.length}`);
 console.log('');
 
 // 测试过滤逻辑
@@ -55,8 +55,7 @@ console.log(`  conversationId: ${topicId}`);
 console.log(`  userName: ${testConv.userName}`);
 console.log('');
 
-// 模拟 getMessagesFromDataStore 的过滤
-const messagesList = Array.from(messages.values());
+// 模拟 getMessagesFromDataStore 的过�?const messagesList = Array.from(messages.values());
 console.log(`消息总数: ${messagesList.length}`);
 
 const filteredMessages = messagesList.filter(m => m.conversationId === topicId);
@@ -64,14 +63,14 @@ console.log(`过滤后消息数 (conversationId === topicId): ${filteredMessages
 console.log('');
 
 if (filteredMessages.length > 0) {
-  console.log('✅ 过滤逻辑正常工作！');
+  console.log('�?过滤逻辑正常工作�?);
   console.log('');
   console.log('第一条匹配的消息:');
   console.log(`  messageId: ${filteredMessages[0].messageId}`);
   console.log(`  conversationId: ${filteredMessages[0].conversationId}`);
   console.log(`  content: ${filteredMessages[0].content}`);
 } else {
-  console.log('❌ 过滤失败！没有匹配的消息');
+  console.log('�?过滤失败！没有匹配的消息');
   console.log('');
   console.log('调试信息:');
   console.log(`  topicId: ${topicId}`);

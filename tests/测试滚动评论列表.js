@@ -1,6 +1,6 @@
 /**
  * 测试滚动评论列表功能
- * 找到正确的滚动容器
+ * 找到正确的滚动容�?
  */
 
 const path = require('path');
@@ -14,7 +14,7 @@ async function testCommentScroll() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
@@ -28,8 +28,8 @@ async function testCommentScroll() {
   const page = await context.newPage();
 
   try {
-    // 1. 导航到评论页面
-    console.log('📍 导航到评论管理页面...');
+    // 1. 导航到评论页�?
+    console.log('📍 导航到评论管理页�?..');
     await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
       waitUntil: 'domcontentloaded',
       timeout: 30000
@@ -43,7 +43,7 @@ async function testCommentScroll() {
       await page.waitForTimeout(1500);
     } catch (e) {}
 
-    // 3. 选择有77条评论的视频
+    // 3. 选择�?7条评论的视频
     console.log('📍 选择视频...\n');
     await page.evaluate(() => {
       const containers = document.querySelectorAll('.container-Lkxos9');
@@ -54,9 +54,9 @@ async function testCommentScroll() {
 
     await page.waitForTimeout(3000);
 
-    // 4. 分析页面中所有可滚动的容器
+    // 4. 分析页面中所有可滚动的容�?
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔍 查找可滚动容器');
+    console.log('🔍 查找可滚动容�?);
     console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
     const scrollableContainers = await page.evaluate(() => {
@@ -97,7 +97,7 @@ async function testCommentScroll() {
     });
 
     if (scrollableContainers.length === 0) {
-      console.log('❌ 没有找到可滚动容器!\n');
+      console.log('�?没有找到可滚动容�?\n');
     } else {
       console.log(`找到 ${scrollableContainers.length} 个可滚动容器:\n`);
 
@@ -116,11 +116,11 @@ async function testCommentScroll() {
       const target = scrollableContainers[0];
 
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-      console.log(`🧪 测试滚动第一个容器 (${target.selector})`);
+      console.log(`🧪 测试滚动第一个容�?(${target.selector})`);
       console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
-      // 滚动到底部
-      console.log('1. 滚动到底部...');
+      // 滚动到底�?
+      console.log('1. 滚动到底�?..');
       const scrollResult = await page.evaluate((targetSelector, targetIndex) => {
         const containers = document.querySelectorAll(targetSelector);
         const container = containers[targetIndex];
@@ -131,7 +131,7 @@ async function testCommentScroll() {
         const scrollHeight = container.scrollHeight;
         const clientHeight = container.clientHeight;
 
-        // 滚动到底部
+        // 滚动到底�?
         container.scrollTop = scrollHeight;
 
         return {
@@ -144,10 +144,10 @@ async function testCommentScroll() {
         };
       }, target.selector, target.index);
 
-      console.log(`   滚动前位置: ${scrollResult.beforeScroll}px`);
-      console.log(`   滚动后位置: ${scrollResult.afterScroll}px`);
+      console.log(`   滚动前位�? ${scrollResult.beforeScroll}px`);
+      console.log(`   滚动后位�? ${scrollResult.afterScroll}px`);
       console.log(`   滚动距离: ${scrollResult.afterScroll - scrollResult.beforeScroll}px`);
-      console.log(`   ${scrollResult.scrolled ? '✅ 滚动成功' : '❌ 滚动失败'}\n`);
+      console.log(`   ${scrollResult.scrolled ? '�?滚动成功' : '�?滚动失败'}\n`);
 
       await page.waitForTimeout(2000);
 
@@ -159,7 +159,7 @@ async function testCommentScroll() {
         return allText.includes('没有更多评论');
       });
 
-      console.log(`2. 检查"没有更多评论"文本: ${hasNoMoreText ? '✅ 已到底' : '❌ 未找到'}\n`);
+      console.log(`2. 检�?没有更多评论"文本: ${hasNoMoreText ? '�?已到�? : '�?未找�?}\n`);
 
       // 计算评论数量
       const commentCount = await page.evaluate(() => {
@@ -176,7 +176,7 @@ async function testCommentScroll() {
       const maxScrolls = 5;
 
       while (scrollAttempts < maxScrolls) {
-        // 滚动到底部
+        // 滚动到底�?
         await page.evaluate((targetSelector, targetIndex) => {
           const containers = document.querySelectorAll(targetSelector);
           const container = containers[targetIndex];
@@ -191,12 +191,12 @@ async function testCommentScroll() {
           return document.querySelectorAll('[class*="comment"]').length;
         });
 
-        console.log(`   第${scrollAttempts + 1}次滚动: ${lastCommentCount} → ${currentCount} 评论`);
+        console.log(`   �?{scrollAttempts + 1}次滚�? ${lastCommentCount} �?${currentCount} 评论`);
 
         if (currentCount > lastCommentCount) {
           lastCommentCount = currentCount;
         } else {
-          console.log(`   评论数量未增加,可能已经全部加载\n`);
+          console.log(`   评论数量未增�?可能已经全部加载\n`);
           break;
         }
 
@@ -204,25 +204,25 @@ async function testCommentScroll() {
       }
 
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
-      console.log(`✅ 滚动测试完成`);
-      console.log(`   总滚动次数: ${scrollAttempts}`);
+      console.log(`�?滚动测试完成`);
+      console.log(`   总滚动次�? ${scrollAttempts}`);
       console.log(`   最终评论数: ${lastCommentCount}`);
       console.log(`━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`);
     }
 
   } catch (error) {
-    console.error('❌ 测试失败:', error);
+    console.error('�?测试失败:', error);
   } finally {
-    console.log('⏸️  等待15秒,可以手动查看页面...');
+    console.log('⏸️  等待15�?可以手动查看页面...');
     await page.waitForTimeout(15000);
 
     await context.close();
     db.close();
-    console.log('\n✅ 测试完成');
+    console.log('\n�?测试完成');
   }
 }
 
 testCommentScroll().catch(error => {
-  console.error('❌ 测试脚本执行失败:', error);
+  console.error('�?测试脚本执行失败:', error);
   process.exit(1);
 });

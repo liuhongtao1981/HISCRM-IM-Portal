@@ -1,5 +1,5 @@
 /**
- * 手动从数据库加载数据到 DataStore
+ * 手动从数据库加载数据�?DataStore
  * 用于测试 DataStore 功能
  */
 
@@ -8,11 +8,10 @@ const http = require('http');
 const accountId = 'acc-98296c87-2e42-447a-9d8b-8be008ddb6e4';
 
 console.log('==================================================');
-console.log('手动加载数据到 DataStore');
+console.log('手动加载数据�?DataStore');
 console.log('==================================================\n');
 
-// 模拟从数据库读取的数据
-const testData = {
+// 模拟从数据库读取的数�?const testData = {
   conversations: [
     {
       id: 'conv_test_1',
@@ -24,7 +23,7 @@ const testData = {
       userName: '测试用户1',
       userAvatar: 'https://example.com/avatar1.jpg',
       unreadCount: 5,
-      lastMessageContent: '你好，这是一条测试私信',
+      lastMessageContent: '你好，这是一条测试私�?,
       lastMessageTime: Date.now() - 3600000,
       status: 'new',
       createdAt: Date.now() - 86400000,
@@ -40,7 +39,7 @@ const testData = {
       userName: '测试用户2',
       userAvatar: 'https://example.com/avatar2.jpg',
       unreadCount: 3,
-      lastMessageContent: '您的视频很棒！',
+      lastMessageContent: '您的视频很棒�?,
       lastMessageTime: Date.now() - 7200000,
       status: 'new',
       createdAt: Date.now() - 172800000,
@@ -55,7 +54,7 @@ const testData = {
       conversationId: 'test_conv_1',
       messageId: 'msg_001',
       type: 'text',
-      content: '你好，这是一条测试私信',
+      content: '你好，这是一条测试私�?,
       senderId: 'user_001',
       receiverId: accountId,
       createdAt: Date.now() - 3600000,
@@ -68,7 +67,7 @@ const testData = {
       conversationId: 'test_conv_2',
       messageId: 'msg_002',
       type: 'text',
-      content: '您的视频很棒！',
+      content: '您的视频很棒�?,
       senderId: 'user_002',
       receiverId: accountId,
       createdAt: Date.now() - 7200000,
@@ -84,7 +83,7 @@ const testData = {
       contentId: 'content_001',
       userId: 'user_003',
       userName: '粉丝A',
-      text: '太赞了！支持！',
+      text: '太赞了！支持�?,
       createdAt: Date.now() - 1800000,
       status: 'new',
     },
@@ -96,7 +95,7 @@ const testData = {
       contentId: 'content_001',
       userId: 'user_004',
       userName: '粉丝B',
-      text: '讲得非常好',
+      text: '讲得非常�?,
       createdAt: Date.now() - 3600000,
       status: 'new',
     },
@@ -157,7 +156,7 @@ async function loadDataToMaster() {
       res.on('data', (chunk) => { data += chunk; });
       res.on('end', () => {
         if (res.statusCode === 404) {
-          console.log('⚠️ 测试接口不存在');
+          console.log('⚠️ 测试接口不存�?);
           console.log('   说明: Master 没有提供测试接口');
           console.log('   建议: 需要在 Master 中添加测试接口来手动推送数据\n');
           resolve({ statusCode: 404, error: 'Not Found' });
@@ -199,24 +198,23 @@ async function testIMApis() {
       if (response.ok && data.status_code === 0) {
         const dataKey = Object.keys(data.data).find(k => Array.isArray(data.data[k]));
         const count = dataKey ? data.data[dataKey].length : 0;
-        console.log(`✅ ${api.name}: ${count} 条数据`);
+        console.log(`�?${api.name}: ${count} 条数据`);
       } else {
-        console.log(`❌ ${api.name}: HTTP ${response.status}`);
+        console.log(`�?${api.name}: HTTP ${response.status}`);
       }
     } catch (err) {
-      console.log(`❌ ${api.name}: ${err.message}`);
+      console.log(`�?${api.name}: ${err.message}`);
     }
   }
 }
 
-// 主流程
-async function main() {
-  console.log('步骤 1: 尝试加载测试数据到 Master DataStore...\n');
+// 主流�?async function main() {
+  console.log('步骤 1: 尝试加载测试数据�?Master DataStore...\n');
 
   try {
     const result = await loadDataToMaster();
     if (result.statusCode === 200) {
-      console.log('✅ 测试数据已加载到 DataStore\n');
+      console.log('�?测试数据已加载到 DataStore\n');
     }
   } catch (err) {
     console.log(`⚠️ 无法加载测试数据: ${err.message}\n`);
@@ -231,19 +229,19 @@ async function main() {
 
   console.log('问题诊断:');
   console.log('  1. 数据库中有数据（2条评论，40条私信，29个会话）');
-  console.log('  2. 但 DataStore 为空（Worker 没有推送数据）');
-  console.log('  3. Worker 状态显示 offline 和 not_logged_in\n');
+  console.log('  2. �?DataStore 为空（Worker 没有推送数据）');
+  console.log('  3. Worker 状态显�?offline �?not_logged_in\n');
 
   console.log('根本原因:');
   console.log('  Worker 账户状态检测有问题，导致：');
-  console.log('  - Worker 认为账户未登录');
-  console.log('  - 没有初始化 DouyinDataManager');
-  console.log('  - 没有启动数据同步定时器');
+  console.log('  - Worker 认为账户未登�?);
+  console.log('  - 没有初始�?DouyinDataManager');
+  console.log('  - 没有启动数据同步定时�?);
   console.log('  - 数据库有数据，但 DataStore 是空的\n');
 
   console.log('解决方案:');
   console.log('  方案 1: 修复 Worker 账户状态检测逻辑');
-  console.log('  方案 2: 在 Master 启动时从数据库加载数据到 DataStore');
+  console.log('  方案 2: �?Master 启动时从数据库加载数据到 DataStore');
   console.log('  方案 3: 添加手动触发数据同步的接口\n');
 
   console.log('==================================================\n');

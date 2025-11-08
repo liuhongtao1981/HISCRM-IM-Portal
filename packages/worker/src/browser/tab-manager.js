@@ -202,6 +202,39 @@ class TabManager {
   }
 
   /**
+   * 注册已存在的 Page 到 TabManager
+   * 用于将浏览器启动时自动创建的默认 tab 注册到管理系统
+   * 
+   * @param {string} accountId - 账户ID
+   * @param {Page} page - Playwright Page 对象
+   * @param {string} tag - Tab 标记
+   * @param {boolean} persistent - 是否持久
+   * @returns {string} tabId
+   */
+  async registerExistingPage(accountId, page, tag, persistent = true) {
+    const tabId = `tab-${++this.tabIdCounter}`;
+
+    // 注册 Tab
+    if (!this.tabs.has(accountId)) {
+      this.tabs.set(accountId, new Map());
+    }
+
+    this.tabs.get(accountId).set(tabId, {
+      tabId,
+      page,
+      tag,
+      persistent,
+      createdAt: Date.now(),
+      status: 'ACTIVE',
+      releasedAt: null,
+    });
+
+    logger.info(`✅ Registered existing tab ${tabId}: tag=${tag}, persistent=${persistent}`);
+
+    return tabId;
+  }
+
+  /**
    * 查找指定 tag 的 Tab
    *
    * @param {string} accountId - 账户ID

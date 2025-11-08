@@ -1,5 +1,5 @@
 /**
- * 检查评论API的完整数据结构
+ * 检查评论API的完整数据结�?
  * 查看是否包含讨论/回复数据
  */
 
@@ -15,7 +15,7 @@ async function checkCommentAPIData() {
   const account = db.prepare('SELECT * FROM accounts WHERE platform = ? LIMIT 1').get('douyin');
 
   if (!account) {
-    console.log('❌ 未找到抖音账户');
+    console.log('�?未找到抖音账�?);
     process.exit(1);
   }
 
@@ -52,16 +52,16 @@ async function checkCommentAPIData() {
           console.log('\n');
 
           // 检查是否有reply相关字段
-          console.log(`🔍 检查回复相关字段:`);
+          console.log(`🔍 检查回复相关字�?`);
 
           const replyFields = Object.keys(firstComment).filter(key =>
             key.toLowerCase().includes('reply') ||
-            key.toLowerCase().includes('子评论') ||
+            key.toLowerCase().includes('子评�?) ||
             key.toLowerCase().includes('discussion')
           );
 
           if (replyFields.length > 0) {
-            console.log(`  ✅ 找到 ${replyFields.length} 个回复相关字段:`);
+            console.log(`  �?找到 ${replyFields.length} 个回复相关字�?`);
             replyFields.forEach(field => {
               const value = firstComment[field];
               console.log(`\n  字段: ${field}`);
@@ -69,22 +69,22 @@ async function checkCommentAPIData() {
               if (Array.isArray(value)) {
                 console.log(`  数组长度: ${value.length}`);
                 if (value.length > 0) {
-                  console.log(`  第一个元素:`);
+                  console.log(`  第一个元�?`);
                   console.log(JSON.stringify(value[0], null, 2).substring(0, 500));
                 }
               } else {
-                console.log(`  值: ${JSON.stringify(value).substring(0, 200)}`);
+                console.log(`  �? ${JSON.stringify(value).substring(0, 200)}`);
               }
             });
           } else {
-            console.log(`  ❌ 没有找到回复相关字段`);
+            console.log(`  �?没有找到回复相关字段`);
           }
 
-          console.log(`\n\n🔍 所有字段列表 (${Object.keys(firstComment).length} 个):`);
+          console.log(`\n\n🔍 所有字段列�?(${Object.keys(firstComment).length} �?:`);
           console.log(Object.keys(firstComment).sort().join(', '));
           console.log('\n');
 
-          // 保存完整数据到文件
+          // 保存完整数据到文�?
           const outputPath = path.join(__dirname, 'comment-api-data.json');
           fs.writeFileSync(outputPath, JSON.stringify({
             url,
@@ -101,10 +101,10 @@ async function checkCommentAPIData() {
     }
   });
 
-  console.log('✅ API拦截器已启动\n');
+  console.log('�?API拦截器已启动\n');
 
-  // 导航到评论页面
-  console.log('📍 导航到评论管理页面...');
+  // 导航到评论页�?
+  console.log('📍 导航到评论管理页�?..');
   await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
     waitUntil: 'domcontentloaded',
     timeout: 30000
@@ -119,7 +119,7 @@ async function checkCommentAPIData() {
   } catch (e) {}
 
   // 选择77条评论的视频
-  console.log('📍 选择有77条评论的视频...\n');
+  console.log('📍 选择�?7条评论的视频...\n');
   await page.evaluate(() => {
     const containers = document.querySelectorAll('.container-Lkxos9');
     for (const container of containers) {
@@ -132,22 +132,22 @@ async function checkCommentAPIData() {
     }
   });
 
-  console.log('⏳ 等待评论API响应...');
+  console.log('�?等待评论API响应...');
   await page.waitForTimeout(5000);
 
   if (!commentAPIData) {
-    console.log('\n❌ 未拦截到评论API数据\n');
+    console.log('\n�?未拦截到评论API数据\n');
   }
 
-  console.log('\n⏸️  等待 10 秒...');
+  console.log('\n⏸️  等待 10 �?..');
   await page.waitForTimeout(10000);
 
   await context.close();
   db.close();
-  console.log('\n✅ 测试完成');
+  console.log('\n�?测试完成');
 }
 
 checkCommentAPIData().catch(error => {
-  console.error('❌ 测试失败:', error);
+  console.error('�?测试失败:', error);
   process.exit(1);
 });
