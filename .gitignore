@@ -97,3 +97,6 @@ packages/*/out/
 # editor / system temp
 *.local
 packages/master/data/master.db
+
+# Test scripts (temporary, not for production)
+tests/
