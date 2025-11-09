@@ -51,8 +51,8 @@ class LocalProcessManager extends EventEmitter {
       const cwd = working_directory || path.resolve(__dirname, '../../../worker');
       await fs.ensureDir(cwd);
 
-      // 确保日志目录存在
-      const logDir = path.join(cwd, '../logs');
+      // 确保日志目录存在 - 日志应该放在 worker 目录下的 logs 子目录
+      const logDir = path.join(cwd, 'logs');
       await fs.ensureDir(logDir);
 
       // 准备日志文件
