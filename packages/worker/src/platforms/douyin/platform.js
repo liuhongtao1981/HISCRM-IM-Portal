@@ -702,6 +702,9 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<Object>} { comments: Array, discussions: Array, contents: Array, stats: Object }
    */
   async crawlComments(account, options = {}) {
+    let page = null;
+    let crawlTabId = null;
+
     try {
       logger.info(`[crawlComments] Starting comments+discussions crawl for account ${account.id}`);
 
@@ -713,14 +716,17 @@ class DouyinPlatform extends PlatformBase {
 
       // 1. 获取页面 - 使用框架级别的 getPageWithAPI（自动注册 API 拦截器）
       // ⭐ 关键改进: 使用 getPageWithAPI 自动为标签页注册 API 拦截器
+      // ⭐ 优化: 设置 persistent=false，爬虫任务完成后关闭标签页，减少资源占用
       logger.debug(`[crawlComments] Step 1: Getting spider_comment tab for account ${account.id}`);
-      const { page } = await this.getPageWithAPI(account.id, {
+      const pageResult = await this.getPageWithAPI(account.id, {
         tag: TabTag.SPIDER_COMMENT,
-        persistent: true,      // 长期运行，不关闭
+        persistent: false,     // 爬虫任务完成后关闭，减少资源占用
         shareable: false,      // 独立窗口，不共享
-        forceNew: false        // 复用已有窗口
+        forceNew: false        // 复用已有窗口（如果 persistent=false 则每次创建新窗口）
       });
-      logger.info(`[crawlComments] Spider comment tab retrieved successfully`);
+      page = pageResult.page;
+      crawlTabId = pageResult.tabId;
+      logger.info(`[crawlComments] Spider comment tab retrieved successfully (tabId: ${crawlTabId})`);
 
       // 1.5. 获取 DataManager（使用新架构，自动创建）
       const dataManager = await this.getDataManager(account.id);
@@ -772,6 +778,26 @@ class DouyinPlatform extends PlatformBase {
       logger.error(`[crawlComments] ❌ FATAL ERROR for account ${account.id}:`, error);
       logger.error(`[crawlComments] Error stack:`, error.stack);
       throw error;
+    } finally {
+      // 清理临时标签页 - 爬虫任务完成后立即关闭，减少资源占用
+      // ⭐ 使用 TabManager 关闭评论爬虫窗口
+      if (page && crawlTabId) {
+        try {
+          if (!page.isClosed()) {
+            logger.info('✅ Comment crawl task completed - closing crawl tab', {
+              accountId: account.id,
+              tabId: crawlTabId
+            });
+            // 使用 TabManager 关闭标签页
+            await this.browserManager.tabManager.closeTab(account.id, crawlTabId);
+            logger.info('✅ Comment crawl tab closed via TabManager');
+          } else {
+            logger.debug('ℹ️ Crawl page was already closed');
+          }
+        } catch (closeError) {
+          logger.warn('Error closing crawl tab:', closeError.message);
+        }
+      }
     }
   }
 
@@ -907,6 +933,9 @@ class DouyinPlatform extends PlatformBase {
    * @returns {Promise<Object>} { directMessages: Array, stats: Object }
    */
   async crawlDirectMessages(account) {
+    let page = null;
+    let crawlTabId = null;
+
     try {
       logger.info(`[crawlDirectMessages] Starting Phase 8 implementation for account ${account.id}`);
 
@@ -918,14 +947,17 @@ class DouyinPlatform extends PlatformBase {
 
       // 1. 获取页面 - 使用框架级别的 getPageWithAPI（自动注册 API 拦截器）
       // ⭐ 关键改进: 使用 getPageWithAPI 自动为标签页注册 API 拦截器
+      // ⭐ 优化: 设置 persistent=false，爬虫任务完成后关闭标签页，减少资源占用
       logger.debug(`[crawlDirectMessages] Step 1: Getting spider_dm tab for account ${account.id}`);
-      const { page } = await this.getPageWithAPI(account.id, {
+      const pageResult = await this.getPageWithAPI(account.id, {
         tag: TabTag.SPIDER_DM,
-        persistent: true,      // 长期运行，不关闭
+        persistent: false,     // 爬虫任务完成后关闭，减少资源占用
         shareable: false,      // 独立窗口，不共享
-        forceNew: false        // 复用已有窗口
+        forceNew: false        // 复用已有窗口（如果 persistent=false 则每次创建新窗口）
       });
-      logger.info(`[crawlDirectMessages] Spider DM tab retrieved successfully`);
+      page = pageResult.page;
+      crawlTabId = pageResult.tabId;
+      logger.info(`[crawlDirectMessages] Spider DM tab retrieved successfully (tabId: ${crawlTabId})`);
 
       // 1.5. 获取 DataManager（使用新架构，自动创建）
       const dataManager = await this.getDataManager(account.id);
@@ -1004,6 +1036,26 @@ class DouyinPlatform extends PlatformBase {
       logger.error(`[crawlDirectMessages] ❌ FATAL ERROR for account ${account.id}:`, error);
       logger.error(`[crawlDirectMessages] Error stack:`, error.stack);
       throw error;
+    } finally {
+      // 清理临时标签页 - 爬虫任务完成后立即关闭，减少资源占用
+      // ⭐ 使用 TabManager 关闭私信爬虫窗口
+      if (page && crawlTabId) {
+        try {
+          if (!page.isClosed()) {
+            logger.info('✅ DM crawl task completed - closing crawl tab', {
+              accountId: account.id,
+              tabId: crawlTabId
+            });
+            // 使用 TabManager 关闭标签页
+            await this.browserManager.tabManager.closeTab(account.id, crawlTabId);
+            logger.info('✅ DM crawl tab closed via TabManager');
+          } else {
+            logger.debug('ℹ️ Crawl page was already closed');
+          }
+        } catch (closeError) {
+          logger.warn('Error closing crawl tab:', closeError.message);
+        }
+      }
     }
   }
 
