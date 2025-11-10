@@ -1766,6 +1766,7 @@ class DouyinPlatform extends PlatformBase {
     const { video_id, comment_user_id } = context;
 
     let page = null;
+    let replyTabId = null;
 
     // 在 try 块外定义 apiResponses，以便在 catch 和 finally 块中访问
     const apiResponses = {
@@ -1792,8 +1793,8 @@ class DouyinPlatform extends PlatformBase {
         forceNew: true         // 每次回复创建新窗口
       });
 
-      page = replyPage;
-      const replyTabId = tabId;
+  page = replyPage;
+  replyTabId = tabId;
 
       logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
         accountId,
@@ -2513,7 +2514,8 @@ class DouyinPlatform extends PlatformBase {
     const finalPlatformMessageId = platform_message_id;
     const { sender_id, platform_user_id } = context;
 
-    let page = null;
+  let page = null;
+  let replyTabId = null;
     const apiResponses = { conversationMessages: [] }; // Phase 10: 新增 API 响应缓存
 
     try {
@@ -2535,8 +2537,8 @@ class DouyinPlatform extends PlatformBase {
         forceNew: true         // 每次回复创建新窗口
       });
 
-      page = replyPage;
-      const replyTabId = tabId;
+  page = replyPage;
+  replyTabId = tabId;
 
       logger.info(`[Douyin] 为私信回复任务获取临时标签页`, {
         accountId,
