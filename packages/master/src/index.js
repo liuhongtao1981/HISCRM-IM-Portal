@@ -376,9 +376,15 @@ function handleReplyResult(data, socket) {
     }
 
     // 检查是否已经处理过（防止重复处理）
-    if (reply.reply_status !== 'executing') {
+    if (reply.reply_status !== 'executing' && reply.reply_status !== 'pending') {
       logger.warn(`Reply already processed: ${reply_id}, status: ${reply.reply_status}`);
       return;
+    }
+
+    // 如果状态还是 pending，先更新为 executing（兼容性处理）
+    if (reply.reply_status === 'pending') {
+      logger.info(`Reply status was pending, updating to executing: ${reply_id}`);
+      replyDAO.updateReplyStatusToExecuting(reply_id);
     }
 
     // 根据状态处理回复

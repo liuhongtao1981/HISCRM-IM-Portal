@@ -35,6 +35,42 @@ class DataSyncReceiver {
         timestamp: new Date(timestamp).toISOString(),
       });
 
+      // ✅ 在存入 DataStore 之前，标记客服发送的消息为已读
+      if (snapshot && snapshot.data) {
+        let outboundCommentCount = 0;
+        let outboundMessageCount = 0;
+
+        // 处理评论：将 direction='outbound' 的评论标记为已读
+        if (snapshot.data.comments) {
+          const commentsList = snapshot.data.comments instanceof Map ? 
+            Array.from(snapshot.data.comments.values()) : snapshot.data.comments;
+          
+          commentsList.forEach(comment => {
+            if (comment.direction === 'outbound' && !comment.isRead) {
+              comment.isRead = true;
+              outboundCommentCount++;
+            }
+          });
+        }
+
+        // 处理私信：将 direction='outbound' 的消息标记为已读
+        if (snapshot.data.messages) {
+          const messagesList = snapshot.data.messages instanceof Map ? 
+            Array.from(snapshot.data.messages.values()) : snapshot.data.messages;
+          
+          messagesList.forEach(msg => {
+            if (msg.direction === 'outbound' && !msg.isRead) {
+              msg.isRead = true;
+              outboundMessageCount++;
+            }
+          });
+        }
+
+        if (outboundCommentCount > 0 || outboundMessageCount > 0) {
+          logger.info(`✅ 标记客服消息为已读: ${outboundCommentCount} 条评论, ${outboundMessageCount} 条私信`);
+        }
+      }
+
       // 更新 DataStore
       const success = this.dataStore.updateAccountData(accountId, snapshot);
 

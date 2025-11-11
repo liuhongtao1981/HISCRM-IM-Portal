@@ -55,6 +55,8 @@ export interface Message {
   replyToId?: string   // 回复的消息ID (如果是回复消息)
   replyToContent?: string // 被回复的消息内容
   isHandled?: boolean  // 是否已处理
+  status?: 'sending' | 'sent' | 'failed' // ✅ 新增: 消息状态
+  isTemporary?: boolean // ✅ 新增: 是否为临时消息（发送中占位符）
 }
 
 // 新媒体账户消息 (为了兼容旧的WebSocket事件)
@@ -74,4 +76,6 @@ export interface ChannelMessage {
   fileName?: string
   replyToId?: string   // 回复的消息ID
   isHandled?: boolean  // 是否已处理
+  status?: 'sending' | 'sent' | 'failed' // ✅ 新增: 消息状态
+  isTemporary?: boolean // ✅ 新增: 是否为临时消息（发送中占位符）
 }

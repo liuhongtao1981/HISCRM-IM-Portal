@@ -46,6 +46,7 @@ class ReplyDAO {
    * 创建新的回复记录
    */
   createReply({
+    id = null,  // 可选的自定义 ID，如果不提供则自动生成
     requestId,
     platform,
     accountId,
@@ -58,7 +59,7 @@ class ReplyDAO {
     assignedWorkerId = null,
   }) {
     try {
-      const replyId = `reply-${uuidv4()}`;
+      const replyId = id || `reply-${uuidv4()}`;  // 使用提供的 ID 或生成新的
       const now = Date.now();
       const idempotencyKey = this.generateIdempotencyKey(
         accountId,

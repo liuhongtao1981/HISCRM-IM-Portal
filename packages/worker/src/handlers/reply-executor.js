@@ -146,6 +146,7 @@ class ReplyExecutor {
       // 执行平台特定的回复操作
       let result;
       if (target_type === 'comment') {
+        logger.warn(`[DEBUG] 执行评论回复: replyToComment, target_id: ${target_id}`);
         result = await platformInstance.replyToComment(account_id, {
           target_id,
           reply_content,
@@ -153,6 +154,7 @@ class ReplyExecutor {
           browserManager: this.browserManager,
         });
       } else if (target_type === 'direct_message') {
+        logger.warn(`[DEBUG] 执行私信回复: replyToDirectMessage, conversation_id: ${conversation_id}, platform_message_id: ${platform_message_id}`);
         // Phase 9: 传递新的参数 (conversation_id + platform_message_id)
         result = await platformInstance.replyToDirectMessage(account_id, {
           target_id,           // 向后兼容
@@ -162,6 +164,9 @@ class ReplyExecutor {
           context,
           browserManager: this.browserManager,
         });
+      } else {
+        logger.error(`[DEBUG] 未知的 target_type: "${target_type}"`);
+        throw new Error(`Unknown target_type: ${target_type}`);
       }
 
       // 检查操作结果

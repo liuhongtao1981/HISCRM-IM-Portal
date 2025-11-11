@@ -204,8 +204,40 @@ const monitorSlice = createSlice({
       topic.lastMessageTime = message.timestamp
       topic.messageCount = state.messages[topicId].length
 
-      // 如果不是当前选中的作品，增加未读计数
-      if (state.selectedTopicId !== topicId) {
+      // ✅ 检查消息方向，只有用户发送的消息才增加未读计数
+      // 判断优先级（从高到低）：
+      // 1. 如果消息已标记为已读(isRead=true)，一定不是未读消息
+      // 2. 如果消息方向是outbound（客服发出），一定不增加未读
+      // 3. 如果fromId包含'monitor'，是客服消息
+      // 4. 如果fromName是'客服'，是客服消息
+      const messageIsRead = (message as any).isRead === true;
+      const isOutbound = (message as any).direction === 'outbound';
+      const isMonitorUser = message.fromId && message.fromId.includes('monitor');
+      const isCustomerService = message.fromName === '客服';
+      
+      // 只有不满足以上任何条件的消息才是"用户消息"
+      const isUserMessage = !messageIsRead && !isOutbound && !isMonitorUser && !isCustomerService;
+      
+      // 🔍 详细调试信息
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('🔍 [消息过滤判断] 详细分析')
+      console.log(`   topicId: ${topicId}`)
+      console.log(`   fromName: "${message.fromName}"`)
+      console.log(`   fromId: "${message.fromId}"`)
+      console.log(`   direction: "${(message as any).direction}"`)
+      console.log(`   isRead: ${(message as any).isRead}`)
+      console.log(`   messageCategory: "${message.messageCategory}"`)
+      console.log(`   content: "${message.content?.substring(0, 50)}..."`)
+      console.log(`   判断结果:`)
+      console.log(`     - messageIsRead: ${messageIsRead}`)
+      console.log(`     - isOutbound: ${isOutbound}`)
+      console.log(`     - isMonitorUser: ${isMonitorUser}`)
+      console.log(`     - isCustomerService: ${isCustomerService}`)
+      console.log(`     - 最终 isUserMessage: ${isUserMessage}`)
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      
+      // 如果不是当前选中的作品，且是用户消息，增加未读计数
+      if (state.selectedTopicId !== topicId && isUserMessage) {
         topic.unreadCount += 1
       }
 
@@ -215,10 +247,18 @@ const monitorSlice = createSlice({
         channel.lastMessage = message.content
         channel.lastMessageTime = message.timestamp
 
-        // 如果不是当前选中的新媒体账户，增加未读计数并触发晃动
-        if (state.selectedChannelId !== channelId) {
+        // ✅ 只有在以下条件同时满足时才增加频道未读计数：
+        // 1. 不是当前选中的新媒体账户
+        // 2. 是用户消息（不是客服发送的）
+        if (state.selectedChannelId !== channelId && isUserMessage) {
           channel.unreadCount += 1
           channel.isFlashing = true
+          console.log(`   ✅ 增加频道未读数: ${channel.name} -> ${channel.unreadCount}`)
+        } else {
+          console.log(`   ⏭️  跳过频道未读数增加:`, {
+            isCurrentChannel: state.selectedChannelId === channelId,
+            isUserMessage
+          })
         }
       }
 
@@ -279,7 +319,7 @@ const monitorSlice = createSlice({
 
       const channel = state.channels.find(ch => ch.id === channelId)
       if (channel) {
-        console.log(`   账户名: ${channel.accountName}`)
+        console.log(`   账户名: ${channel.name}`)
         console.log(`   点击前徽章: ${channel.unreadCount}`)
       }
 
@@ -360,6 +400,41 @@ const monitorSlice = createSlice({
     // 重置新媒体账户显示数量
     resetChannelDisplay: (state) => {
       state.channelDisplayCount = state.channelPageSize
+    },
+
+    // 移除临时消息（发送中的占位符）
+    removeTemporaryMessage: (state, action: PayloadAction<{
+      channelId: string
+      topicId: string
+      content: string
+      showError?: boolean
+      error?: string
+    }>) => {
+      const { channelId, topicId, content } = action.payload
+      
+      if (state.messages[topicId]) {
+        // 查找并移除匹配的临时消息
+        const messageIndex = state.messages[topicId].findIndex(msg => 
+          (msg as any).isTemporary && 
+          msg.content === content &&
+          msg.channelId === channelId
+        )
+        
+        if (messageIndex >= 0) {
+          state.messages[topicId].splice(messageIndex, 1)
+          console.log(`[Store] 已移除临时消息: "${content}" (索引: ${messageIndex})`)
+          
+          // 更新作品的消息计数
+          if (state.topics[channelId]) {
+            const topic = state.topics[channelId].find(t => t.id === topicId)
+            if (topic) {
+              topic.messageCount = state.messages[topicId].length
+            }
+          }
+        } else {
+          console.warn(`[Store] 未找到要移除的临时消息: "${content}"`)
+        }
+      }
     }
   }
 })
@@ -379,7 +454,8 @@ export const {
   setConnected,
   clearAll,
   loadMoreChannels,
-  resetChannelDisplay
+  resetChannelDisplay,
+  removeTemporaryMessage
 } = monitorSlice.actions
 
 export default monitorSlice.reducer

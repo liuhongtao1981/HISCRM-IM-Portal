@@ -1793,10 +1793,8 @@ class DouyinPlatform extends PlatformBase {
         forceNew: true         // 每次回复创建新窗口
       });
 
-  page = replyPage;
-  replyTabId = tabId;
-
-      logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
+      page = replyPage;
+      replyTabId = tabId;      logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
         accountId,
         purpose: 'comment_reply',
         commentId: target_id,
@@ -2537,8 +2535,8 @@ class DouyinPlatform extends PlatformBase {
         forceNew: true         // 每次回复创建新窗口
       });
 
-  page = replyPage;
-  replyTabId = tabId;
+      page = replyPage;
+      replyTabId = tabId;
 
       logger.info(`[Douyin] 为私信回复任务获取临时标签页`, {
         accountId,

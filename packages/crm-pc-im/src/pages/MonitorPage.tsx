@@ -4,7 +4,7 @@
  * 两列布局: 左侧账户列表 | 右侧消息对话框
  */
 
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs } from 'antd'
 import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
@@ -61,6 +61,40 @@ export default function MonitorPage() {
   const [activeTab, setActiveTab] = useState<'private' | 'comment'>('comment') // 当前活动标签页
   const [showCommentList, setShowCommentList] = useState(true) // 评论Tab下是否显示列表(而不是对话)
   const [showPrivateList, setShowPrivateList] = useState(true) // 私信Tab下是否显示列表(而不是对话)
+  const [isSending, setIsSending] = useState(false) // 是否正在发送消息
+  const [sendingQueues, setSendingQueues] = useState<Record<string, any[]>>({}) // 发送队列 topicId -> SendingMessage[]
+
+  // ✅ 合并正常消息和发送队列消息
+  const allMessages = useMemo(() => {
+    if (!selectedTopicId) return []
+    
+    const normalMessages = currentMessages
+    const sendingMessages = sendingQueues[selectedTopicId] || []
+    
+    // 将发送队列消息转换为Message格式并添加特殊标记
+    const sendingAsMessages = sendingMessages.map(sendingMsg => ({
+      id: sendingMsg.id,
+      topicId: sendingMsg.topicId,
+      channelId: sendingMsg.channelId,
+      fromName: sendingMsg.fromName,
+      fromId: sendingMsg.fromId,
+      authorAvatar: sendingMsg.authorAvatar,
+      content: sendingMsg.content,
+      type: sendingMsg.messageCategory === 'private' ? 'text' : 'comment',
+      messageCategory: sendingMsg.messageCategory,
+      direction: 'outbound',
+      timestamp: sendingMsg.timestamp,
+      serverTimestamp: sendingMsg.timestamp,
+      replyToId: sendingMsg.replyToId,
+      replyToContent: sendingMsg.replyToContent,
+      status: 'sending',
+      isSending: true  // 特殊标记
+    }))
+    
+    // 合并并按时间排序
+    const combined = [...normalMessages, ...sendingAsMessages]
+    return combined.sort((a, b) => a.timestamp - b.timestamp)
+  }, [currentMessages, sendingQueues, selectedTopicId])
   const textAreaRef = useRef<any>(null)
   const channelListRef = useRef<HTMLDivElement>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
@@ -96,8 +130,8 @@ export default function MonitorPage() {
     }, 0)
   }, [selectedChannelId, currentTopics])
 
-  // 根据当前标签页过滤消息
-  const filteredMessages = currentMessages.filter(msg => {
+  // 根据当前标签页过滤消息（使用合并后的消息列表）
+  const filteredMessages = allMessages.filter(msg => {
     if (activeTab === 'private') {
       return msg.messageCategory === 'private'
     } else {
@@ -306,13 +340,49 @@ export default function MonitorPage() {
         // 监听新消息
         websocketService.on('channel:message', (message: ChannelMessage) => {
           console.log('[监听] 收到新消息:', message)
+          
+          // ✅ 统一的消息过滤逻辑（与 monitorSlice 保持一致）
+          const messageIsRead = (message as any).isRead === true;
+          const isOutbound = (message as any).direction === 'outbound';
+          const isMonitorUser = message.fromId && message.fromId.includes('monitor');
+          const isCustomerService = message.fromName === '客服';
+          const isUserMessage = !messageIsRead && !isOutbound && !isMonitorUser && !isCustomerService;
+          
+          console.log('[DEBUG] 消息判断:', {
+            direction: (message as any).direction,
+            isRead: (message as any).isRead,
+            fromId: message.fromId,
+            fromName: message.fromName,
+            messageIsRead,
+            isOutbound,
+            isMonitorUser,
+            isCustomerService,
+            isUserMessage
+          })
+          
           dispatch(receiveMessage(message))
-          if (window.electron?.showWindow) {
-            window.electron.showWindow()
+          
+          // ✅ 只有用户发送的消息才触发窗口显示和停止晃动
+          if (isUserMessage) {
+            if (window.electron?.showWindow) {
+              window.electron.showWindow()
+            }
+            setTimeout(() => {
+              dispatch(stopFlashing(message.channelId))
+            }, 2000)
           }
-          setTimeout(() => {
-            dispatch(stopFlashing(message.channelId))
-          }, 2000)
+        })
+
+        // ✅ 监听发送队列更新
+        websocketService.on('monitor:sending_queue', (data: any) => {
+          console.log('[监听] 发送队列更新:', data)
+          const { topicId, sendingMessages } = data
+          setSendingQueues(prev => ({
+            ...prev,
+            [topicId]: sendingMessages
+          }))
+          // 重置发送状态（当队列更新时，说明发送操作已完成）
+          setIsSending(false)
         })
 
         websocketService.emit('monitor:request_channels')
@@ -431,46 +501,39 @@ export default function MonitorPage() {
 
   // 发送消息
   const handleSendMessage = () => {
-    if (!replyContent.trim() || !selectedChannelId || !selectedTopicId) {
+    if (!replyContent.trim() || !selectedChannelId || !selectedTopicId || isSending) {
       return
     }
+
+    setIsSending(true) // 开始发送
 
     // ✅ 获取当前登录用户信息
     const currentUser = localStorage.getItem('username') || '客服'
     const currentUserId = localStorage.getItem('crm-im-client-id') || 'monitor_client'
-    const currentUserAvatar = localStorage.getItem('user-avatar') || null  // ✅ 获取客服头像（如果有）
-
-    // 立即在本地添加消息(乐观更新)
-    const tempMessage: ChannelMessage = {
-      id: `msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-      topicId: selectedTopicId,
-      channelId: selectedChannelId,
-      fromName: currentUser,  // ✅ 使用真实用户名
-      fromId: currentUserId,  // ✅ 使用真实用户ID
-      authorAvatar: currentUserAvatar,  // ✅ 使用客服头像
-      content: replyContent.trim(),
-      type: 'comment',
-      timestamp: Date.now(),
-      serverTimestamp: Date.now(),
-      replyToId: replyToMessage?.id,
-      replyToContent: replyToMessage?.content
-    }
-
-    // 立即更新本地状态
-    dispatch(receiveMessage(tempMessage))
+    const currentUserAvatar = localStorage.getItem('user-avatar') || null
 
     // 发送到服务器
-    websocketService.emit('monitor:reply', {
+    const replyData = {
       channelId: selectedChannelId,
       topicId: selectedTopicId,
-      type: 'comment',  // 指定消息类型为评论
+      type: activeTab === 'private' ? 'text' : 'comment',
+      messageCategory: activeTab,
       replyToId: replyToMessage?.id,
       replyToContent: replyToMessage?.content,
       content: replyContent.trim(),
       fromName: currentUser,  // ✅ 发送当前用户名
       fromId: currentUserId,   // ✅ 发送当前用户ID
       authorAvatar: currentUserAvatar  // ✅ 发送客服头像
-    })
+    }
+    
+    // 🔍 DEBUG: 前端发送参数调试
+    console.log('[前端DEBUG] 发送回复参数:', {
+      activeTab,
+      messageCategory: activeTab,
+      ...replyData
+    });
+    
+    websocketService.emit('monitor:reply', replyData)
 
     setReplyContent('')
     setReplyToMessage(null)
@@ -1002,9 +1065,23 @@ export default function MonitorPage() {
                             </div>
 
                             <div className="wechat-message-content">
-                              <div className={`wechat-message-bubble ${isReply ? 'bubble-right' : 'bubble-left'}`}>
+                              <div 
+                                className={`wechat-message-bubble ${isReply ? 'bubble-right' : 'bubble-left'} ${
+                                  (mainMsg as any).isSending ? 'sending' : ''
+                                }`}
+                              >
                                 {mainMsg.type === 'text' || mainMsg.type === 'comment' ? (
-                                  <Text>{mainMsg.content}</Text>
+                                  <div>
+                                    <Text>{mainMsg.content}</Text>
+
+                                    {/* 显示发送状态 */}
+                                    {(mainMsg as any).isSending && (
+                                      <div className="sending-indicator">
+                                        <span className="spinner">🔄</span>
+                                        <span>正在发送</span>
+                                      </div>
+                                    )}
+                                  </div>
                                 ) : mainMsg.type === 'file' ? (
                                   <Text>[文件] {mainMsg.fileName}</Text>
                                 ) : mainMsg.type === 'image' ? (
@@ -1103,12 +1180,13 @@ export default function MonitorPage() {
                 />
                 <Button
                   type="primary"
-                  icon={<SendOutlined />}
+                  icon={isSending ? undefined : <SendOutlined />}
+                  loading={isSending}
                   onClick={handleSendMessage}
-                  disabled={!replyContent.trim()}
+                  disabled={!replyContent.trim() || isSending}
                   className="wechat-send-btn"
                 >
-                  发送
+                  {isSending ? '发送中' : '发送'}
                 </Button>
               </div>
                 </div>

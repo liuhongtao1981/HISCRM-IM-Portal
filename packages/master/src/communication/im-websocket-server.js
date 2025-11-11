@@ -21,6 +21,12 @@ class IMWebSocketServer {
     this.monitorClients = new Map(); // clientId -> socketId
     this.adminClients = new Map();   // adminId -> socketId
     this.socketToClientId = new Map(); // socketId -> clientId
+    
+    // 待确认的回复消息存储 (replyId -> message)
+    this.pendingReplies = new Map();
+    
+    // ✅ 发送队列管理 (按照 topicId 分组)
+    this.sendingQueues = new Map(); // topicId -> Array<SendingMessage>
 
     logger.info('IM WebSocket Server initialized with CacheDAO, AccountDAO, WorkerRegistry and ReplyDAO support');
   }
@@ -184,7 +190,14 @@ class IMWebSocketServer {
       const messages = this.getMessagesFromDataStore(topicId);
       socket.emit('monitor:messages', { topicId, messages });
 
-      logger.info(`[IM WS] Sent ${messages.length} messages for topic ${topicId}`);
+      // ✅ 同时发送该主题的发送队列
+      const sendingMessages = this.sendingQueues.get(topicId) || [];
+      socket.emit('monitor:sending_queue', {
+        topicId,
+        sendingMessages
+      });
+
+      logger.info(`[IM WS] Sent ${messages.length} messages and ${sendingMessages.length} sending messages for topic ${topicId}`);
     } catch (error) {
       logger.error('[IM WS] Request messages error:', error);
     }
@@ -198,9 +211,47 @@ class IMWebSocketServer {
       const { channelId, topicId, content, replyToId, replyToContent, messageCategory, fromName, fromId, authorAvatar: clientAuthorAvatar } = data;
       logger.info(`[IM WS] Monitor reply:`, { channelId, topicId, content, messageCategory, fromName, fromId, clientAuthorAvatar });
 
+      // 🔍 DEBUG: 打印完整的接收数据
+      logger.warn(`[DEBUG] handleMonitorReply 完整接收数据:`);
+      logger.warn(`  channelId: ${data.channelId}`);
+      logger.warn(`  topicId: ${data.topicId}`);
+      logger.warn(`  content: ${data.content}`);
+      logger.warn(`  replyToId: ${data.replyToId}`);
+      logger.warn(`  replyToContent: ${data.replyToContent}`);
+      logger.warn(`  messageCategory: ${data.messageCategory}`);
+      logger.warn(`  fromName: ${data.fromName}`);
+      logger.warn(`  fromId: ${data.fromId}`);
+      logger.warn(`  所有字段: ${Object.keys(data).join(', ')}`);
+
+      // 🔍 智能判断消息类型：如果 messageCategory 未定义，通过数据推断
+      let finalMessageCategory = messageCategory;
+      if (!messageCategory || messageCategory === 'undefined') {
+        // 通过 DataStore 查找 topicId 是否为私信会话
+        const accountData = this.dataStore.accounts.get(channelId);
+        if (accountData && accountData.data && accountData.data.conversations) {
+          const conversationsList = accountData.data.conversations instanceof Map ? 
+            Array.from(accountData.data.conversations.values()) : accountData.data.conversations;
+          const isPrivateConversation = conversationsList.some(conv => conv.conversationId === topicId);
+          finalMessageCategory = isPrivateConversation ? 'private' : 'comment';
+          logger.warn(`[DEBUG] messageCategory 未定义，通过数据推断为: "${finalMessageCategory}" (topicId: ${topicId})`);
+        } else {
+          finalMessageCategory = 'comment'; // 默认为评论
+          logger.warn(`[DEBUG] messageCategory 未定义且无法推断，默认为: "comment"`);
+        }
+      }
+
       // 根据消息分类确定消息类型和目标类型
-      const messageType = messageCategory === 'private' ? 'text' : 'comment';
-      const targetType = messageCategory === 'private' ? 'direct_message' : 'comment';
+      const messageType = finalMessageCategory === 'private' ? 'text' : 'comment';
+      const targetType = finalMessageCategory === 'private' ? 'direct_message' : 'comment';
+
+      // 🔍 DEBUG: 打印判断结果
+      logger.warn(`[DEBUG] messageCategory: "${messageCategory}" -> finalMessageCategory: "${finalMessageCategory}" -> messageType: "${messageType}", targetType: "${targetType}"`);
+
+      if (finalMessageCategory === 'private') {
+        logger.warn(`[DEBUG] 这是私信回复，应该调用 replyToDirectMessage`);
+      } else {
+        logger.warn(`[DEBUG] 这是评论回复，应该调用 replyToComment`);
+      }
 
       // 创建回复消息ID（用于客户端展示和结果追踪）
       const replyId = `reply_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -211,7 +262,7 @@ class IMWebSocketServer {
 
       // 如果前端没有提供头像，且是私信回复，则根据 senderId 查找头像
       if (!finalAuthorAvatar && messageCategory === 'private' && this.dataStore) {
-        const accountData = this.dataStore.getAccountData(channelId);
+        const accountData = this.dataStore.accounts.get(channelId);
         const senderId = fromId || 'monitor_client';
 
         // ✅ 构建 userId -> userAvatar 映射表（包含对方用户和账户自己）
@@ -267,18 +318,44 @@ class IMWebSocketServer {
         authorAvatar: finalAuthorAvatar,  // ✅ 优先使用前端传来的头像，fallback 到 conversations 查找
         content,
         type: messageType,
-        messageCategory: messageCategory || 'comment',
+        messageCategory: finalMessageCategory,
         direction: 'outbound',  // ✅ 标记为客服发送的消息
         timestamp: Date.now(),
         serverTimestamp: Date.now(),
         replyToId,
         replyToContent,
-        isRead: false,
+        isRead: true,  // ✅ 修复: 客服发送的消息应该标记为已读，不计入未读计数
         status: 'sending'
       };
 
-      // 广播给所有监控客户端（立即显示）
-      this.broadcastToMonitors('channel:message', replyMessage);
+      // ✅ 保存到待确认存储，等Worker完成处理后再广播给前端
+      this.pendingReplies.set(replyId, replyMessage);
+
+      // ✅ 添加到发送队列
+      const sendingMessage = {
+        id: replyId,
+        topicId,
+        channelId,
+        content,
+        fromName: fromName || '客服',
+        fromId: fromId || 'monitor_client',
+        authorAvatar: finalAuthorAvatar,
+        messageCategory: finalMessageCategory,
+        status: 'sending',
+        timestamp: Date.now(),
+        replyToId,
+        replyToContent
+      };
+
+      if (!this.sendingQueues.has(topicId)) {
+        this.sendingQueues.set(topicId, []);
+      }
+      this.sendingQueues.get(topicId).push(sendingMessage);
+
+      logger.info(`[IM WS] Added to sending queue: ${replyId} for topic ${topicId}`);
+
+      // ✅ 立即广播队列更新给所有监控客户端
+      this.broadcastSendingQueue(topicId);
 
       // ✅ 查找负责该账户的 Worker 并发送回复任务
       if (this.workerRegistry && this.accountDAO) {
@@ -300,8 +377,32 @@ class IMWebSocketServer {
             throw new Error(`Worker not connected: ${assigned_worker_id}`);
           }
 
-          // 构造回复任务（符合 Worker 的 ReplyExecutor 期望的格式）
+          // ✅ 在发送给 Worker 之前，先在数据库中创建回复记录
+          if (this.replyDAO) {
+            try {
+              this.replyDAO.createReply({
+                id: replyId,  // 使用 monitor 生成的 replyId
+                requestId: requestId,
+                platform: platform,
+                accountId: channelId,
+                targetType: targetType,
+                targetId: replyToId || topicId,
+                replyContent: content,
+                videoId: targetType === 'comment' ? topicId : null,
+                userId: targetType === 'direct_message' ? (replyToId || topicId) : null,
+                platformTargetId: replyToId || topicId,
+                assignedWorkerId: assigned_worker_id,
+              });
+              logger.info(`[IM WS] Reply record created in DB: ${replyId}`);
+            } catch (dbError) {
+              logger.error(`[IM WS] Failed to create reply record in DB: ${dbError.message}`);
+              // 继续执行，不因为 DB 错误而阻止回复发送
+            }
+          }
+
+          // 构造回复任务（包含完整的执行信息，Worker 无需查询数据库）
           const replyTask = {
+            // 基本执行信息
             reply_id: replyId,
             request_id: requestId,
             platform: platform,
@@ -311,11 +412,34 @@ class IMWebSocketServer {
             conversation_id: targetType === 'direct_message' ? topicId : null,  // 私信会话ID
             platform_message_id: targetType === 'direct_message' ? replyToId : null,  // 私信消息ID（可选）
             reply_content: content,
+            
+            // 扩展执行信息（Worker 离线操作需要的数据）
+            assigned_worker_id: assigned_worker_id,
+            created_at: Date.now(),
+            submit_time: Date.now(),
+            
+            // 执行上下文
             context: {
               reply_to_content: replyToContent,
-              monitor_client_id: socket.id
+              monitor_client_id: socket.id,
+              channel_name: accountInfo.account_name || channelId,
+              video_id: targetType === 'comment' ? topicId : null,
+              user_id: targetType === 'direct_message' ? (replyToId || topicId) : null
             }
           };
+
+          // ✅ 在发送给 Worker 之前，更新状态为 executing
+          if (this.replyDAO) {
+            try {
+              this.replyDAO.updateReplyStatusToExecuting(replyId);
+              logger.info(`[IM WS] Reply status updated to executing: ${replyId}`);
+            } catch (statusError) {
+              logger.error(`[IM WS] Failed to update reply status to executing: ${statusError.message}`);
+            }
+          }
+
+          // 🔍 DEBUG: 打印发送给 Worker 的完整任务数据
+          logger.warn(`[DEBUG] 发送给 Worker 的完整 replyTask:`, JSON.stringify(replyTask, null, 2));
 
           // 发送给 Worker
           workerSocket.emit('master:reply:request', replyTask);
@@ -381,26 +505,113 @@ class IMWebSocketServer {
         workerId: socket.workerId
       });
 
-      // 根据状态更新消息状态
-      let messageStatus = 'sent';
-      if (status === 'failed' || status === 'blocked' || status === 'error') {
-        messageStatus = 'failed';
-      } else if (status === 'success') {
-        messageStatus = 'sent';
+      // ✅ 方案2实现：先让 Master 主流程处理数据库更新
+      if (this.replyDAO) {
+        try {
+          // 调用 Master 主流程的处理逻辑
+          this.handleReplyResultDatabase(data);
+        } catch (dbError) {
+          logger.error(`[IM WS] Database update failed for reply ${reply_id}:`, dbError.message);
+        }
       }
 
-      // 广播状态更新给所有监控客户端
-      this.broadcastToMonitors('channel:message:status', {
-        messageId: reply_id,
-        status: messageStatus,
-        error: error_message,
-        platformReplyId: platform_reply_id,
-        timestamp: Date.now()
-      });
+      // ✅ 从待确认存储中获取原始消息
+      const originalMessage = this.pendingReplies.get(reply_id);
+      
+      if (originalMessage) {
+        // 更新消息状态
+        let messageStatus = 'sent';
+        if (status === 'failed' || status === 'blocked' || status === 'error') {
+          messageStatus = 'failed';
+        } else if (status === 'success') {
+          messageStatus = 'sent';
+        }
 
-      logger.info(`[IM WS] Reply result broadcasted: ${reply_id} -> ${messageStatus}`);
+        // 更新消息状态和平台回复ID
+        const finalMessage = {
+          ...originalMessage,
+          status: messageStatus,
+          platformReplyId: platform_reply_id,
+          errorMessage: error_message,
+          serverTimestamp: Date.now()
+        };
+
+        // ✅ 从发送队列中移除该消息
+        const topicId = originalMessage.topicId;
+        if (this.sendingQueues.has(topicId)) {
+          const queue = this.sendingQueues.get(topicId);
+          const messageIndex = queue.findIndex(msg => msg.id === reply_id);
+          if (messageIndex >= 0) {
+            queue.splice(messageIndex, 1);
+            logger.info(`[IM WS] Removed from sending queue: ${reply_id}`);
+            
+            // 如果队列为空，移除整个队列
+            if (queue.length === 0) {
+              this.sendingQueues.delete(topicId);
+            }
+          }
+        }
+
+        // ✅ 广播队列更新给所有监控客户端（无论成功还是失败）
+        this.broadcastSendingQueue(topicId);
+
+        if (status === 'success') {
+          logger.info(`[IM WS] Reply success: ${reply_id}`);
+        } else {
+          logger.warn(`[IM WS] Reply failed: ${reply_id} - ${error_message}`);
+        }
+
+        // 清理待确认存储
+        this.pendingReplies.delete(reply_id);
+      } else {
+        logger.warn(`[IM WS] Original message not found for reply: ${reply_id}`);
+      }
+
+      logger.info(`[IM WS] Reply result processed and broadcasted: ${reply_id} -> ${messageStatus}`);
     } catch (error) {
       logger.error('[IM WS] Handle worker reply result error:', error);
+    }
+  }
+
+  /**
+   * 处理回复结果的数据库更新部分 (从 Master index.js 抽取)
+   */
+  handleReplyResultDatabase(data) {
+    const { reply_id, request_id, status, platform_reply_id, error_code, error_message } = data;
+
+    logger.info(`[IM WS] Processing reply result database update: ${reply_id}`, {
+      requestId: request_id,
+      status,
+    });
+
+    // 获取回复记录
+    const reply = this.replyDAO.getReplyById(reply_id);
+    if (!reply) {
+      logger.warn(`[IM WS] Reply not found in database: ${reply_id}`);
+      return;
+    }
+
+    // 检查是否已经处理过（防止重复处理）
+    if (reply.reply_status !== 'executing' && reply.reply_status !== 'pending') {
+      logger.warn(`[IM WS] Reply already processed: ${reply_id}, status: ${reply.reply_status}`);
+      return;
+    }
+
+    // 如果状态还是 pending，先更新为 executing（兼容性处理）
+    if (reply.reply_status === 'pending') {
+      logger.info(`[IM WS] Reply status was pending, updating to executing: ${reply_id}`);
+      this.replyDAO.updateReplyStatusToExecuting(reply_id);
+    }
+
+    // 根据状态处理回复
+    if (status === 'success') {
+      // 成功：保存到数据库
+      this.replyDAO.updateReplySuccess(reply_id, platform_reply_id, data.data);
+      logger.info(`[IM WS] Reply success updated in database: ${reply_id}`, { platformReplyId: platform_reply_id });
+    } else if (status === 'failed' || status === 'blocked' || status === 'error') {
+      // 失败：更新失败状态
+      this.replyDAO.updateReplyFailed(reply_id, error_code || 'UNKNOWN_ERROR', error_message || 'Unknown error');
+      logger.info(`[IM WS] Reply failure updated in database: ${reply_id}`, { errorCode: error_code, errorMessage: error_message });
     }
   }
 
@@ -640,7 +851,15 @@ class IMWebSocketServer {
           createdTime: normalizeTimestamp(content.publishTime),  // ✅ 归一化时间戳
           lastMessageTime: normalizeTimestamp(actualLastCommentTime),  // ✅ 修复: 使用评论列表中的实际最新时间
           messageCount: contentComments.length,
-          unreadCount: contentComments.filter(c => !c.isRead).length,  // ✅ 统一标准: 使用 isRead 字段
+          // ✅ 修复: 排除客服发送的消息 (direction='outbound') 和已读消息 (isRead=true)
+          unreadCount: contentComments.filter(c => {
+            // 1. 如果是客服发送的，不计入未读
+            if (c.direction === 'outbound') return false;
+            // 2. 如果已标记为已读，不计入未读
+            if (c.isRead) return false;
+            // 3. 其他情况算作未读
+            return true;
+          }).length,
           isPinned: false,
           isPrivate: false  // ✅ 标记为评论主题（非私信）
         };
@@ -692,8 +911,15 @@ class IMWebSocketServer {
         }
 
         // ✅ 实时计算未读消息数量（不使用数据库的 unreadCount）
-        // 统一标准：使用内存对象的 isRead 字段
-        const unreadMessages = conversationMessages.filter(m => !m.isRead);
+        // 统一标准：排除客服发送的消息 (direction='outbound') 和已读消息 (isRead=true)
+        const unreadMessages = conversationMessages.filter(m => {
+          // 1. 如果是客服发送的消息，不计入未读
+          if (m.direction === 'outbound') return false;
+          // 2. 如果已标记为已读，不计入未读
+          if (m.isRead) return false;
+          // 3. 其他情况算作未读
+          return true;
+        });
 
         // ✅ 计算该会话的最新消息时间（从消息列表中获取，而不是数据库的 lastMessageTime）
         const sortedMessages = [...conversationMessages].sort((a, b) => {
@@ -959,16 +1185,30 @@ class IMWebSocketServer {
 
     // 处理 Map 或 Array
     const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
-    const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : (dataObj.conversations || []);
+    const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : (dataObj.messages || []);
 
-    // 计算未读评论数（✅ 统一标准: 使用 isRead）
+    // ✅ 计算未读评论数：排除客服发送的消息和已读消息
     if (commentsList.length > 0) {
-      unreadCount += commentsList.filter(c => !c.isRead).length;
+      unreadCount += commentsList.filter(c => {
+        // 1. 如果是客服发送的，不计入未读
+        if (c.direction === 'outbound') return false;
+        // 2. 如果已标记为已读，不计入未读
+        if (c.isRead) return false;
+        // 3. 其他情况算作未读
+        return true;
+      }).length;
     }
 
-    // 计算未读会话消息数（使用 camelCase: unreadCount）
-    if (conversationsList.length > 0) {
-      unreadCount += conversationsList.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+    // ✅ 计算未读私信数：从消息列表中实时计算，排除客服发送的消息和已读消息
+    if (messagesList.length > 0) {
+      unreadCount += messagesList.filter(m => {
+        // 1. 如果是客服发送的消息，不计入未读
+        if (m.direction === 'outbound') return false;
+        // 2. 如果已标记为已读，不计入未读
+        if (m.isRead) return false;
+        // 3. 其他情况算作未读
+        return true;
+      }).length;
     }
 
     return unreadCount;
@@ -1106,7 +1346,12 @@ class IMWebSocketServer {
    * 当收到新消息时通知客户端
    */
   onNewMessage(accountId, message) {
-    logger.info(`[IM WS] New message for account: ${accountId}`);
+    logger.info(`[IM WS] New message for account: ${accountId}`, {
+      messageId: message.id || message.messageId,
+      direction: message.direction,
+      fromName: message.fromName,
+      fromId: message.fromId
+    });
 
     // 广播新消息
     this.broadcastToMonitors('channel:message', {
@@ -1571,19 +1816,46 @@ class IMWebSocketServer {
 
   /**
    * 计算未读评论数
-   * ✅ 统一使用 isRead 字段（与 getTopicsFromDataStore 一致）
+   * ✅ 统一使用 isRead 字段并排除客服发送的消息
    */
   calculateUnreadComments(dataObj) {
     const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
-    return commentsList.filter(c => !c.isRead).length;  // ✅ 改为使用 isRead
+    return commentsList.filter(c => {
+      // 1. 如果是客服发送的，不计入未读
+      if (c.direction === 'outbound') return false;
+      // 2. 如果已标记为已读，不计入未读
+      if (c.isRead) return false;
+      // 3. 其他情况算作未读
+      return true;
+    }).length;
   }
 
   /**
    * 计算未读私信数
+   * ✅ 从消息列表实时计算，排除客服发送的消息
    */
   calculateUnreadMessages(dataObj) {
-    const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : (dataObj.conversations || []);
-    return conversationsList.reduce((sum, conv) => sum + (conv.unreadCount || 0), 0);
+    const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : (dataObj.messages || []);
+    return messagesList.filter(m => {
+      // 1. 如果是客服发送的消息，不计入未读
+      if (m.direction === 'outbound') return false;
+      // 2. 如果已标记为已读，不计入未读
+      if (m.isRead) return false;
+      // 3. 其他情况算作未读
+      return true;
+    }).length;
+  }
+
+  /**
+   * 广播指定主题的发送队列给所有监控客户端
+   */
+  broadcastSendingQueue(topicId) {
+    const sendingMessages = this.sendingQueues.get(topicId) || [];
+    this.broadcastToMonitors('monitor:sending_queue', {
+      topicId,
+      sendingMessages
+    });
+    logger.debug(`[IM WS] Broadcasting sending queue for topic ${topicId}, ${sendingMessages.length} messages`);
   }
 }
 
