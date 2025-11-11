@@ -400,6 +400,39 @@ class IMWebSocketServer {
             }
           }
 
+          // ✅ 如果是评论回复,从DataStore中获取视频标题和父评论ID
+          let videoTitle = null;
+          let parentCommentId = null;
+          if (targetType === 'comment' && this.dataStore) {
+            try {
+              const accountData = this.dataStore.accounts.get(channelId);
+              if (accountData && accountData.data && accountData.data.contents) {
+                const contentsList = accountData.data.contents instanceof Map ?
+                  Array.from(accountData.data.contents.values()) : accountData.data.contents;
+                const videoContent = contentsList.find(c => c.contentId === topicId || c.id === topicId);
+                if (videoContent) {
+                  videoTitle = videoContent.title || null;
+                  logger.info(`[IM WS] Found video title for ${topicId}: "${videoTitle?.substring(0, 50)}..."`);
+                }
+              }
+              
+              // ✅ 如果replyToId存在(回复某条评论),从conversations中查找parent_comment_id
+              if (replyToId && accountData && accountData.data && accountData.data.conversations) {
+                const conversationsList = accountData.data.conversations instanceof Map ?
+                  Array.from(accountData.data.conversations.values()) : accountData.data.conversations;
+                const targetConversation = conversationsList.find(c => c.id === replyToId);
+                if (targetConversation && targetConversation.parent_comment_id) {
+                  parentCommentId = targetConversation.parent_comment_id;
+                  logger.info(`[IM WS] Found parent comment ID for ${replyToId}: ${parentCommentId} (二级回复)`);
+                } else {
+                  logger.info(`[IM WS] No parent comment ID for ${replyToId} (一级评论回复)`);
+                }
+              }
+            } catch (err) {
+              logger.warn(`[IM WS] Failed to get video title or parent comment: ${err.message}`);
+            }
+          }
+
           // 构造回复任务（包含完整的执行信息，Worker 无需查询数据库）
           const replyTask = {
             // 基本执行信息
@@ -424,6 +457,8 @@ class IMWebSocketServer {
               monitor_client_id: socket.id,
               channel_name: accountInfo.account_name || channelId,
               video_id: targetType === 'comment' ? topicId : null,
+              video_title: videoTitle,  // ✅ 视频标题用于匹配
+              parent_comment_id: parentCommentId,  // ✅ 新增: 父评论ID,用于定位二级回复
               user_id: targetType === 'direct_message' ? (replyToId || topicId) : null
             }
           };
@@ -518,15 +553,15 @@ class IMWebSocketServer {
       // ✅ 从待确认存储中获取原始消息
       const originalMessage = this.pendingReplies.get(reply_id);
       
+      // ✅ 在外部定义 messageStatus，避免作用域问题
+      let messageStatus = 'sent';
+      if (status === 'failed' || status === 'blocked' || status === 'error') {
+        messageStatus = 'failed';
+      } else if (status === 'success') {
+        messageStatus = 'sent';
+      }
+      
       if (originalMessage) {
-        // 更新消息状态
-        let messageStatus = 'sent';
-        if (status === 'failed' || status === 'blocked' || status === 'error') {
-          messageStatus = 'failed';
-        } else if (status === 'success') {
-          messageStatus = 'sent';
-        }
-
         // 更新消息状态和平台回复ID
         const finalMessage = {
           ...originalMessage,

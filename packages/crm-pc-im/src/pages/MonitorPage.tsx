@@ -1133,6 +1133,20 @@ export default function MonitorPage() {
                                     <div className="wechat-discussion-text">
                                       <Text style={{ fontSize: 13 }}>{discussion.content}</Text>
                                     </div>
+                                    {/* ✅ 为讨论添加回复按钮 - 强制显示用于测试 */}
+                                    <div className="wechat-discussion-actions" style={{ marginTop: 4 }}>
+                                      <Button
+                                        type="link"
+                                        size="small"
+                                        onClick={() => {
+                                          console.log('[DEBUG] 点击讨论回复按钮:', discussion);
+                                          handleReplyToMessage(discussion);
+                                        }}
+                                        style={{ padding: 0, height: 'auto', fontSize: 12, color: '#1890ff' }}
+                                      >
+                                        回复{!isDiscussionReply ? '' : '(客服)'}
+                                      </Button>
+                                    </div>
                                   </div>
                                 </div>
                               )

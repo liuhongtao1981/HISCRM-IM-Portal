@@ -1763,7 +1763,7 @@ class DouyinPlatform extends PlatformBase {
    */
   async replyToComment(accountId, options) {
     const { target_id, reply_content, context = {}, browserManager } = options;
-    const { video_id, comment_user_id } = context;
+    const { video_id, video_title, comment_user_id, parent_comment_id } = context;
 
     let page = null;
     let replyTabId = null;
@@ -1926,9 +1926,15 @@ class DouyinPlatform extends PlatformBase {
         throw new Error(`Failed to navigate to comment page: ${navError.message}`);
       }
 
-      // 3. 选择对应的视频（需要根据 video_id 查找并点击）
-      if (video_id) {
-        logger.info(`Selecting video: ${video_id}`);
+      // 3. 选择对应的视频（✅ 优先使用标题匹配，fallback到video_id）
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      logger.info('🎯 开始视频选择流程');
+      logger.info(`   video_title: ${video_title ? `"${video_title.substring(0, 50)}..."` : 'null'}`);
+      logger.info(`   video_id: ${video_id || 'null'}`);
+      logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+      
+      if (video_title || video_id) {
+        logger.info(`Selecting video by title: "${video_title?.substring(0, 50)}..." or ID: ${video_id}`);
 
         try {
           // 首先尝试点击"选择作品"按钮，可能有多种选择器
@@ -1960,116 +1966,242 @@ class DouyinPlatform extends PlatformBase {
             await page.waitForTimeout(1500);
           }
 
-          // 获取所有视频元素 - 使用更灵活的查询方式
-          const result = await page.evaluate((vid) => {
-            logger.info(`Looking for video with ID: ${vid}`);
+          // ✅ 使用标题精确匹配查找视频（已验证:标题在DOM中完整存在）
+          // 注意: video_id不在DOM中,只能用于日志验证
+          logger.info(`📝 准备在浏览器中查找视频...`);
+          logger.info(`   传入标题: ${video_title ? `"${video_title.substring(0, 80)}..."` : 'null'}`);
+          logger.info(`   标题长度: ${video_title ? video_title.length : 0}`);
+          
+          const result = await page.evaluate((params) => {
+            const { titleToMatch, videoIdForLog } = params;
+            console.log(`[Browser] ==========================================`);
+            console.log(`[Browser] 开始视频查找`);
+            console.log(`[Browser] Searching for video by title: "${titleToMatch?.substring(0, 50)}..."`);
+            console.log(`[Browser] Title length: ${titleToMatch ? titleToMatch.length : 0}`);
+            console.log(`[Browser] Target video_id (for logging): ${videoIdForLog}`);
 
-            // 方法1：查找所有包含视频信息的容器
-            const containers = document.querySelectorAll('[class*="container"], [class*="item"], .work-item, [class*="video"]');
+            // 使用评论爬虫相同的选择器 .container-Lkxos9
+            let containers = document.querySelectorAll('.container-Lkxos9');
+            
+            if (containers.length === 0) {
+              console.warn('[Browser] .container-Lkxos9 not found, using fallback selectors');
+              containers = document.querySelectorAll('[class*="container"]');
+            }
 
+            console.log(`[Browser] Found ${containers.length} video containers`);
+            console.log(`[Browser] ==========================================`);
+
+            // 遍历所有容器,通过标题精确匹配
+            let matchDetails = [];
             for (let i = 0; i < containers.length; i++) {
               const container = containers[i];
-              const text = container.textContent || '';
-              const html = container.outerHTML || '';
+              const titleEl = container.querySelector('.title-LUOP3b');
+              const browserTitle = titleEl?.innerText?.trim() || '';
 
-              // 在文本或HTML中查找video_id
-              if (text.includes(vid) || html.includes(vid)) {
-                logger.info(`Found video at index ${i}`);
-                return { found: true, index: i, method: 'text_search' };
+              // 记录前5个视频的标题用于调试
+              if (i < 5) {
+                console.log(`[Browser] [${i}] Title: "${browserTitle.substring(0, 60)}..."`);
+              }
+
+              // 精确匹配标题
+              if (titleToMatch && browserTitle === titleToMatch.trim()) {
+                console.log(`[Browser] ==========================================`);
+                console.log(`[Browser] ✅✅✅ MATCHED! Found video at index ${i}`);
+                console.log(`[Browser] Matched Title: "${browserTitle.substring(0, 80)}..."`);
+                console.log(`[Browser] ==========================================`);
+                return { found: true, index: i, method: 'title_match', title: browserTitle };
               }
             }
+            
+            console.log(`[Browser] ⚠️  No exact title match found in ${containers.length} videos`);
 
-            // 方法2：如果第一个视频容器存在，就使用它
+            // Fallback: 使用第一个视频
             if (containers.length > 0) {
-              logger.info(`Using first video container (${containers.length} total found)`);
-              return { found: true, index: 0, method: 'first_container' };
+              console.warn(`[Browser] ⚠️  Title not matched, using first video as fallback`);
+              const titleEl = containers[0].querySelector('.title-LUOP3b');
+              const title = titleEl?.innerText?.trim() || '';
+              return { found: true, index: 0, method: 'first_fallback', title };
             }
 
-            logger.warn(`Video ${vid} not found in DOM`);
+            console.error(`[Browser] ❌ No video containers found`);
             return { found: false };
-          }, video_id);
+          }, { titleToMatch: video_title, videoIdForLog: video_id });
 
+          logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+          logger.info('📊 视频查找结果');
+          
           if (result && result.found) {
-            logger.info(`Found video using method: ${result.method}, clicking index ${result.index}`);
+            logger.info(`✅ Found video using method: ${result.method}, index: ${result.index}`);
+            logger.info(`   Title: "${result.title?.substring(0, 60)}..."`);
+            
+            // ✅ 双重验证提示
+            if (result.method === 'title_match') {
+              logger.info(`   ✅✅✅ Title exact match - highest confidence`);
+              logger.info(`   Expected video_id: ${video_id} (cannot verify in DOM, will verify via API)`);
+            } else if (result.method === 'first_fallback') {
+              logger.warn(`   ⚠️⚠️⚠️  Using fallback method - title not matched!`);
+              logger.warn(`   Expected title: "${video_title?.substring(0, 50)}..."`);
+              logger.warn(`   Actual title: "${result.title?.substring(0, 50)}..."`);
+              logger.warn(`   This may indicate title has been modified or data sync issue`);
+            }
+            logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 
-            // 点击视频
+            // 点击选中的视频
             await page.evaluate((idx) => {
-              const containers = document.querySelectorAll('[class*="container"], [class*="item"], .work-item, [class*="video"]');
+              let containers = document.querySelectorAll('.container-Lkxos9');
+              if (containers.length === 0) {
+                containers = document.querySelectorAll('[class*="container"]');
+              }
+              
               if (idx < containers.length) {
                 containers[idx].click();
-                logger.info(`Clicked video at index ${idx}`);
+                console.log(`[Browser] ✅ Clicked video at index ${idx}`);
+              } else {
+                console.error(`[Browser] ❌ Index ${idx} out of bounds`);
               }
             }, result.index);
 
             await page.waitForTimeout(2000);
-            logger.info('✅ Video selected successfully');
+            logger.info(`✅ Video selected successfully, waiting 2s for page update`);
+            logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           } else {
-            logger.warn(`Video ${video_id} not found, continuing with current selection`);
+            logger.error(`❌❌❌ Video not found, continuing with current selection`);
+            logger.error(`   This will likely cause the reply to go to the wrong video!`);
+            logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           }
         } catch (selectError) {
           logger.warn(`Failed to select video: ${selectError.message}, continuing anyway`);
         }
       } else {
-        logger.warn('No video_id provided, using current video selection');
+        logger.warn('No video_title or video_id provided, using current video selection');
       }
 
       // 4. 定位要回复的评论（从虚拟列表/DOM中查找）
-      logger.info(`Locating comment: ${target_id}`);
+      logger.info(`Locating comment: ${target_id}${parent_comment_id ? ` (二级回复, 父评论: ${parent_comment_id})` : ' (一级评论)'}`);
 
+      // ✅ 如果有parent_comment_id,说明这是二级回复,需要先展开一级评论的讨论区
+      let commentElement = null;
+      let discussionContext = null;  // 保存讨论区上下文,用于后续在讨论区内查找输入框
+      
+      if (parent_comment_id) {
+        logger.info(`🔍 This is a second-level reply, finding parent comment first: ${parent_comment_id}`);
+        
+        // 步骤1: 定位父评论
+        const parentComment = await this._findCommentById(page, parent_comment_id);
+        if (!parentComment) {
+          logger.warn(`Parent comment ${parent_comment_id} not found, falling back to first comment`);
+        } else {
+          logger.info(`✅ Found parent comment: ${parent_comment_id}`);
+          
+          // 步骤2: 查找并点击"查看XX条回复"按钮,展开讨论区
+          try {
+            // 抖音评论的"查看回复"按钮可能有多种文本形式
+            const replyButtons = await parentComment.$$('div[class*="item"]');
+            let viewRepliesBtn = null;
+            
+            for (const btn of replyButtons) {
+              const text = await btn.textContent();
+              // 匹配"查看X条回复"、"X条回复"等格式
+              if (text && (text.includes('回复') && /\d+/.test(text))) {
+                viewRepliesBtn = btn;
+                logger.info(`Found replies toggle button: "${text.trim()}"`);
+                break;
+              }
+            }
+            
+            if (viewRepliesBtn) {
+              // 点击展开
+              await viewRepliesBtn.click();
+              logger.info(`Clicked to expand discussions`);
+              await page.waitForTimeout(2000);  // 等待讨论区完全加载
+              
+              // 步骤3: 查找展开的讨论区容器
+              // ✅ 讨论区有明确的class标识: .reply-content-obcMk0
+              discussionContext = await page.$('.reply-content-obcMk0') || 
+                                  await parentComment.$('xpath=following-sibling::*[1]') || 
+                                  await parentComment.$('xpath=..') ||
+                                  parentComment;
+              
+              if (discussionContext) {
+                logger.info(`✅✅✅ Discussion area expanded and located with .reply-content-obcMk0`);
+                // 验证输入框是否存在
+                const hasInput = await discussionContext.$('div[contenteditable="true"]');
+                if (hasInput) {
+                  logger.info(`✅ Verified: Reply input field exists in discussion area`);
+                } else {
+                  logger.warn(`⚠️ Reply input field not found in discussion area, will retry`);
+                }
+              }
+              
+              // 注意: 对于二级回复,不需要定位具体的评论元素
+              // 直接在讨论区输入框输入即可
+              commentElement = discussionContext;
+            } else {
+              logger.warn(`Replies toggle button not found for parent ${parent_comment_id}`);
+            }
+          } catch (err) {
+            logger.warn(`Failed to expand discussions: ${err.message}`);
+          }
+        }
+      }
+
+      // 如果不是二级回复,或者二级回复查找失败,按原有逻辑查找一级评论
       // 抖音创作者中心评论列表结构分析：
       // - 评论项 class: .container-sXKyMs
       // - 没有 data-comment-id 或 id 属性
       // - 通过内容（用户名、时间戳、评论文本）来定位
 
       // 方案 1: 通过 target_id 如果它是用户名或内容哈希
-      let commentElement = null;
-
-      // 首先尝试通过标准 data 属性（备选）
-      const commentSelectors = [
-        `[data-comment-id="${target_id}"]`,
-        `[data-cid="${target_id}"]`,
-        `[class*="comment"][id*="${target_id}"]`,
-      ];
-
-      for (const selector of commentSelectors) {
-        try {
-          commentElement = await page.$(selector);
-          if (commentElement) {
-            logger.debug(`Found comment with selector: ${selector}`);
-            break;
-          }
-        } catch (e) {
-          // 继续尝试下一个选择器
-        }
-      }
-
-      // 方案 2: 如果上述方法失败，通过内容在 .container-sXKyMs 中查找
       if (!commentElement) {
-        logger.warn(`Comment not found via data attributes, trying content matching`);
+        logger.info(`Searching for comment in main list: ${target_id}`);
+        
+        // 首先尝试通过标准 data 属性（备选）
+        const commentSelectors = [
+          `[data-comment-id="${target_id}"]`,
+          `[data-cid="${target_id}"]`,
+          `[class*="comment"][id*="${target_id}"]`,
+        ];
 
-        // 获取所有评论项
-        const allComments = await page.$$('.container-sXKyMs');
-        logger.info(`Found ${allComments.length} comment items in DOM`);
-
-        // 尝试通过内容匹配找到目标评论
-        for (let i = 0; i < allComments.length; i++) {
-          const text = await allComments[i].textContent();
-          // target_id 可能是用户名、或内容的一部分、或时间戳
-          if (text.includes(target_id) || target_id.includes(text.substring(0, 10))) {
-            commentElement = allComments[i];
-            logger.info(`Found comment by content matching at index ${i}`);
-            break;
+        for (const selector of commentSelectors) {
+          try {
+            commentElement = await page.$(selector);
+            if (commentElement) {
+              logger.debug(`Found comment with selector: ${selector}`);
+              break;
+            }
+          } catch (e) {
+            // 继续尝试下一个选择器
           }
         }
-      }
 
-      // 方案 3: 备选方案 - 使用第一条评论
-      if (!commentElement) {
-        logger.warn(`Comment ${target_id} not found by content, will try first comment`);
-        const comments = await page.$$('.container-sXKyMs');
-        if (comments.length > 0) {
-          commentElement = comments[0];
-          logger.info(`Using first comment in list as fallback`);
+        // 方案 2: 如果上述方法失败，通过内容在 .container-sXKyMs 中查找
+        if (!commentElement) {
+          logger.warn(`Comment not found via data attributes, trying content matching`);
+
+          // 获取所有评论项
+          const allComments = await page.$$('.container-sXKyMs');
+          logger.info(`Found ${allComments.length} comment items in DOM`);
+
+          // 尝试通过内容匹配找到目标评论
+          for (let i = 0; i < allComments.length; i++) {
+            const text = await allComments[i].textContent();
+            // target_id 可能是用户名、或内容的一部分、或时间戳
+            if (text.includes(target_id) || target_id.includes(text.substring(0, 10))) {
+              commentElement = allComments[i];
+              logger.info(`Found comment by content matching at index ${i}`);
+              break;
+            }
+          }
+        }
+
+        // 方案 3: 备选方案 - 使用第一条评论
+        if (!commentElement) {
+          logger.warn(`Comment ${target_id} not found by content, will try first comment`);
+          const comments = await page.$$('.container-sXKyMs');
+          if (comments.length > 0) {
+            commentElement = comments[0];
+            logger.info(`Using first comment in list as fallback`);
+          }
         }
       }
 
@@ -2077,8 +2209,11 @@ class DouyinPlatform extends PlatformBase {
         throw new Error(`Comment ${target_id} not found on page`);
       }
 
-      // 5. 点击回复按钮
-      logger.info('Clicking reply button');
+      // 5. 点击回复按钮 (二级回复不需要点击,因为讨论区已经展开)
+      if (discussionContext) {
+        logger.info('⏭️ Skipping reply button click for second-level reply (discussion already expanded)');
+      } else {
+        logger.info('Clicking reply button for first-level comment');
 
       // 抖音创作者中心的回复按钮结构：
       // - 在 operations-WFV7Am 容器中
@@ -2161,11 +2296,20 @@ class DouyinPlatform extends PlatformBase {
       } else {
         logger.warn('Reply button not found, will try to proceed with input');
       }
+      }  // 关闭一级评论回复按钮逻辑的else块
 
-      // 5. 定位并填充回复输入框
+      // 6. 定位并填充回复输入框
       logger.info('Locating reply input field');
 
-      const inputSelectors = [
+      const inputSelectors = discussionContext ? [
+        // ✅ 二级回复专用选择器 (在讨论区内)
+        '.reply-content-obcMk0 div[contenteditable="true"]',  // 讨论区输入框容器
+        '.input-d24X73',  // 讨论区输入框class
+        '.wrap-NeUN4f div[contenteditable="true"]',  // 讨论区输入包装器
+        'div[placeholder*="回复"][contenteditable="true"]',  // 带placeholder的输入框
+        'div[contenteditable="true"]',  // 通用contenteditable
+      ] : [
+        // 一级评论回复选择器 (在页面底部)
         'div[contenteditable="true"]',  // 抖音当前使用的输入框格式
         'textarea[placeholder*="回复"]',
         'input[placeholder*="回复"]',
@@ -2178,11 +2322,17 @@ class DouyinPlatform extends PlatformBase {
       ];
 
       let replyInput = null;
+      
+      // ✅ 如果是二级回复且有discussionContext,在讨论区内查找输入框
+      const searchContext = discussionContext || page;
+      const contextType = discussionContext ? 'discussion area' : 'page';
+      logger.info(`Searching for input field in ${contextType}`);
+      
       for (const selector of inputSelectors) {
         try {
-          replyInput = await page.$(selector);
+          replyInput = await searchContext.$(selector);
           if (replyInput && await replyInput.isVisible()) {
-            logger.debug(`Found reply input with selector: ${selector}`);
+            logger.info(`✅ Found reply input in ${contextType} with selector: ${selector}`);
             break;
           }
         } catch (e) {
@@ -2203,27 +2353,38 @@ class DouyinPlatform extends PlatformBase {
       await replyInput.type(reply_content, { delay: 50 }); // 使用 type 而不是 fill，更真实
       await page.waitForTimeout(500);
 
-      // 6. 提交回复
+      // 7. 提交回复
       logger.info('🔘 Submitting reply');
 
+      // ✅ 如果是二级回复,在讨论区范围内查找发送按钮
+      const searchScopeForBtn = discussionContext || page;
+      const scopeDesc = discussionContext ? 'discussion area' : 'page';
+      
       // 先尝试在浏览器中直接点击发送按钮
-      logger.debug('Attempting to click submit button via JavaScript...');
-      const submitBtnClicked = await page.evaluate(() => {
-        const buttons = Array.from(document.querySelectorAll('button'));
-        const submitBtn = buttons.find(btn =>
-          btn.textContent.includes('发送') ||
-          btn.textContent.includes('回复') ||
-          btn.getAttribute('type') === 'submit'
-        );
+      logger.debug(`Attempting to click submit button in ${scopeDesc} via JavaScript...`);
+      const submitBtnClicked = await searchScopeForBtn.evaluate((isDiscussion) => {
+        // ✅ 二级回复: 在.reply-content-obcMk0或.right-zLR6K3容器中查找
+        const containers = isDiscussion ? 
+          document.querySelectorAll('.reply-content-obcMk0, .right-zLR6K3, .footer-oZJTJd') :
+          [document];
+        
+        for (const container of containers) {
+          const buttons = Array.from(container.querySelectorAll('button'));
+          const submitBtn = buttons.find(btn =>
+            btn.textContent.includes('发送') ||
+            btn.textContent.includes('回复') ||
+            btn.getAttribute('type') === 'submit'
+          );
 
-        if (submitBtn && !submitBtn.disabled) {
-          console.log('[JS] Clicking submit button:', submitBtn.textContent);
-          submitBtn.click();
-          return true;
+          if (submitBtn && !submitBtn.disabled) {
+            console.log('[JS] Clicking submit button:', submitBtn.textContent, 'in', isDiscussion ? 'discussion' : 'page');
+            submitBtn.click();
+            return true;
+          }
         }
-        console.log('[JS] No valid submit button found. Found buttons:', buttons.map(b => b.textContent).join(', '));
+        console.log('[JS] No valid submit button found in', isDiscussion ? 'discussion area' : 'page');
         return false;
-      });
+      }, !!discussionContext);
 
       if (submitBtnClicked) {
         logger.info('✅ Submit button clicked via JavaScript - 🔴 **API 拦截器应该立即被触发！**');
@@ -3151,6 +3312,47 @@ class DouyinPlatform extends PlatformBase {
       logger.warn(`解析 monitoring_config 失败: ${error.message}，使用默认配置`);
       return defaultConfig;
     }
+  }
+
+  /**
+   * 辅助方法: 在指定上下文中查找评论
+   * @param {Page|ElementHandle} context - 页面或元素句柄
+   * @param {string} commentId - 评论ID
+   * @returns {ElementHandle|null} 评论元素或null
+   */
+  async _findCommentById(context, commentId) {
+    // 方法1: 尝试data属性
+    const selectors = [
+      `[data-comment-id="${commentId}"]`,
+      `[data-cid="${commentId}"]`,
+      `[class*="comment"][id*="${commentId}"]`,
+    ];
+
+    for (const selector of selectors) {
+      try {
+        const element = await context.$(selector);
+        if (element) {
+          return element;
+        }
+      } catch (e) {
+        // 继续下一个
+      }
+    }
+
+    // 方法2: 内容匹配
+    try {
+      const comments = await context.$$('.container-sXKyMs');
+      for (const comment of comments) {
+        const text = await comment.textContent();
+        if (text && (text.includes(commentId) || commentId.includes(text.substring(0, 10)))) {
+          return comment;
+        }
+      }
+    } catch (e) {
+      logger.warn(`Failed to find comment by content: ${e.message}`);
+    }
+
+    return null;
   }
 
   // ============================================================================
