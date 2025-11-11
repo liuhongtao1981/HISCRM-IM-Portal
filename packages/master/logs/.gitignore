@@ -1,6 +1,0 @@
-# 忽略 master/logs 目录下的所有日志文件
-*
-
-# 但保留 .gitkeep 文件（保持目录结构）
-!.gitkeep
-!.gitignore

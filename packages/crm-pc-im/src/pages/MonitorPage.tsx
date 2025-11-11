@@ -528,6 +528,7 @@ export default function MonitorPage() {
     
     // 🔍 DEBUG: 前端发送参数调试
     console.log('[前端DEBUG] 发送回复参数:', {
+      replyToMessage,
       activeTab,
       messageCategory: activeTab,
       ...replyData
