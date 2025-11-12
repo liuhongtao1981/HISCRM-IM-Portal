@@ -83,8 +83,8 @@ class ReplyExecutor {
    *   - request_id: string
    *   - platform: string ('douyin', 'xiaohongshu', etc.)
    *   - account_id: string
-   *   - target_type: string ('comment' | 'direct_message')
-   *   - target_id: string (向后兼容，旧版本为 platform_message_id)
+   *   - target_type: string ('comment' | 'work' | 'direct_message')
+   *   - target_id: string | null (comment: 评论ID, work: null, direct_message: 会话ID)
    *   - conversation_id: string (Phase 9 新增，私信用)
    *   - platform_message_id: string (Phase 9 新增，私信用，可选)
    *   - reply_content: string
@@ -136,7 +136,7 @@ class ReplyExecutor {
       }
 
       // 验证平台是否支持回复功能
-      if (target_type === 'comment' && !platformInstance.replyToComment) {
+      if ((target_type === 'comment' || target_type === 'work') && !platformInstance.replyToComment) {
         throw new Error(`Platform ${platform} does not support comment replies`);
       }
       if (target_type === 'direct_message' && !platformInstance.replyToDirectMessage) {
@@ -145,10 +145,14 @@ class ReplyExecutor {
 
       // 执行平台特定的回复操作
       let result;
-      if (target_type === 'comment') {
-        logger.warn(`[DEBUG] 执行评论回复: replyToComment, target_id: ${target_id}`);
+      if (target_type === 'comment' || target_type === 'work') {
+        // ✅ 'work' 和 'comment' 都调用 replyToComment，区别在于 target_id 是否为 null
+        const commentId = target_type === 'work' ? null : target_id;
+        const replyTypeDesc = target_type === 'work' ? '作品评论（一级）' : '评论回复（二级）';
+        logger.warn(`[DEBUG] 执行${replyTypeDesc}: replyToComment, commentId: ${commentId}`);
+
         result = await platformInstance.replyToComment(account_id, {
-          target_id,
+          target_id: commentId,
           reply_content,
           context,
           browserManager: this.browserManager,

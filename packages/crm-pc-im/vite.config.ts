@@ -11,7 +11,9 @@ export default defineConfig({
     }
   },
   server: {
-    port: 5173
+    port: 5173,
+    host: '0.0.0.0',  // 监听所有网络接口（IPv4 + IPv6）
+    strictPort: true   // 如果端口被占用则失败，不尝试下一个端口
   },
   base: './'
 })

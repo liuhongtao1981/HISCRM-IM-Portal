@@ -26,7 +26,9 @@ function getLogDir(serviceName) {
   if (serviceName.includes('worker') ||
       serviceName.includes('platform') ||
       serviceName.includes('data-manager') ||
-      serviceName.includes('douyin-data') ||
+      serviceName.includes('douyin') ||  // 抖音相关模块
+      serviceName.includes('xiaohongshu') ||  // 小红书相关模块
+      serviceName.includes('reply') ||  // 回复相关模块
       serviceName.includes('browser-manager') ||
       serviceName.includes('crawl-') ||
       serviceName.includes('spider') ||

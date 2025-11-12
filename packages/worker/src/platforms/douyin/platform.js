@@ -24,6 +24,9 @@ const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require
 // 导入实时监控管理器
 const DouyinRealtimeMonitor = require('./realtime-monitor');
 
+// 导入回复功能模块
+const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comment');
+
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
 
@@ -95,12 +98,15 @@ class DouyinPlatform extends PlatformBase {
         manager.register('**/comment/reply/list/**', onDiscussionsListAPI);  // 修正：更宽松的模式
         manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 通知详情 API（评论通知）
 
+        // 评论回复 API（回调函数内部会排除 /comment/reply/list 列表接口）
+        manager.register('**/comment/reply{/,}?**', onCommentReplyAPI);
+
         // 私信相关 API
         manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
         manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // ✅ 修正：匹配实际的会话 API
         manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
-        logger.info(`✅ API handlers registered (8 total) for account ${accountId}`);
+        logger.info(`✅ API handlers registered (9 total) for account ${accountId}`);
     }
 
     /**
@@ -876,58 +882,6 @@ class DouyinPlatform extends PlatformBase {
     }
 
     /**
-     * 从URL提取item_id参数（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
-     * @deprecated Use crawl-comments.js exports instead
-     * @param {string} url - API URL
-     * @returns {string|null} item_id
-     */
-    extractItemId(url) {
-        const match = url.match(/item_id=([^&]+)/);
-        return match ? decodeURIComponent(match[1]) : null;
-    }
-
-    /**
-     * 从URL提取cursor参数（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
-     * @deprecated Use crawl-comments.js exports instead
-     * @param {string} url - API URL
-     * @returns {number} cursor值
-     */
-    extractCursor(url) {
-        const match = url.match(/cursor=(\d+)/);
-        return match ? parseInt(match[1]) : 0;
-    }
-
-    /**
-     * 按item_id分组API响应（保留用于向后兼容，实际逻辑已迁移到 crawl-comments.js）
-     * @deprecated Use crawl-comments.js exports instead
-     * @param {Array} responses - API响应数组
-     * @returns {Object} 按item_id分组的响应
-     */
-    groupResponsesByItemId(responses) {
-        const grouped = {};
-        responses.forEach(resp => {
-            if (resp.item_id) {
-                if (!grouped[resp.item_id]) {
-                    grouped[resp.item_id] = [];
-                }
-                grouped[resp.item_id].push(resp);
-            }
-        });
-
-        // 按cursor排序
-        for (const itemId in grouped) {
-            grouped[itemId].sort((a, b) => a.cursor - b.cursor);
-        }
-
-        return grouped;
-    }
-
-    /**
-     * 爬取私信 - 导航到 互动管理 - 私信管理 页面，通过拦截API获取数据
-     * @param {Object} account - 账户对象
-     * @returns {Promise<Object>} { directMessages: Array, stats: Object }
-     */
-    /**
      * 爬取私信 - 导航到 互动管理 - 私信管理 页面，通过拦截API获取数据
      * @param {Object} account - 账户对象
      * @returns {Promise<Object>} { directMessages: Array, stats: Object }
@@ -1062,135 +1016,13 @@ class DouyinPlatform extends PlatformBase {
     // ==================== 爬虫辅助方法 ====================
 
     /**
-     * 获取或创建页面 - 支持指定蜘蛛类型
-     * @param {string} accountId - 账户ID
-     * @param {string} spiderType - 蜘蛛类型 ('spider1' 私信, 'spider2' 评论)
-     * @returns {Promise<Page>}
-     */
-    async getOrCreatePage(accountId, spiderType = 'spider1') {
-        // ⭐ 使用 BrowserManager 的蜘蛛页面管理系统
-        // spider1 (Tab 1): 私信爬虫 - 长期运行
-        // spider2 (Tab 2): 评论爬虫 - 长期运行
-        if (this.browserManager && this.browserManager.getSpiderPage) {
-            return await this.browserManager.getSpiderPage(accountId, spiderType);
-        }
-
-        // 降级: 使用 PlatformBase 的统一接口
-        return await super.getAccountPage(accountId);
-    }
-
-    /**
-     * 导航到评论管理页面 (互动管理 - 评论管理)
-     * @param {Page} page
-     */
-    async navigateToCommentManage(page) {
-        logger.info('Navigating to comment management page (互动管理 - 评论管理)');
-
-        const currentUrl = page.url();
-
-        // 如果已经在评论管理页面，直接返回
-        if (currentUrl.includes('/interactive/comment')) {
-            logger.info('Already on comment management page');
-            return;
-        }
-
-        // 导航到创作者中心首页
-        if (!currentUrl.includes('creator.douyin.com')) {
-            await page.goto('https://creator.douyin.com/', {
-                waitUntil: 'networkidle',
-                timeout: 30000,
-            });
-            await this.randomDelay(1000, 2000);
-        }
-
-        // 导航到评论管理页面
-        // 路径: 互动管理 - 评论管理
-        // URL: https://creator.douyin.com/creator-micro/interactive/comment
-        try {
-            await page.goto('https://creator.douyin.com/creator-micro/interactive/comment', {
-                waitUntil: 'networkidle',
-                timeout: 30000,
-            });
-            await this.randomDelay(2000, 3000);
-            logger.info('Navigated to comment management page');
-        } catch (error) {
-            logger.error('Failed to navigate to comment management page:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * 导航到私信管理页面 (互动管理 - 私信管理)
-     * @param {Page} page
-     */
-    async navigateToMessageManage(page) {
-        logger.info('[navigateToMessageManage] Starting navigation to message management page');
-
-        const currentUrl = page.url();
-        logger.debug(`[navigateToMessageManage] Current URL: ${currentUrl}`);
-
-        // 如果已经在私信管理页面，直接返回
-        if (currentUrl.includes('/data/following/chat')) {
-            logger.info('[navigateToMessageManage] Already on message management page, skipping navigation');
-            return;
-        }
-
-        // 导航到私信管理页面
-        // 路径: 互动管理 - 私信管理
-        // URL: https://creator.douyin.com/creator-micro/data/following/chat
-        try {
-            logger.debug('[navigateToMessageManage] Navigating to https://creator.douyin.com/creator-micro/data/following/chat');
-            await page.goto('https://creator.douyin.com/creator-micro/data/following/chat', {
-                waitUntil: 'networkidle',
-                timeout: 30000,
-            });
-            logger.debug('[navigateToMessageManage] Page loaded, adding random delay');
-            await this.randomDelay(2000, 3000);
-            logger.info('[navigateToMessageManage] ✅ Successfully navigated to message management page');
-        } catch (error) {
-            logger.error('[navigateToMessageManage] ❌ FAILED to navigate:', error);
-            logger.error('[navigateToMessageManage] Error stack:', error.stack);
-            throw error;
-        }
-    }
-
-    /**
-     * 从评论管理页面获取作品列表
-     * @param {Page} page
-     * @returns {Promise<Array>} 作品列表
+     * 随机延迟
+     * @param {number} min - 最小延迟(毫秒)
+     * @param {number} max - 最大延迟(毫秒)
      */
     async randomDelay(min, max) {
         const delay = min + Math.random() * (max - min);
         await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-
-    /**
-     * 获取历史评论ID（通过 Worker Bridge 请求 Master）
-     * @param {string} awemeId - 作品ID
-     * @param {Object} options - 选项
-     * @returns {Promise<Array<string>>} 评论ID列表
-     */
-    async getExistingCommentIds(awemeId, options = {}) {
-        try {
-            logger.debug(`Requesting existing comment IDs for video ${awemeId}`);
-
-            // 通过 Worker Bridge 发送请求到 Master
-            const response = await this.bridge.request('worker:get_comment_ids', {
-                aweme_id: awemeId,
-                options,
-            });
-
-            if (response.success) {
-                logger.debug(`Received ${response.comment_ids.length} existing comment IDs for video ${awemeId}`);
-                return response.comment_ids;
-            } else {
-                logger.warn(`Failed to get existing comment IDs: ${response.error}`);
-                return [];
-            }
-        } catch (error) {
-            logger.error(`Failed to get existing comment IDs for video ${awemeId}:`, error);
-            return [];
-        }
     }
 
     /**
@@ -1751,901 +1583,112 @@ class DouyinPlatform extends PlatformBase {
         logger.debug(`✅ DM API interceptors configured`);
     }
 
-    /**
-     * 回复评论
-     * @param {string} accountId - 账户 ID
-     * @param {Object} options - 回复选项
-     *   - target_id: string - 被回复的评论 ID
-     *   - reply_content: string - 回复内容
-     *   - context: object - 上下文信息 (video_id, user_id, etc.)
-     *   - browserManager: BrowserManager
-     * @returns {Promise<{platform_reply_id?, data?}>}
-     */
-    async replyToComment(accountId, options) {
-        const { target_id, reply_content, context = {}, browserManager } = options;
-        const { video_id, video_title, comment_user_id, parent_comment_id } = context;
 
-        let page = null;
-        let replyTabId = null;
-
-        // 在 try 块外定义 apiResponses，以便在 catch 和 finally 块中访问
-        const apiResponses = {
-            replySuccess: null,
-            replyError: null
-        };
-
-        try {
-            logger.info(`[Douyin] Replying to comment: ${target_id}`, {
-                accountId,
-                videoId: video_id,
-                contextKeys: Object.keys(context),
-                fullContext: context,
-                replyContent: reply_content.substring(0, 50),
-            });
-
-            // 1. 获取临时标签页处理回复
-            // ⭐ 使用 TabManager 获取评论回复专用临时窗口
-            // 特性：临时窗口，回复完成后立即关闭，不干扰爬虫任务
-            const { tabId, page: replyPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
-                tag: TabTag.REPLY_COMMENT,
-                persistent: false,     // 回复完成后关闭
-                shareable: false,      // 独立窗口
-                forceNew: true         // 每次回复创建新窗口
-            });
-
-            page = replyPage;
-            replyTabId = tabId; logger.info(`[Douyin] 为评论回复任务获取临时标签页`, {
-                accountId,
-                purpose: 'comment_reply',
-                commentId: target_id,
-                tabId: replyTabId
-            });
-
-            // 设置超时
-            page.setDefaultTimeout(30000);
-
-            // 2. 设置 API 拦截器 - 监听回复发送的 API 响应
-            logger.info('Setting up API interceptor for reply validation');
-
-            // 定义 API 拦截处理器 - 注意：不能使用 async，Playwright 的 page.on('response') 不支持异步处理器
-            const apiInterceptHandler = (response) => {
-                const url = response.url();
-                const status = response.status();
-
-                // 添加详细日志以诊断 API 拦截 - 记录所有响应用于调试
-                logger.debug(`[API Interceptor] All responses: ${url.substring(0, 100)}`);
-
-                // 匹配回复 API: /aweme/v1/creator/comment/reply/ 或 /comment/reply
-                if (url.includes('comment/reply')) {
-                    logger.info(`🔍 [API Interceptor] Found comment/reply API!`);
-                    logger.info(`    URL: ${url}`);
-                    logger.info(`    HTTP Status: ${status}`);
-
-                    // 异步处理 JSON 解析，但不阻塞处理器
-                    response.json().then((json) => {
-                        logger.info('✅ [API Interceptor] Successfully parsed JSON response');
-                        logger.info('    Response data:', {
-                            status_code: json.status_code,
-                            status_msg: json.status_msg,
-                            error_msg: json.error_msg,
-                            keys: Object.keys(json)
-                        });
-
-                        // ⭐ 改进: 正确处理成功和失败的状态返回
-                        // 成功响应: { status_code: 0, comment_info: {...}, ... }
-                        // 失败响应: { status_code: 15421, status_msg: "私密作品无法评论", ... }
-
-                        const statusCode = json.status_code;
-                        const statusMsg = json.status_msg || '';
-                        const commentInfo = json.comment_info;
-
-                        if (statusCode === 0 && commentInfo) {
-                            // ✅ 成功 - status_code=0 且有 comment_info
-                            apiResponses.replySuccess = {
-                                timestamp: Date.now(),
-                                url,
-                                status,
-                                statusCode: statusCode,
-                                statusMsg: statusMsg,
-                                commentId: commentInfo.comment_id,
-                                data: json
-                            };
-                            logger.info(`✅✅✅ Reply SUCCESS ✅✅✅`);
-                            logger.info(`    Status Code: ${statusCode}`);
-                            logger.info(`    Comment ID: ${commentInfo.comment_id}`);
-                            logger.info(`    Create Time: ${commentInfo.create_time}`);
-                            logger.info(`    Reply Text: ${commentInfo.text}`);
-                        } else if (statusCode !== 0 && statusCode !== undefined) {
-                            // ❌ 失败 - status_code 非 0（表示 API 错误）
-                            apiResponses.replyError = {
-                                timestamp: Date.now(),
-                                url,
-                                status,
-                                status_code: statusCode,
-                                status_msg: statusMsg,
-                                error_msg: statusMsg || '未知错误',
-                                data: json
-                            };
-                            logger.warn(`❌❌❌ Reply FAILED ❌❌❌`);
-                            logger.warn(`    Status Code: ${statusCode}`);
-                            logger.warn(`    Error Message: ${statusMsg}`);
-                        } else if (status >= 400) {
-                            // ❌ HTTP 错误状态码
-                            apiResponses.replyError = {
-                                timestamp: Date.now(),
-                                url,
-                                status,
-                                status_code: status,
-                                error_msg: json.error_msg || json.message || `HTTP ${status} Error`,
-                                data: json
-                            };
-                            logger.warn(`❌ HTTP Error: ${status}`);
-                        } else {
-                            logger.warn('⚠️ Unexpected response format');
-                            if (json.status_msg) {
-                                apiResponses.replyError = {
-                                    timestamp: Date.now(),
-                                    url,
-                                    status,
-                                    status_code: json.status_code || -1,
-                                    status_msg: json.status_msg,
-                                    error_msg: json.status_msg,
-                                    data: json
-                                };
-                                logger.warn(`❌ Found status_msg: ${json.status_msg}`);
-                            }
-                        }
-                    }).catch((parseError) => {
-                        logger.error('❌ Failed to parse reply API response:', parseError.message);
-                        // 尝试获取文本响应作为备选
-                        response.text().then((text) => {
-                            logger.error('    Response text:', text.substring(0, 200));
-                        }).catch(() => {
-                            logger.error('    Could not get response text either');
-                        });
-                    });
-                }
-            };
-
-            page.on('response', apiInterceptHandler);
-            logger.info('✅ API interceptor enabled for reply tracking');
-
-            // 3. 导航到创作者中心评论管理页面（新标签页方式，与私信回复保持一致）
-            const commentManagementUrl = 'https://creator.douyin.com/creator-micro/interactive/comment';
-            logger.info('Navigating to creator center comment management page in new tab');
-
-            try {
-                await page.goto(commentManagementUrl, {
-                    waitUntil: 'networkidle',
-                    timeout: 30000
-                });
-                await page.waitForTimeout(2000);
-                logger.info('✅ Successfully navigated to comment management page');
-            } catch (navError) {
-                logger.error('Navigation to comment management page failed:', navError.message);
-                throw new Error(`Failed to navigate to comment page: ${navError.message}`);
-            }
-
-            // 3. 选择对应的视频（✅ 优先使用标题匹配，fallback到video_id）
-            logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-            logger.info('🎯 开始视频选择流程');
-            logger.info(`   video_title: ${video_title ? `"${video_title.substring(0, 50)}..."` : 'null'}`);
-            logger.info(`   video_id: ${video_id || 'null'}`);
-            logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-            if (video_title || video_id) {
-                logger.info(`Selecting video by title: "${video_title?.substring(0, 50)}..." or ID: ${video_id}`);
-
-                try {
-                    // 首先尝试点击"选择作品"按钮，可能有多种选择器
-                    let clickedSelectButton = false;
-
-                    // 尝试多个选择器
-                    const selectSelectors = [
-                        'button:has-text("选择作品")',
-                        'span:has-text("选择作品")',
-                        '[class*="select"][class*="work"]',
-                        'button[class*="SelectWork"]',
-                    ];
-
-                    for (const selector of selectSelectors) {
-                        try {
-                            const elements = await page.$$(selector);
-                            if (elements.length > 0) {
-                                logger.info(`Found select button with selector: ${selector}`);
-                                await page.click(selector, { timeout: 3000 });
-                                clickedSelectButton = true;
-                                break;
-                            }
-                        } catch (e) {
-                            logger.debug(`Selector ${selector} not found, trying next...`);
-                        }
-                    }
-
-                    if (clickedSelectButton) {
-                        await page.waitForTimeout(1500);
-                    }
-
-                    // ✅ 使用标题精确匹配查找视频（已验证:标题在DOM中完整存在）
-                    // 注意: video_id不在DOM中,只能用于日志验证
-                    logger.info(`📝 准备在浏览器中查找视频...`);
-                    logger.info(`   传入标题: ${video_title ? `"${video_title.substring(0, 80)}..."` : 'null'}`);
-                    logger.info(`   标题长度: ${video_title ? video_title.length : 0}`);
-
-                    const result = await page.evaluate((params) => {
-                        const { titleToMatch, videoIdForLog } = params;
-                        console.log(`[Browser] ==========================================`);
-                        console.log(`[Browser] 开始视频查找`);
-                        console.log(`[Browser] Searching for video by title: "${titleToMatch?.substring(0, 50)}..."`);
-                        console.log(`[Browser] Title length: ${titleToMatch ? titleToMatch.length : 0}`);
-                        console.log(`[Browser] Target video_id (for logging): ${videoIdForLog}`);
-
-                        // 使用评论爬虫相同的选择器 .container-Lkxos9
-                        let containers = document.querySelectorAll('.container-Lkxos9');
-
-                        if (containers.length === 0) {
-                            console.warn('[Browser] .container-Lkxos9 not found, using fallback selectors');
-                            containers = document.querySelectorAll('[class*="container"]');
-                        }
-
-                        console.log(`[Browser] Found ${containers.length} video containers`);
-                        console.log(`[Browser] ==========================================`);
-
-                        // 遍历所有容器,通过标题精确匹配
-                        let matchDetails = [];
-                        for (let i = 0; i < containers.length; i++) {
-                            const container = containers[i];
-                            const titleEl = container.querySelector('.title-LUOP3b');
-                            const browserTitle = titleEl?.innerText?.trim() || '';
-
-                            // 记录前5个视频的标题用于调试
-                            if (i < 5) {
-                                console.log(`[Browser] [${i}] Title: "${browserTitle.substring(0, 60)}..."`);
-                            }
-
-                            // 精确匹配标题
-                            if (titleToMatch && browserTitle === titleToMatch.trim()) {
-                                console.log(`[Browser] ==========================================`);
-                                console.log(`[Browser] ✅✅✅ MATCHED! Found video at index ${i}`);
-                                console.log(`[Browser] Matched Title: "${browserTitle.substring(0, 80)}..."`);
-                                console.log(`[Browser] ==========================================`);
-                                return { found: true, index: i, method: 'title_match', title: browserTitle };
-                            }
-                        }
-
-                        console.log(`[Browser] ⚠️  No exact title match found in ${containers.length} videos`);
-
-                        // Fallback: 使用第一个视频
-                        if (containers.length > 0) {
-                            console.warn(`[Browser] ⚠️  Title not matched, using first video as fallback`);
-                            const titleEl = containers[0].querySelector('.title-LUOP3b');
-                            const title = titleEl?.innerText?.trim() || '';
-                            return { found: true, index: 0, method: 'first_fallback', title };
-                        }
-
-                        console.error(`[Browser] ❌ No video containers found`);
-                        return { found: false };
-                    }, { titleToMatch: video_title, videoIdForLog: video_id });
-
-                    logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    logger.info('📊 视频查找结果');
-
-                    if (result && result.found) {
-                        logger.info(`✅ Found video using method: ${result.method}, index: ${result.index}`);
-                        logger.info(`   Title: "${result.title?.substring(0, 60)}..."`);
-
-                        // ✅ 双重验证提示
-                        if (result.method === 'title_match') {
-                            logger.info(`   ✅✅✅ Title exact match - highest confidence`);
-                            logger.info(`   Expected video_id: ${video_id} (cannot verify in DOM, will verify via API)`);
-                        } else if (result.method === 'first_fallback') {
-                            logger.warn(`   ⚠️⚠️⚠️  Using fallback method - title not matched!`);
-                            logger.warn(`   Expected title: "${video_title?.substring(0, 50)}..."`);
-                            logger.warn(`   Actual title: "${result.title?.substring(0, 50)}..."`);
-                            logger.warn(`   This may indicate title has been modified or data sync issue`);
-                        }
-                        logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-
-                        // 点击选中的视频
-                        await page.evaluate((idx) => {
-                            let containers = document.querySelectorAll('.container-Lkxos9');
-                            if (containers.length === 0) {
-                                containers = document.querySelectorAll('[class*="container"]');
-                            }
-
-                            if (idx < containers.length) {
-                                containers[idx].click();
-                                console.log(`[Browser] ✅ Clicked video at index ${idx}`);
-                            } else {
-                                console.error(`[Browser] ❌ Index ${idx} out of bounds`);
-                            }
-                        }, result.index);
-
-                        await page.waitForTimeout(2000);
-                        logger.info(`✅ Video selected successfully, waiting 2s for page update`);
-                        logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    } else {
-                        logger.error(`❌❌❌ Video not found, continuing with current selection`);
-                        logger.error(`   This will likely cause the reply to go to the wrong video!`);
-                        logger.info('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-                    }
-                } catch (selectError) {
-                    logger.warn(`Failed to select video: ${selectError.message}, continuing anyway`);
-                }
-            } else {
-                logger.warn('No video_title or video_id provided, using current video selection');
-            }
-
-            // 4. 定位要回复的评论（从虚拟列表/DOM中查找）
-            logger.info(`Locating comment: ${target_id}${parent_comment_id ? ` (二级回复, 父评论: ${parent_comment_id})` : ' (一级评论)'}`);
-
-            // ✅ 如果有parent_comment_id,说明这是二级回复,需要先展开一级评论的讨论区
-            let commentElement = null;
-            let discussionContext = null;  // 保存讨论区上下文,用于后续在讨论区内查找输入框
-
-            if (parent_comment_id) {
-                logger.info(`🔍 This is a second-level reply, finding parent comment first: ${parent_comment_id}`);
-
-                // 步骤1: 定位父评论
-                const parentComment = await this._findCommentById(page, parent_comment_id);
-                if (!parentComment) {
-                    logger.warn(`Parent comment ${parent_comment_id} not found, falling back to first comment`);
-                } else {
-                    logger.info(`✅ Found parent comment: ${parent_comment_id}`);
-
-                    // 步骤2: 查找并点击"查看XX条回复"按钮,展开讨论区
-                    try {
-                        // 抖音评论的"查看回复"按钮可能有多种文本形式
-                        const replyButtons = await parentComment.$$('div[class*="item"]');
-                        let viewRepliesBtn = null;
-
-                        for (const btn of replyButtons) {
-                            const text = await btn.textContent();
-                            // 匹配"查看X条回复"、"X条回复"等格式
-                            if (text && (text.includes('回复') && /\d+/.test(text))) {
-                                viewRepliesBtn = btn;
-                                logger.info(`Found replies toggle button: "${text.trim()}"`);
-                                break;
-                            }
-                        }
-
-                        if (viewRepliesBtn) {
-                            // 点击展开
-                            await viewRepliesBtn.click();
-                            logger.info(`Clicked to expand discussions`);
-                            await page.waitForTimeout(2000);  // 等待讨论区完全加载
-
-                            // 步骤3: 查找展开的讨论区容器
-                            // ✅ 讨论区有明确的class标识: .reply-content-obcMk0
-                            discussionContext = await page.$('.reply-content-obcMk0') ||
-                                await parentComment.$('xpath=following-sibling::*[1]') ||
-                                await parentComment.$('xpath=..') ||
-                                parentComment;
-
-                            if (discussionContext) {
-                                logger.info(`✅✅✅ Discussion area expanded and located with .reply-content-obcMk0`);
-                                // 验证输入框是否存在
-                                const hasInput = await discussionContext.$('div[contenteditable="true"]');
-                                if (hasInput) {
-                                    logger.info(`✅ Verified: Reply input field exists in discussion area`);
-                                } else {
-                                    logger.warn(`⚠️ Reply input field not found in discussion area, will retry`);
-                                }
-                            }
-
-                            // 注意: 对于二级回复,不需要定位具体的评论元素
-                            // 直接在讨论区输入框输入即可
-                            commentElement = discussionContext;
-                        } else {
-                            logger.warn(`Replies toggle button not found for parent ${parent_comment_id}`);
-                        }
-                    } catch (err) {
-                        logger.warn(`Failed to expand discussions: ${err.message}`);
-                    }
-                }
-            }
-
-            // 如果不是二级回复,或者二级回复查找失败,按原有逻辑查找一级评论
-            // 抖音创作者中心评论列表结构分析：
-            // - 评论项 class: .container-sXKyMs
-            // - 没有 data-comment-id 或 id 属性
-            // - 通过内容（用户名、时间戳、评论文本）来定位
-
-            // 方案 1: 通过 target_id 如果它是用户名或内容哈希
-            if (!commentElement) {
-                logger.info(`Searching for comment in main list: ${target_id}`);
-
-                // 首先尝试通过标准 data 属性（备选）
-                const commentSelectors = [
-                    `[data-comment-id="${target_id}"]`,
-                    `[data-cid="${target_id}"]`,
-                    `[class*="comment"][id*="${target_id}"]`,
-                ];
-
-                for (const selector of commentSelectors) {
-                    try {
-                        commentElement = await page.$(selector);
-                        if (commentElement) {
-                            logger.debug(`Found comment with selector: ${selector}`);
-                            break;
-                        }
-                    } catch (e) {
-                        // 继续尝试下一个选择器
-                    }
-                }
-
-                // 方案 2: 如果上述方法失败，通过内容在 .container-sXKyMs 中查找
-                if (!commentElement) {
-                    logger.warn(`Comment not found via data attributes, trying content matching`);
-
-                    // 获取所有评论项
-                    const allComments = await page.$$('.container-sXKyMs');
-                    logger.info(`Found ${allComments.length} comment items in DOM`);
-
-                    // 尝试通过内容匹配找到目标评论
-                    for (let i = 0; i < allComments.length; i++) {
-                        const text = await allComments[i].textContent();
-                        // target_id 可能是用户名、或内容的一部分、或时间戳
-                        if (text.includes(target_id) || target_id.includes(text.substring(0, 10))) {
-                            commentElement = allComments[i];
-                            logger.info(`Found comment by content matching at index ${i}`);
-                            break;
-                        }
-                    }
-                }
-
-                // 方案 3: 备选方案 - 使用第一条评论
-                if (!commentElement) {
-                    logger.warn(`Comment ${target_id} not found by content, will try first comment`);
-                    const comments = await page.$$('.container-sXKyMs');
-                    if (comments.length > 0) {
-                        commentElement = comments[0];
-                        logger.info(`Using first comment in list as fallback`);
-                    }
-                }
-            }
-
-            if (!commentElement) {
-                throw new Error(`Comment ${target_id} not found on page`);
-            }
-
-            // 5. 点击回复按钮 (二级回复不需要点击,因为讨论区已经展开)
-            if (discussionContext) {
-                logger.info('⏭️ Skipping reply button click for second-level reply (discussion already expanded)');
-            } else {
-                logger.info('Clicking reply button for first-level comment');
-
-                // 抖音创作者中心的回复按钮结构：
-                // - 在 operations-WFV7Am 容器中
-                // - 是一个 div.item-M3fSkJ 元素
-                // - 包含文本"回复"
-
-                const replyButtonSelectors = [
-                    '.item-M3fSkJ',  // 抖音创作者中心的标准回复按钮 class
-                    'div:has-text("回复")',  // 包含"回复"文本的 div
-                    '[class*="reply"]',  // 通用回复按钮
-                    'button:has-text("回复")',
-                    '[class*="reply-btn"]',
-                ];
-
-                let replyBtn = null;
-                for (const selector of replyButtonSelectors) {
-                    try {
-                        replyBtn = await commentElement.$(selector);
-                        if (replyBtn) {
-                            logger.debug(`Found reply button with selector: ${selector}`);
-                            break;
-                        }
-                    } catch (e) {
-                        // 继续尝试
-                    }
-                }
-
-                if (!replyBtn) {
-                    // 尝试找到整个页面上的回复按钮（备选方案）
-                    replyBtn = await page.$('.item-M3fSkJ');
-                }
-
-                if (replyBtn) {
-                    try {
-                        // 检查并关闭可能阻挡交互的模态框
-                        const modalMasks = await page.$$('.douyin-creator-interactive-sidesheet-mask, [class*="mask"], [class*="modal"]');
-                        if (modalMasks.length > 0) {
-                            logger.info(`Found ${modalMasks.length} potential modal masks, attempting to close them`);
-
-                            // 尝试找到关闭按钮
-                            const closeButtons = await page.$$('[class*="close"], [aria-label*="close"], [title*="close"]');
-                            for (const closeBtn of closeButtons) {
-                                try {
-                                    if (await closeBtn.isVisible()) {
-                                        await closeBtn.click();
-                                        await page.waitForTimeout(300);
-                                        logger.info('Closed modal via close button');
-                                        break;
-                                    }
-                                } catch (e) {
-                                    // Continue trying other close buttons
-                                }
-                            }
-                        }
-
-                        // 使用 JavaScript 点击而不是 Playwright 的 .click()
-                        const clicked = await page.evaluate((selector) => {
-                            const buttons = Array.from(document.querySelectorAll(selector));
-                            for (const btn of buttons) {
-                                if (btn.textContent.includes('回复')) {
-                                    btn.click();
-                                    return true;
-                                }
-                            }
-                            return false;
-                        }, '.item-M3fSkJ');
-
-                        if (clicked) {
-                            await page.waitForTimeout(1000);
-                            logger.info('Reply button clicked successfully via JavaScript');
-                        } else {
-                            // Fallback to Playwright click
-                            await replyBtn.click();
-                            await page.waitForTimeout(1000);
-                            logger.info('Reply button clicked successfully via Playwright');
-                        }
-                    } catch (error) {
-                        logger.warn(`Error clicking reply button: ${error.message}, will try to proceed with input`);
-                    }
-                } else {
-                    logger.warn('Reply button not found, will try to proceed with input');
-                }
-            }  // 关闭一级评论回复按钮逻辑的else块
-
-            // 6. 定位并填充回复输入框
-            logger.info('Locating reply input field');
-
-            const inputSelectors = discussionContext ? [
-                // ✅ 二级回复专用选择器 (在讨论区内)
-                '.reply-content-obcMk0 div[contenteditable="true"]',  // 讨论区输入框容器
-                '.input-d24X73',  // 讨论区输入框class
-                '.wrap-NeUN4f div[contenteditable="true"]',  // 讨论区输入包装器
-                'div[placeholder*="回复"][contenteditable="true"]',  // 带placeholder的输入框
-                'div[contenteditable="true"]',  // 通用contenteditable
-            ] : [
-                // 一级评论回复选择器 (在页面底部)
-                'div[contenteditable="true"]',  // 抖音当前使用的输入框格式
-                'textarea[placeholder*="回复"]',
-                'input[placeholder*="回复"]',
-                '[class*="reply-input"] textarea',
-                '[class*="reply-input"] input',
-                'textarea[class*="input"]',
-                'input[class*="reply"]',
-                'textarea',
-                'input[type="text"]',
-            ];
-
-            let replyInput = null;
-
-            // ✅ 如果是二级回复且有discussionContext,在讨论区内查找输入框
-            const searchContext = discussionContext || page;
-            const contextType = discussionContext ? 'discussion area' : 'page';
-            logger.info(`Searching for input field in ${contextType}`);
-
-            for (const selector of inputSelectors) {
-                try {
-                    replyInput = await searchContext.$(selector);
-                    if (replyInput && await replyInput.isVisible()) {
-                        logger.info(`✅ Found reply input in ${contextType} with selector: ${selector}`);
-                        break;
-                    }
-                } catch (e) {
-                    // 继续尝试
-                }
-            }
-
-            if (!replyInput) {
-                throw new Error('Reply input field not found');
-            }
-
-            // 清空输入框（防止有默认文本）
-            await replyInput.fill('');
-            await page.waitForTimeout(300);
-
-            // 输入回复内容
-            logger.info('Typing reply content');
-            await replyInput.type(reply_content, { delay: 50 }); // 使用 type 而不是 fill，更真实
-            await page.waitForTimeout(500);
-
-            // 7. 提交回复
-            logger.info('🔘 Submitting reply');
-
-            // ✅ 如果是二级回复,在讨论区范围内查找发送按钮
-            const searchScopeForBtn = discussionContext || page;
-            const scopeDesc = discussionContext ? 'discussion area' : 'page';
-
-            // 先尝试在浏览器中直接点击发送按钮
-            logger.debug(`Attempting to click submit button in ${scopeDesc} via JavaScript...`);
-            const submitBtnClicked = await searchScopeForBtn.evaluate((isDiscussion) => {
-                // ✅ 二级回复: 在.reply-content-obcMk0或.right-zLR6K3容器中查找
-                const containers = isDiscussion ?
-                    document.querySelectorAll('.reply-content-obcMk0, .right-zLR6K3, .footer-oZJTJd') :
-                    [document];
-
-                for (const container of containers) {
-                    const buttons = Array.from(container.querySelectorAll('button'));
-                    const submitBtn = buttons.find(btn =>
-                        btn.textContent.includes('发送') ||
-                        btn.textContent.includes('回复') ||
-                        btn.getAttribute('type') === 'submit'
-                    );
-
-                    if (submitBtn && !submitBtn.disabled) {
-                        console.log('[JS] Clicking submit button:', submitBtn.textContent, 'in', isDiscussion ? 'discussion' : 'page');
-                        submitBtn.click();
-                        return true;
-                    }
-                }
-                console.log('[JS] No valid submit button found in', isDiscussion ? 'discussion area' : 'page');
-                return false;
-            }, !!discussionContext);
-
-            if (submitBtnClicked) {
-                logger.info('✅ Submit button clicked via JavaScript - 🔴 **API 拦截器应该立即被触发！**');
-                await page.waitForTimeout(500);
-            } else {
-                // 备选方案：通过选择器找到按钮后点击
-                logger.warn('⚠️ JavaScript click failed, trying selector approach');
-
-                let submitBtn = null;
-                const submitButtonSelectors = [
-                    'button:has-text("发送")',  // Playwright 特定选择器
-                    '[class*="submit"] button',
-                    '[class*="send"] button',
-                    'button[type="submit"]',
-                    '[class*="reply-input"] button',
-                ];
-
-                for (const selector of submitButtonSelectors) {
-                    try {
-                        submitBtn = await page.$(selector);
-                        if (submitBtn && await submitBtn.isVisible()) {
-                            logger.debug(`Found submit button with selector: ${selector}`);
-                            await submitBtn.click();
-                            logger.info('Submit button clicked via selector');
-                            break;
-                        }
-                    } catch (e) {
-                        // 继续尝试
-                    }
-                }
-
-                // 最后的备选方案：按 Enter 键提交
-                if (!submitBtn) {
-                    logger.info('No submit button found, trying Enter key');
-                    await replyInput.press('Enter');
-                }
-            }
-
-            // 7. 等待 API 响应（最多 5 秒）
-            logger.info('⏳ Waiting for reply API response (max 5 seconds)...');
-            let waitCount = 0;
-            const maxWait = 50; // 5 秒（50 × 100ms）
-
-            while (
-                !apiResponses.replySuccess &&
-                !apiResponses.replyError &&
-                waitCount < maxWait
-            ) {
-                if (waitCount % 10 === 0) {
-                    logger.debug(`⏳ Still waiting for API response... (${waitCount * 100}ms elapsed)`);
-                }
-                await page.waitForTimeout(100);
-                waitCount++;
-            }
-
-            logger.info('📊 Reply API response check completed', {
-                hasSuccess: !!apiResponses.replySuccess,
-                hasError: !!apiResponses.replyError,
-                waitTime: `${waitCount * 100}ms`,
-                totalWaitIterations: waitCount,
-                maxIterations: maxWait
-            });
-
-            // 8. 根据 API 响应判断成功或失败
-            if (apiResponses.replySuccess) {
-                logger.info('✅ Reply API response SUCCESS intercepted!', {
-                    commentId: target_id,
-                    statusCode: apiResponses.replySuccess.data?.status_code,
-                    replyId: apiResponses.replySuccess.data?.data?.reply_id,
-                    apiData: apiResponses.replySuccess.data
-                });
-
-                return {
-                    success: true,
-                    platform_reply_id: apiResponses.replySuccess.data?.data?.reply_id || `${target_id}_${Date.now()}`,
-                    data: {
-                        comment_id: target_id,
-                        reply_content,
-                        api_status_code: apiResponses.replySuccess.data?.status_code,
-                        api_response: apiResponses.replySuccess.data,
-                        timestamp: new Date().toISOString(),
-                    },
-                };
-            }
-
-            if (apiResponses.replyError) {
-                logger.warn('❌ Reply API response ERROR intercepted!', {
-                    commentId: target_id,
-                    statusCode: apiResponses.replyError.status_code,
-                    errorMsg: apiResponses.replyError.error_msg,
-                    apiData: apiResponses.replyError.data
-                });
-
-                return {
-                    success: false,
-                    status: 'blocked',
-                    reason: apiResponses.replyError.error_msg || '回复失败',
-                    data: {
-                        comment_id: target_id,
-                        reply_content,
-                        api_status_code: apiResponses.replyError.status_code,
-                        api_error_msg: apiResponses.replyError.error_msg,
-                        timestamp: new Date().toISOString(),
-                    },
-                };
-            }
-
-            // 9. 如果没有拦截到 API 响应，退回到 DOM 错误检查
-            logger.warn('No reply API response intercepted, falling back to DOM error check');
-
-            const replyStatus = await page.evaluate(() => {
-                // 查找所有可能的错误或成功消息
-                const errorSelectors = [
-                    '[class*="error"]',
-                    '[class*="alert"]',
-                    '[role="alert"]',
-                    '[class*="tip"]',
-                    '[class*="message"]'
-                ];
-
-                let errorMessage = null;
-                let errorElement = null;
-
-                for (const selector of errorSelectors) {
-                    const elements = document.querySelectorAll(selector);
-                    for (const el of elements) {
-                        const text = el.textContent.trim();
-                        // 检查是否是错误信息
-                        if (text && (
-                            text.includes('无法') ||
-                            text.includes('失败') ||
-                            text.includes('error') ||
-                            text.includes('Error') ||
-                            text.includes('禁') ||
-                            text.includes('限制')
-                        )) {
-                            errorMessage = text;
-                            errorElement = el;
-                            break;
-                        }
-                    }
-                    if (errorMessage) break;
-                }
-
-                return {
-                    hasError: !!errorMessage,
-                    errorMessage: errorMessage,
-                    errorElement: errorElement ? {
-                        className: errorElement.className,
-                        text: errorElement.textContent.substring(0, 200)
-                    } : null
-                };
-            });
-
-            // 检查是否有错误
-            if (replyStatus.hasError && replyStatus.errorMessage) {
-                logger.warn(`[Douyin] Reply blocked with error: ${replyStatus.errorMessage}`, {
-                    accountId,
-                    commentId: target_id,
-                    errorMessage: replyStatus.errorMessage,
-                });
-
-                // 保存错误状态截图
-                try {
-                    await this.takeScreenshot(accountId, `reply_blocked_${Date.now()}.png`);
-                } catch (screenshotError) {
-                    logger.warn('Failed to take screenshot:', screenshotError.message);
-                }
-
-                // 返回错误状态（不抛出异常）
-                return {
-                    success: false,
-                    status: 'blocked',
-                    reason: replyStatus.errorMessage,
-                    data: {
-                        comment_id: target_id,
-                        reply_content,
-                        error_message: replyStatus.errorMessage,
-                        timestamp: new Date().toISOString(),
-                    },
-                };
-            }
-
-            // 如果没有错误，认为回复成功
-            logger.info('Reply submitted successfully (fallback: no errors detected)', {
-                commentId: target_id,
-            });
-
-            // 返回成功结果
+/**
+ * 回复评论
+ *
+ * @param {string} accountId - 账户 ID
+ * @param {Object} options - 回复选项
+ * @param {string} [options.target_id] - 评论 ID（可选，不提供则回复作品）
+ * @param {string} options.reply_content - 回复内容
+ * @param {Object} [options.context] - 上下文信息
+ * @param {string} [options.context.video_title] - 视频标题
+ * @returns {Promise<{success: boolean, platform_reply_id?: string, data?: Object, reason?: string}>}
+ */
+async replyToComment(accountId, options) {
+    const { target_id, reply_content, context = {} } = options;
+    const { video_title } = context;
+
+    let page = null;
+    let replyTabId = null;
+
+    try {
+        // 1. 获取临时标签页
+        const { tabId, page: replyPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
+            tag: TabTag.REPLY_COMMENT,
+            persistent: false,
+            shareable: false,
+            forceNew: true
+        });
+
+        page = replyPage;
+        replyTabId = tabId;
+
+        logger.info(`[Douyin] 开始回复${target_id ? '评论' : '作品'}`, {
+            accountId,
+            commentId: target_id,
+            videoTitle: video_title?.substring(0, 50),
+            tabId: replyTabId
+        });
+
+        // 2. 调用新的回复模块
+        const result = await sendReplyToComment(page, {
+            commentId: target_id,
+            replyContent: reply_content,
+            videoTitle: video_title,
+            accountId
+        });
+
+        if (result.success) {
             return {
                 success: true,
-                platform_reply_id: `${target_id}_${Date.now()}`, // 生成回复ID
-                data: {
-                    comment_id: target_id,
-                    reply_content,
-                    timestamp: new Date().toISOString(),
-                },
+                platform_reply_id: result.data?.platform_reply_id || `${target_id}_${Date.now()}`,
+                data: result.data
             };
-
-        } catch (error) {
-            logger.error(`❌ [Douyin] Failed to reply to comment: ${target_id}`, {
-                error: error.message,
-                errorStack: error.stack,
-                accountId,
-            });
-
-            // 详细日志：捕获异常时检查 API 拦截器状态
-            logger.error('⚠️ Exception occurred - checking API interceptor state', {
-                hasReplySuccess: !!apiResponses?.replySuccess,
-                hasReplyError: !!apiResponses?.replyError,
-                errorName: error.name,
-                errorMessage: error.message,
-            });
-
-            // 保存错误截图用于调试
-            if (page) {
-                try {
-                    await this.takeScreenshot(accountId, `reply_error_${Date.now()}.png`);
-                    logger.info('Error screenshot saved');
-                } catch (screenshotError) {
-                    logger.warn('Failed to take screenshot:', screenshotError.message);
-                }
-            }
-
-            // 返回错误状态而不是抛出异常
+        } else {
             return {
                 success: false,
                 status: 'error',
-                reason: error.message,
+                reason: result.error,
                 data: {
                     comment_id: target_id,
                     reply_content,
-                    error_message: error.message,
-                    timestamp: new Date().toISOString(),
-                },
-            };
-
-        } finally {
-            // 清理临时标签页 - 回复完成后立即关闭
-            // ⭐ 使用 TabManager 关闭评论回复窗口
-            if (page && replyTabId) {
-                try {
-                    if (!page.isClosed()) {
-                        logger.info('✅ Comment reply task completed - closing reply tab', {
-                            hasReplySuccess: !!apiResponses?.replySuccess,
-                            hasReplyError: !!apiResponses?.replyError,
-                            accountId,
-                            tabId: replyTabId
-                        });
-                        // 使用 TabManager 关闭标签页
-                        await this.browserManager.tabManager.closeTab(accountId, replyTabId);
-                        logger.info('✅ Reply tab closed via TabManager');
-                    } else {
-                        logger.warn('ℹ️ Reply page was already closed');
-                    }
-                } catch (closeError) {
-                    logger.warn('Error closing reply tab:', closeError.message);
+                    error_message: result.error,
+                    timestamp: new Date().toISOString()
                 }
+            };
+        }
+
+    } catch (error) {
+        logger.error(`❌ [Douyin] 回复评论失败`, {
+            accountId,
+            commentId: target_id,
+            error: error.message
+        });
+
+        // 保存错误截图
+        if (page && !page.isClosed()) {
+            try {
+                await this.takeScreenshot(accountId, `reply_error_${Date.now()}.png`);
+            } catch (e) {
+                logger.warn('截图失败:', e.message);
+            }
+        }
+
+        return {
+            success: false,
+            status: 'error',
+            reason: error.message,
+            data: {
+                comment_id: target_id,
+                reply_content,
+                error_message: error.message,
+                timestamp: new Date().toISOString()
+            }
+        };
+
+    } finally {
+        // 3. 关闭临时标签页
+        if (page && replyTabId && !page.isClosed()) {
+            try {
+                await this.browserManager.tabManager.closeTab(accountId, replyTabId);
+                logger.info('✅ 回复标签页已关闭');
+            } catch (e) {
+                logger.warn('关闭标签页失败:', e.message);
             }
         }
     }
+}
 
     /**
      * 回复私信
@@ -3312,47 +2355,6 @@ class DouyinPlatform extends PlatformBase {
             logger.warn(`解析 monitoring_config 失败: ${error.message}，使用默认配置`);
             return defaultConfig;
         }
-    }
-
-    /**
-     * 辅助方法: 在指定上下文中查找评论
-     * @param {Page|ElementHandle} context - 页面或元素句柄
-     * @param {string} commentId - 评论ID
-     * @returns {ElementHandle|null} 评论元素或null
-     */
-    async _findCommentById(context, commentId) {
-        // 方法1: 尝试data属性
-        const selectors = [
-            `[data-comment-id="${commentId}"]`,
-            `[data-cid="${commentId}"]`,
-            `[class*="comment"][id*="${commentId}"]`,
-        ];
-
-        for (const selector of selectors) {
-            try {
-                const element = await context.$(selector);
-                if (element) {
-                    return element;
-                }
-            } catch (e) {
-                // 继续下一个
-            }
-        }
-
-        // 方法2: 内容匹配
-        try {
-            const comments = await context.$$('.container-sXKyMs');
-            for (const comment of comments) {
-                const text = await comment.textContent();
-                if (text && (text.includes(commentId) || commentId.includes(text.substring(0, 10)))) {
-                    return comment;
-                }
-            }
-        } catch (e) {
-            logger.warn(`Failed to find comment by content: ${e.message}`);
-        }
-
-        return null;
     }
 
     // ============================================================================
