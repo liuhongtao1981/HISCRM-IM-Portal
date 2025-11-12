@@ -242,15 +242,30 @@ class IMWebSocketServer {
 
             // 根据消息分类确定消息类型和目标类型
             const messageType = finalMessageCategory === 'private' ? 'text' : 'comment';
-            const targetType = finalMessageCategory === 'private' ? 'direct_message' : 'comment';
+
+            // 🔍 区分作品评论和评论回复
+            // - 如果是私信 → direct_message
+            // - 如果是评论 + replyToId存在 → comment (回复某条评论)
+            // - 如果是评论 + replyToId为空 → work (给作品发一级评论)
+            let targetType;
+            if (finalMessageCategory === 'private') {
+                targetType = 'direct_message';
+            } else if (replyToId) {
+                targetType = 'comment';  // 回复某条评论
+            } else {
+                targetType = 'work';  // 给作品发一级评论
+            }
 
             // 🔍 DEBUG: 打印判断结果
             logger.warn(`[DEBUG] messageCategory: "${messageCategory}" -> finalMessageCategory: "${finalMessageCategory}" -> messageType: "${messageType}", targetType: "${targetType}"`);
+            logger.warn(`[DEBUG] replyToId: ${replyToId} (${replyToId ? '回复评论' : '回复作品'})`);
 
             if (finalMessageCategory === 'private') {
                 logger.warn(`[DEBUG] 这是私信回复，应该调用 replyToDirectMessage`);
+            } else if (targetType === 'comment') {
+                logger.warn(`[DEBUG] 这是评论回复（二级回复），应该调用 replyToComment with commentId: ${replyToId}`);
             } else {
-                logger.warn(`[DEBUG] 这是评论回复，应该调用 replyToComment`);
+                logger.warn(`[DEBUG] 这是作品评论（一级评论），应该调用 replyToComment with commentId: null`);
             }
 
             // 创建回复消息ID（用于客户端展示和结果追踪）
@@ -403,7 +418,8 @@ class IMWebSocketServer {
                     // ✅ 如果是评论回复,从DataStore中获取视频标题和父评论ID
                     let videoTitle = null;
                     let parentCommentId = null;
-                    if (targetType === 'comment' && this.dataStore) {
+                    // ✅ 修复: 作品评论和评论回复都需要查找视频标题
+                    if ((targetType === 'comment' || targetType === 'work') && this.dataStore) {
                         try {
                             const accountData = this.dataStore.accounts.get(channelId);
                             if (accountData && accountData.data && accountData.data.contents) {
@@ -412,7 +428,9 @@ class IMWebSocketServer {
                                 const videoContent = contentsList.find(c => c.contentId === topicId || c.id === topicId);
                                 if (videoContent) {
                                     videoTitle = videoContent.title || null;
-                                    logger.info(`[IM WS] Found video title for ${topicId}: "${videoTitle?.substring(0, 50)}..."`);
+                                    logger.info(`[IM WS] Found video title for ${topicId}: "${videoTitle?.substring(0, 50)}..." (targetType: ${targetType})`);
+                                } else {
+                                    logger.warn(`[IM WS] ⚠️ Video not found for topicId: ${topicId}`);
                                 }
                             }
 
@@ -441,8 +459,11 @@ class IMWebSocketServer {
                         request_id: requestId,
                         platform: platform,
                         account_id: channelId,
-                        target_type: targetType,  // 'comment' 或 'direct_message'
-                        target_id: replyToId || topicId,  // 评论ID 或 会话ID
+                        target_type: targetType,  // 'comment'、'work' 或 'direct_message'
+                        // ✅ 修复: 作品评论时 target_id 应为 null，而不是 topicId
+                        target_id: targetType === 'direct_message' ? (replyToId || topicId) :
+                                   targetType === 'work' ? null :
+                                   replyToId,  // comment 类型使用 replyToId
                         conversation_id: targetType === 'direct_message' ? topicId : null,  // 私信会话ID
                         platform_message_id: targetType === 'direct_message' ? replyToId : null,  // 私信消息ID（可选）
                         reply_content: content,

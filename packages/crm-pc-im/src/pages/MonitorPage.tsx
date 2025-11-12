@@ -512,28 +512,44 @@ export default function MonitorPage() {
     const currentUserId = localStorage.getItem('crm-im-client-id') || 'monitor_client'
     const currentUserAvatar = localStorage.getItem('user-avatar') || null
 
+    // 🔍 DEBUG: 发送前状态检查
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📤 [发送消息] 发送前状态:')
+    console.log('  activeTab:', activeTab)
+    console.log('  replyToMessage:', replyToMessage)
+    if (replyToMessage) {
+      console.log('    ├─ id:', replyToMessage.id)
+      console.log('    ├─ content:', replyToMessage.content)
+      console.log('    ├─ fromName:', replyToMessage.fromName)
+      console.log('    └─ messageCategory:', (replyToMessage as any).messageCategory)
+    } else {
+      console.log('    └─ replyToMessage 为 null (直接发送，不回复具体评论)')
+    }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     // 发送到服务器
     const replyData = {
       channelId: selectedChannelId,
       topicId: selectedTopicId,
       type: activeTab === 'private' ? 'text' : 'comment',
       messageCategory: activeTab,
-      replyToId: replyToMessage?.id,
-      replyToContent: replyToMessage?.content,
+      replyToId: replyToMessage?.id || null,  // ✅ 修复: undefined -> null
+      replyToContent: replyToMessage?.content || null,  // ✅ 修复: undefined -> null
       content: replyContent.trim(),
-      fromName: currentUser,  // ✅ 发送当前用户名
-      fromId: currentUserId,   // ✅ 发送当前用户ID
-      authorAvatar: currentUserAvatar  // ✅ 发送客服头像
+      fromName: currentUser,
+      fromId: currentUserId,
+      authorAvatar: currentUserAvatar
     }
-    
-    // 🔍 DEBUG: 前端发送参数调试
-    console.log('[前端DEBUG] 发送回复参数:', {
-      replyToMessage,
-      activeTab,
-      messageCategory: activeTab,
-      ...replyData
-    });
-    
+
+    // 🔍 DEBUG: 最终发送数据
+    console.log('📤 [发送消息] 最终发送数据:')
+    console.log('  replyToId:', replyData.replyToId, '(null表示给作品发一级评论)')
+    console.log('  replyToContent:', replyData.replyToContent)
+    console.log('  content:', replyData.content)
+    console.log('  messageCategory:', replyData.messageCategory)
+    console.log('  完整数据:', replyData)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     websocketService.emit('monitor:reply', replyData)
 
     setReplyContent('')
@@ -547,6 +563,15 @@ export default function MonitorPage() {
 
   // 回复某条消息
   const handleReplyToMessage = (message: Message) => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('💬 [点击讨论] 设置回复目标:')
+    console.log('  message.id:', message.id)
+    console.log('  message.content:', message.content)
+    console.log('  message.fromName:', message.fromName)
+    console.log('  message.messageCategory:', (message as any).messageCategory)
+    console.log('  完整message对象:', message)
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
     setReplyToMessage(message)
     textAreaRef.current?.focus()
   }
