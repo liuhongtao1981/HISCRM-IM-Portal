@@ -665,6 +665,78 @@ async function selectVideoByTitle(page, videoTitle) {
             }
         }
 
+        // 等待视频容器加载
+        try {
+            await page.waitForSelector('.container-Lkxos9', { timeout: 5000, state: 'visible' });
+            await page.waitForTimeout(500);
+        } catch (waitError) {
+            logger.warn(`⚠️ 等待视频容器超时: ${waitError.message}`);
+        }
+
+        // ✅ 滚动加载所有作品（确保能找到目标视频）
+        logger.debug('🔄 开始滚动加载作品列表...');
+        const MAX_SCROLL_ATTEMPTS = 30;
+        const CONVERGENCE_CHECK = 3;
+        let previousVideoCount = 0;
+        let convergenceCounter = 0;
+        let scrollAttempts = 0;
+
+        while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+            const scrollResult = await page.evaluate(() => {
+                // 通过视频元素向上查找滚动容器
+                const firstVideo = document.querySelector('.container-Lkxos9');
+                let scrollContainer = null;
+
+                if (firstVideo) {
+                    let parent = firstVideo.parentElement;
+                    let depth = 0;
+                    while (parent && depth < 10) {
+                        const overflow = window.getComputedStyle(parent).overflow;
+                        const overflowY = window.getComputedStyle(parent).overflowY;
+                        if (overflow === 'auto' || overflow === 'scroll' || overflowY === 'auto' || overflowY === 'scroll') {
+                            scrollContainer = parent;
+                            break;
+                        }
+                        parent = parent.parentElement;
+                        depth++;
+                    }
+                }
+
+                if (!scrollContainer) {
+                    return { success: false, message: '未找到滚动容器' };
+                }
+
+                const previousScroll = scrollContainer.scrollTop;
+                scrollContainer.scrollTop = scrollContainer.scrollHeight;
+                const videoCount = document.querySelectorAll('.container-Lkxos9').length;
+
+                return {
+                    success: true,
+                    scrolled: scrollContainer.scrollTop > previousScroll,
+                    videoCount: videoCount
+                };
+            });
+
+            if (!scrollResult.success) {
+                logger.debug(`滚动失败: ${scrollResult.message}`);
+                break;
+            }
+
+            if (scrollResult.videoCount === previousVideoCount) {
+                convergenceCounter++;
+                if (convergenceCounter >= CONVERGENCE_CHECK) {
+                    logger.debug(`✅ 滚动完成，共加载 ${scrollResult.videoCount} 个作品`);
+                    break;
+                }
+            } else {
+                convergenceCounter = 0;
+                previousVideoCount = scrollResult.videoCount;
+            }
+
+            scrollAttempts++;
+            await page.waitForTimeout(300);
+        }
+
         // 2. 在浏览器中查找匹配的视频
         const result = await page.evaluate((titleToMatch) => {
             const containers = document.querySelectorAll('.container-Lkxos9') ||
