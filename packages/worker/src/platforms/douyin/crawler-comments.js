@@ -232,6 +232,61 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
       logger.warn('无法打开作品选择器，可能已展开');
     }
 
+    // ✅ 滚动加载所有作品
+    logger.info('🔄 开始滚动加载作品列表...');
+    const MAX_SCROLL_ATTEMPTS = 30;
+    const SCROLL_WAIT_TIME = 500;
+    const CONVERGENCE_CHECK = 3;
+    let previousVideoCount = 0;
+    let convergenceCounter = 0;
+    let scrollAttempts = 0;
+
+    while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
+      // 滚动弹窗中的作品列表
+      const scrollResult = await page.evaluate(() => {
+        const modalContainer = document.querySelector('.semi-modal-content') ||
+                              document.querySelector('[class*="modal"]') ||
+                              document.querySelector('[class*="dialog"]');
+        if (!modalContainer) return { success: false, message: '未找到弹窗容器' };
+
+        const scrollContainer = modalContainer.querySelector('[class*="scroll"]') ||
+                               modalContainer.querySelector('.semi-scrollbar') ||
+                               modalContainer.querySelector('[style*="overflow"]');
+        const container = scrollContainer || modalContainer;
+        const previousScroll = container.scrollTop;
+        container.scrollTop = container.scrollHeight;
+        const videoCount = document.querySelectorAll('.container-Lkxos9').length;
+
+        return {
+          success: true,
+          scrolled: container.scrollTop > previousScroll,
+          videoCount: videoCount
+        };
+      });
+
+      if (!scrollResult.success) {
+        logger.warn(`⚠️  滚动失败: ${scrollResult.message}`);
+        break;
+      }
+
+      logger.debug(`📊 尝试 ${scrollAttempts + 1}: 发现 ${scrollResult.videoCount} 个作品 (上次: ${previousVideoCount})`);
+      await page.waitForTimeout(SCROLL_WAIT_TIME);
+
+      if (scrollResult.videoCount === previousVideoCount) {
+        convergenceCounter++;
+        if (convergenceCounter >= CONVERGENCE_CHECK) {
+          logger.info(`✅ 滚动完成，共加载 ${scrollResult.videoCount} 个作品`);
+          break;
+        }
+      } else {
+        convergenceCounter = 0;
+        previousVideoCount = scrollResult.videoCount;
+      }
+
+      scrollAttempts++;
+      await page.waitForTimeout(200);
+    }
+
     // 获取所有视频元素
     const videoElements = await page.evaluate(() => {
       const containers = document.querySelectorAll('.container-Lkxos9');
