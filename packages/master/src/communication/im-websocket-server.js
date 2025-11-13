@@ -706,8 +706,15 @@ class IMWebSocketServer {
             if (this.accountDAO) {
                 try {
                     accountInfo = this.accountDAO.findById(accountId);  // ✅ 正确的方法名
+
+                    // ✅ 修复：如果数据库中不存在该账户，跳过它（过滤已删除的账户）
+                    if (!accountInfo) {
+                        logger.info(`[IM WS] Account ${accountId} not found in database, skipping (already deleted)`);
+                        continue;  // 跳过这个账户，不加入channels列表
+                    }
                 } catch (error) {
                     logger.warn(`[IM WS] Failed to get account info for ${accountId}:`, error.message);
+                    continue;  // 查询失败也跳过
                 }
             } else {
                 logger.warn('[IM WS] accountDAO is not initialized, using default values');
@@ -1913,6 +1920,52 @@ class IMWebSocketServer {
             sendingMessages
         });
         logger.debug(`[IM WS] Broadcasting sending queue for topic ${topicId}, ${sendingMessages.length} messages`);
+    }
+
+    /**
+     * 清理DataStore中已删除账户的数据
+     * 检查DataStore中的所有账户，如果数据库中不存在，则从DataStore中删除
+     */
+    cleanupDeletedAccounts() {
+        if (!this.accountDAO) {
+            logger.warn('[IM WS] accountDAO not initialized, cannot cleanup deleted accounts');
+            return;
+        }
+
+        let removedCount = 0;
+        const accountsToRemove = [];
+
+        // 检查DataStore中的所有账户
+        for (const [accountId] of this.dataStore.accounts) {
+            try {
+                const accountInfo = this.accountDAO.findById(accountId);
+                if (!accountInfo) {
+                    // 数据库中不存在，标记为待删除
+                    accountsToRemove.push(accountId);
+                }
+            } catch (error) {
+                logger.warn(`[IM WS] Error checking account ${accountId}:`, error.message);
+            }
+        }
+
+        // 从DataStore中删除
+        accountsToRemove.forEach(accountId => {
+            this.dataStore.accounts.delete(accountId);
+            removedCount++;
+            logger.info(`[IM WS] Removed deleted account from DataStore: ${accountId}`);
+        });
+
+        if (removedCount > 0) {
+            logger.info(`[IM WS] Cleanup completed: removed ${removedCount} deleted accounts from DataStore`);
+
+            // 通知客户端刷新频道列表
+            const channels = this.getChannelsFromDataStore();
+            this.broadcastToMonitors('monitor:channels', { channels });
+        } else {
+            logger.info('[IM WS] No deleted accounts found in DataStore');
+        }
+
+        return removedCount;
     }
 }
 

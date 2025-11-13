@@ -550,6 +550,29 @@ async function start() {
     imWebSocketServer.startUnreadNotificationPolling(5000);
     logger.info('IM WebSocket unread notification polling started (interval: 5s)');
 
+    // 4.3.2 清理DataStore中已删除账户的数据
+    imWebSocketServer.cleanupDeletedAccounts();
+    logger.info('DataStore cleanup completed');
+
+    // 4.3.3 清理cache_metadata表中已删除账户的数据
+    // cache_metadata 表只是辅助存储统计信息，主数据来源是 Worker 发送的 DataStore
+    // 这里清理数据库中不存在的账户记录
+    const allMetadata = cacheDAO.getAllMetadata();
+    let cleanedCount = 0;
+    allMetadata.forEach(metadata => {
+      const accountExists = accountsDAO.findById(metadata.account_id);
+      if (!accountExists) {
+        logger.info(`[Cleanup] Removing deleted account from cache: ${metadata.account_id}`);
+        cacheDAO.deleteAccountData(metadata.account_id);
+        cleanedCount++;
+      }
+    });
+    if (cleanedCount > 0) {
+      logger.info(`Cache metadata cleanup completed: removed ${cleanedCount} deleted accounts`);
+    } else {
+      logger.info('Cache metadata is clean, no deleted accounts found');
+    }
+
     // 4.4 初始化 NotificationHandler（在 Socket.IO 之后）
     notificationHandler = new NotificationHandler(db, socketNamespaces);
     logger.info('Notification handler initialized');

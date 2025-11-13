@@ -37,7 +37,7 @@ const apiData = {
   discussions: []    // 二级/三级回复（讨论）
 };
 
-// ==================== API 回调函数 ====================
+// ==================== API 回调函数（从 page 对象读取账号上下文）====================
 
 /**
  * API 回调：评论列表
@@ -45,7 +45,6 @@ const apiData = {
  * 注意：真实 API 返回 comments 字段，不是 comment_info_list
  */
 async function onCommentsListAPI(body, response) {
-  // ✅ 修正：检查 comments 字段（真实 API 数据结构）
   if (!body || !body.comments || !Array.isArray(body.comments)) {
     logger.warn(`⚠️  [API] 评论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
@@ -55,13 +54,17 @@ async function onCommentsListAPI(body, response) {
   const itemId = extractItemId(url);
   const cursor = extractCursor(url);
 
-  // ✅ 使用 DataManager（新架构）
-  if (globalContext.dataManager && body.comments.length > 0) {
-    const comments = globalContext.dataManager.batchUpsertComments(
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.comments.length > 0) {
+    const comments = dataManager.batchUpsertComments(
       body.comments,
       DataSource.API
     );
-    logger.info(`[API] 评论列表: ${comments.length} 条`);
+    logger.info(`[API] [${accountId}] 评论列表: ${comments.length} 条`);
   }
 
   // 保留旧逻辑（向后兼容）
@@ -80,7 +83,6 @@ async function onCommentsListAPI(body, response) {
  * 注意：真实 API 返回 comments 字段，不是 comment_info_list
  */
 async function onDiscussionsListAPI(body, response) {
-  // ✅ 修正：检查 comments 字段（真实 API 数据结构）
   if (!body || !body.comments || !Array.isArray(body.comments)) {
     logger.warn(`⚠️  [API] 讨论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
@@ -90,21 +92,24 @@ async function onDiscussionsListAPI(body, response) {
   const commentId = extractCommentId(url);
   const cursor = extractCursor(url);
 
-  // ✅ 使用 DataManager（新架构）
-  // 注意：讨论也作为评论存储，只是有 parent_comment_id 字段
-  if (globalContext.dataManager && body.comments.length > 0) {
-    const discussions = globalContext.dataManager.batchUpsertComments(
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.comments.length > 0) {
+    const discussions = dataManager.batchUpsertComments(
       body.comments,
       DataSource.API
     );
-    logger.info(`[API] 讨论列表: ${discussions.length} 条`);
+    logger.info(`[API] [${accountId}] 讨论列表: ${discussions.length} 条`);
   }
 
   // 保留旧逻辑（向后兼容）
   apiData.discussions.push({
     timestamp: Date.now(),
     url: url,
-    comment_id: commentId,  // 父评论 ID
+    comment_id: commentId,
     cursor: cursor,
     data: body,
   });
@@ -114,25 +119,8 @@ async function onDiscussionsListAPI(body, response) {
  * API 回调：通知详情（评论通知）
  * 由 platform.js 注册到 APIInterceptorManager
  * API: /aweme/v1/web/notice/detail/
- * 
- * 触发场景：用户在抖音首页收到评论通知时触发
- * 
- * 响应结构：
- * {
- *   status_code: 0,
- *   notice_list_v2: [{
- *     nid: "7569492244785513522",
- *     type: 31,  // 31 = 评论通知
- *     create_time: 1762409752,
- *     comment: {
- *       comment: { cid, text, aweme_id, user, ... },
- *       aweme: { aweme_id, desc, author, video, ... }
- *     }
- *   }]
- * }
  */
 async function onNoticeDetailAPI(body, response) {
-  // 检查响应结构
   if (!body || !body.notice_list_v2 || !Array.isArray(body.notice_list_v2)) {
     logger.warn(`⚠️  [API] 通知详情响应无效（无 notice_list_v2 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
     return;
@@ -140,10 +128,10 @@ async function onNoticeDetailAPI(body, response) {
 
   const url = response.url();
   const notices = body.notice_list_v2;
-  
+
   // 过滤评论类型的通知 (type === 31)
   const commentNotices = notices.filter(notice => notice.type === 31 && notice.comment);
-  
+
   if (commentNotices.length === 0) {
     return;
   }
@@ -169,18 +157,22 @@ async function onNoticeDetailAPI(body, response) {
     }
   }
 
-  // ✅ 使用 DataManager 存储数据
-  if (globalContext.dataManager) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager) {
     if (comments.length > 0) {
-      const savedComments = globalContext.dataManager.batchUpsertComments(
+      const savedComments = dataManager.batchUpsertComments(
         comments,
         DataSource.API
       );
-      logger.info(`[API] 通知详情: ${savedComments.length} 条评论, ${contents.length} 条作品`);
+      logger.info(`[API] [${accountId}] 通知详情: ${savedComments.length} 条评论, ${contents.length} 条作品`);
     }
 
     if (contents.length > 0) {
-      globalContext.dataManager.batchUpsertContents(
+      dataManager.batchUpsertContents(
         contents,
         DataSource.API
       );
@@ -906,15 +898,15 @@ async function clickAllReplyButtons(page) {
 }
 
 module.exports = {
-  // API 回调函数（由 platform.js 注册）
+  // API 回调函数（从 page._accountContext 读取账号信息）
   onCommentsListAPI,
   onDiscussionsListAPI,
-  onNoticeDetailAPI,  // 新增：通知详情 API
+  onNoticeDetailAPI,
 
   // 爬取函数
   crawlComments,
 
-  // 全局上下文（供 platform.js 初始化时访问）
+  // 全局上下文（供 platform.js 初始化时访问，已废弃，保留向后兼容）
   globalContext,
 
   // 工具函数（保留用于测试）

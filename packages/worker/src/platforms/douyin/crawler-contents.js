@@ -115,7 +115,7 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
   }
 }
 
-// ==================== API 回调函数（使用 DataManager）====================
+// ==================== API 回调函数（从 page 对象读取账号上下文）====================
 
 /**
  * API 回调：作品列表
@@ -137,16 +137,20 @@ async function onWorksListAPI(body, response) {
 
   apiData.cache.add(url);
 
-  // 使用 DataManager（如果可用）
-  if (globalContext.dataManager && body.item_info_list.length > 0) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.item_info_list.length > 0) {
     try {
-      const contents = globalContext.dataManager.batchUpsertContents(
+      const contents = dataManager.batchUpsertContents(
         body.item_info_list,
         DataSource.API
       );
-      logger.info(`[API] 作品列表: ${contents.length} 个`);
+      logger.info(`[API] [${accountId}] 作品列表: ${contents.length} 个`);
     } catch (error) {
-      logger.error(`[API] 作品列表处理失败: ${error.message}`);
+      logger.error(`[API] [${accountId}] 作品列表处理失败: ${error.message}`);
     }
   }
 
@@ -158,25 +162,29 @@ async function onWorksListAPI(body, response) {
  * API 回调：作品详情
  * 由 platform.js 注册到 APIInterceptorManager
  */
-async function onWorkDetailAPI(body) {
+async function onWorkDetailAPI(body, response) {
   if (!body) return;
 
-  // ✅ 使用 DataManager（如果可用）
-  if (globalContext.dataManager && body.aweme_detail) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.aweme_detail) {
     try {
-      const content = globalContext.dataManager.upsertContent(
+      const content = dataManager.upsertContent(
         body.aweme_detail,
         DataSource.API
       );
-      logger.info(`✅ [API] 作品详情 -> DataManager: ${content.contentId}`);
+      logger.info(`✅ [API] [${accountId}] 作品详情 -> DataManager: ${content.contentId}`);
     } catch (error) {
-      logger.error(`[API] 作品详情处理失败:`, error);
+      logger.error(`[API] [${accountId}] 作品详情处理失败:`, error);
     }
   }
 
   // 保留旧逻辑用于调试
   apiData.workDetail.push(body);
-  logger.debug('收集到作品详情');
+  logger.debug(`[${accountId || '?'}] 收集到作品详情`);
 }
 
 /**
@@ -611,14 +619,14 @@ function countWorksByType(contents) {
 }
 
 module.exports = {
-  // API 回调函数（由 platform.js 注册）
+  // API 回调函数（从 page._accountContext 读取账号信息）
   onWorksListAPI,
   onWorkDetailAPI,
 
   // 爬取函数
   crawlContents,
 
-  // 全局上下文（供 platform.js 初始化时访问）
+  // 全局上下文（供 platform.js 初始化时访问，已废弃，保留向后兼容）
   globalContext,
 
   // 工具函数（保留用于测试）

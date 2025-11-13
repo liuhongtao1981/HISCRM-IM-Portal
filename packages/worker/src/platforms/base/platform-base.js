@@ -133,7 +133,17 @@ class PlatformBase {
     const result = await this.browserManager.tabManager.getPageForTask(accountId, options);
     const { tabId, page } = result;
 
-    // 2. 为该标签页注册 API 拦截器（如果尚未注册）
+    // 2. ✅ 注入账号上下文到 page 对象（解决多账号并发时的数据混乱问题）
+    // 每个账号有独立的浏览器实例，page 对象也是隔离的
+    // API 回调函数可以通过 response.frame().page()._accountContext 访问
+    const dataManager = await this.getDataManager(accountId);
+    page._accountContext = {
+      accountId: accountId,
+      dataManager: dataManager
+    };
+    logger.debug(`✅ Injected account context into page: accountId=${accountId}, hasDataManager=${!!dataManager}`);
+
+    // 3. 为该标签页注册 API 拦截器（如果尚未注册）
     const managerKey = `${accountId}_${tag}`;
     if (!this.apiManagers.has(managerKey)) {
       await this.setupAPIInterceptors(managerKey, page);

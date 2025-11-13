@@ -1100,13 +1100,9 @@ class BrowserManagerV2 extends EventEmitter {
   }
 
   randomViewport(random) {
-    const viewports = [
-      { width: 1920, height: 1080 },
-      { width: 2560, height: 1440 },
-      { width: 1680, height: 1050 },
-      { width: 1440, height: 900 },
-    ];
-    return viewports[Math.floor(random() * viewports.length)];
+    // ✅ 统一使用固定分辨率 1024x768
+    // 避免不同账户浏览器窗口大小不一致的问题
+    return { width: 1024, height: 768 };
   }
 
   randomWebGLVendor(random) {

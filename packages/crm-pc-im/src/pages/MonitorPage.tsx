@@ -247,6 +247,7 @@ export default function MonitorPage() {
 
   // 调试日志
   useEffect(() => {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
     console.log('[当前状态]', {
       selectedChannelId,
       selectedTopicId,
@@ -254,7 +255,29 @@ export default function MonitorPage() {
       '消息数量': currentMessages.length,
       '当前作品': selectedTopic?.title
     })
-  }, [selectedChannelId, selectedTopicId, currentTopics.length, currentMessages.length, selectedTopic])
+
+    // ✅ 调试：显示 currentTopics 的详细信息
+    if (currentTopics.length > 0) {
+      console.log('[当前账户的作品列表]')
+      currentTopics.slice(0, 3).forEach((topic, index) => {
+        console.log(`  ${index + 1}. ${topic.title} (ID: ${topic.id}, 未读: ${topic.unreadCount}, 私信: ${topic.isPrivate})`)
+      })
+      if (currentTopics.length > 3) {
+        console.log(`  ... 还有 ${currentTopics.length - 3} 个作品`)
+      }
+    } else {
+      console.log('[当前账户没有作品数据]')
+    }
+
+    // ✅ 调试：显示 Redux store 中所有账户的 topics 数量
+    console.log('[Redux store 中所有账户的 topics]')
+    Object.keys(topics).forEach(channelId => {
+      const topicCount = topics[channelId]?.length || 0
+      const marker = channelId === selectedChannelId ? '👉' : '  '
+      console.log(`  ${marker} ${channelId}: ${topicCount} 个作品`)
+    })
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+  }, [selectedChannelId, selectedTopicId, currentTopics, currentMessages.length, selectedTopic, topics])
 
   // 过滤账户列表
   const filteredChannels = channels.filter(ch =>

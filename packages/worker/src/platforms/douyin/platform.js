@@ -53,28 +53,22 @@ class DouyinPlatform extends PlatformBase {
         // 调用基类初始化（初始化 DataManager）
         await super.initialize(account);
 
-        // ✅ 设置全局 DataManager 上下文（供所有爬虫模块的 API 拦截器使用）
-        const dataManager = this.dataManagers.get(account.id);
-        if (dataManager) {
-            // 导入各个爬虫模块的 globalContext 并设置
-            const { globalContext: contentsContext } = require('./crawler-contents');
-            const { globalContext: commentsContext } = require('./crawler-comments');
-            const { globalContext: dmContext } = require('./crawler-messages');
+        // ⚠️  [已废弃] 旧的 globalContext 设置逻辑
+        // 现在所有 API 回调函数都通过 page._accountContext 获取账号上下文
+        // 这段代码保留仅用于向后兼容，实际运行中不再需要
+        //
+        // 废弃原因：
+        // 1. globalContext 是模块级单例，多账号并发时存在竞态条件
+        // 2. 账户 A 和账户 B 会相互覆盖 globalContext，导致数据混乱
+        // 3. 新架构通过 platform-base.js 的 getPageWithAPI() 注入 page._accountContext
+        //
+        // 如需完全移除，请确认以下内容：
+        // - crawler-contents.js: onWorkDetailAPI 已改为从 page._accountContext 读取 ✅
+        // - crawler-messages.js: onMessageInitAPI 已改为从 page._accountContext 读取 ✅
+        // - crawler-messages.js: onConversationListAPI 已改为从 page._accountContext 读取 ✅
+        // - crawler-messages.js: onMessageHistoryAPI 已改为从 page._accountContext 读取 ✅
 
-            // 设置到所有爬虫模块的 globalContext（账户级别全局）
-            contentsContext.dataManager = dataManager;
-            contentsContext.accountId = account.id;
-
-            commentsContext.dataManager = dataManager;
-            commentsContext.accountId = account.id;
-
-            dmContext.dataManager = dataManager;
-            dmContext.accountId = account.id;
-
-            logger.info(`✅ DataManager 已设置到所有爬虫模块的 globalContext (账户: ${account.id})`);
-        } else {
-            logger.warn(`⚠️  DataManager 未初始化 (账户: ${account.id})`);
-        }
+        logger.info(`✅ DataManager initialized for account ${account.id} (using page._accountContext injection)`)
 
         // 页面和 API 拦截器会在爬虫函数中按需创建
         // 不需要在初始化时创建页面
@@ -722,13 +716,13 @@ class DouyinPlatform extends PlatformBase {
 
             // 1. 获取页面 - 使用框架级别的 getPageWithAPI（自动注册 API 拦截器）
             // ⭐ 关键改进: 使用 getPageWithAPI 自动为标签页注册 API 拦截器
-            // ⭐ 优化: 设置 persistent=false，爬虫任务完成后关闭标签页，减少资源占用
+            // ⭐ 修复: 设置 persistent=true，保持标签页打开以确保API拦截器不失效
             logger.debug(`[crawlComments] Step 1: Getting spider_comment tab for account ${account.id}`);
             const pageResult = await this.getPageWithAPI(account.id, {
                 tag: TabTag.SPIDER_COMMENT,
-                persistent: false,     // 爬虫任务完成后关闭，减少资源占用
+                persistent: false,      // ✅ 修复: 保持标签页打开，避免API拦截器失效
                 shareable: false,      // 独立窗口，不共享
-                forceNew: false        // 复用已有窗口（如果 persistent=false 则每次创建新窗口）
+                forceNew: false        // 复用已有窗口
             });
             page = pageResult.page;
             crawlTabId = pageResult.tabId;

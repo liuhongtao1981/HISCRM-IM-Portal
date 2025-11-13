@@ -95,31 +95,35 @@ function normalizeTimestamp(timestamp) {
   return Date.now();
 }
 
-// ==================== API 回调函数（使用 DataManager）====================
+// ==================== API 回调函数（从 page 对象读取账号上下文）====================
 
 /**
  * API 回调：初始化消息
  * 由 platform.js 注册到 APIInterceptorManager
  */
-async function onMessageInitAPI(body) {
+async function onMessageInitAPI(body, response) {
   if (!body || !body.data || !body.data.messages) return;
 
-  // ✅ 使用 DataManager（如果可用）
-  if (globalContext.dataManager && body.data.messages.length > 0) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.data.messages.length > 0) {
     try {
-      const messages = globalContext.dataManager.batchUpsertMessages(
+      const messages = dataManager.batchUpsertMessages(
         body.data.messages,
         DataSource.API
       );
-      logger.info(`✅ [API] 初始化消息 -> DataManager: ${messages.length} 条`);
+      logger.info(`✅ [API] [${accountId}] 初始化消息 -> DataManager: ${messages.length} 条`);
     } catch (error) {
-      logger.error(`[API] 初始化消息处理失败:`, error);
+      logger.error(`[API] [${accountId}] 初始化消息处理失败:`, error);
     }
   }
 
   // 保留旧逻辑用于调试
   apiData.init.push(body);
-  logger.debug(`收集到初始化消息: ${body.data.messages.length} 条`);
+  logger.debug(`[${accountId || '?'}] 收集到初始化消息: ${body.data.messages.length} 条`);
 }
 
 /**
@@ -127,50 +131,58 @@ async function onMessageInitAPI(body) {
  * 由 platform.js 注册到 APIInterceptorManager
  * API: /creator/im/user_detail/ 返回 { user_list: [...] }
  */
-async function onConversationListAPI(body) {
+async function onConversationListAPI(body, response) {
   if (!body || !body.user_list) return;
 
-  // ✅ 使用 DataManager（如果可用）
-  if (globalContext.dataManager && body.user_list.length > 0) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.user_list.length > 0) {
     try {
-      const conversations = globalContext.dataManager.batchUpsertConversations(
+      const conversations = dataManager.batchUpsertConversations(
         body.user_list,
         DataSource.API
       );
-      logger.info(`✅ [API] 会话列表 -> DataManager: ${conversations.length} 个会话`);
+      logger.info(`✅ [API] [${accountId}] 会话列表 -> DataManager: ${conversations.length} 个会话`);
     } catch (error) {
-      logger.error(`[API] 会话列表处理失败:`, error);
+      logger.error(`[API] [${accountId}] 会话列表处理失败:`, error);
     }
   }
 
   // 保留旧逻辑用于调试
   apiData.conversations.push(body);
-  logger.debug(`收集到会话列表: ${body.user_list.length} 个用户`);
+  logger.debug(`[${accountId || '?'}] 收集到会话列表: ${body.user_list.length} 个用户`);
 }
 
 /**
  * API 回调：消息历史
  * 由 platform.js 注册到 APIInterceptorManager
  */
-async function onMessageHistoryAPI(body) {
+async function onMessageHistoryAPI(body, response) {
   if (!body || !body.data || !body.data.messages) return;
 
-  // ✅ 使用 DataManager（如果可用）
-  if (globalContext.dataManager && body.data.messages.length > 0) {
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.data.messages.length > 0) {
     try {
-      const messages = globalContext.dataManager.batchUpsertMessages(
+      const messages = dataManager.batchUpsertMessages(
         body.data.messages,
         DataSource.API
       );
-      logger.info(`✅ [API] 历史消息 -> DataManager: ${messages.length} 条`);
+      logger.info(`✅ [API] [${accountId}] 历史消息 -> DataManager: ${messages.length} 条`);
     } catch (error) {
-      logger.error(`[API] 历史消息处理失败:`, error);
+      logger.error(`[API] [${accountId}] 历史消息处理失败:`, error);
     }
   }
 
   // 保留旧逻辑用于调试
   apiData.history.push(body);
-  logger.debug(`收集到历史消息: ${body.data.messages.length} 条`);
+  logger.debug(`[${accountId || '?'}] 收集到历史消息: ${body.data.messages.length} 条`);
 }
 
 /**
