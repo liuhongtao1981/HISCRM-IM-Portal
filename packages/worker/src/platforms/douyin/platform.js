@@ -27,6 +27,7 @@ const DouyinRealtimeMonitor = require('./realtime-monitor');
 // 导入回复功能模块
 const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comment');
 
+const { sendReplyToDirectMessage } = require('./send-reply-to-message');
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
 
@@ -1219,365 +1220,6 @@ class DouyinPlatform extends PlatformBase {
             logger.error(`Failed to handle login success for account ${accountId}:`, error);
         }
     }
-
-    /**
-     * 从虚拟列表中查找消息项 - 支持多维度匹配
-     * @param {Page} page - Playwright 页面
-     * @param {string} targetId - 目标消息 ID
-     * @param {Object} criteria - 匹配条件 { content, senderName, timeIndicator, index }
-     * @returns {Promise<ElementHandle>} 找到的消息项元素
-     */
-    async findMessageItemInVirtualList(page, targetId, criteria = {}) {
-        // Phase 10: 增强 ID 处理，使用 API 拦截获取完整 ID 信息
-        // 正确的虚拟列表选择器（已验证）
-        // 抖音使用 ReactVirtualized，直接子元素是消息行，不是 [role="listitem"]
-        const innerContainer = await page.$('.ReactVirtualized__Grid__innerScrollContainer');
-
-        if (!innerContainer) {
-            throw new Error('虚拟列表容器未找到');
-        }
-
-        const messageItems = await innerContainer.$$(':scope > div');
-
-        if (messageItems.length === 0) {
-            throw new Error('虚拟列表中没有消息');
-        }
-
-        // 如果只有一条消息且没有指定条件，返回第一条
-        if (messageItems.length === 1 && !criteria.content) {
-            logger.warn('虚拟列表中只有一条消息，使用它作为目标');
-            return messageItems[0];
-        }
-
-        // 第一阶段：精确内容匹配
-        if (criteria.content) {
-            for (let i = 0; i < messageItems.length; i++) {
-                const itemText = await messageItems[i].textContent();
-
-                if (itemText.includes(criteria.content)) {
-                    // 如果有其他条件，进行二次检查
-                    if (criteria.senderName && !itemText.includes(criteria.senderName)) {
-                        continue;
-                    }
-                    if (criteria.timeIndicator && !itemText.includes(criteria.timeIndicator)) {
-                        continue;
-                    }
-
-                    logger.debug(`在索引 ${i} 找到精确匹配的消息`);
-                    return messageItems[i];
-                }
-            }
-        }
-
-        // 第二阶段：增强 ID 属性匹配 (Phase 10 改进)
-        if (targetId && targetId !== 'first') {
-            // Phase 10: 规范化 targetId (处理冒号分隔的 conversation_id)
-            // 示例: "douyin:user_123:conv_456" → 提取最后部分 "conv_456"
-            const normalizedTargetId = this.normalizeConversationId(targetId);
-            logger.debug(`原始 ID: ${targetId}, 规范化 ID: ${normalizedTargetId}`);
-
-            // 2a: 直接 HTML/文本匹配 (同时检查原始 ID 和规范化 ID)
-            for (let i = 0; i < messageItems.length; i++) {
-                const itemHTML = await messageItems[i].evaluate(el => el.outerHTML);
-                const itemText = await messageItems[i].textContent();
-
-                // 检查 ID 是否在 HTML 或文本中（原始和规范化都检查）
-                if (itemHTML.includes(targetId) || itemText.includes(targetId) ||
-                    itemHTML.includes(normalizedTargetId) || itemText.includes(normalizedTargetId)) {
-                    logger.debug(`在索引 ${i} 找到 ID 匹配的消息`);
-                    return messageItems[i];
-                }
-            }
-
-            // 2b: 使用 React Fiber 树提取 platform_message_id (Phase 10 新增)
-            try {
-                const fiberMessageIds = await this.extractMessageIdsFromReactFiber(page, messageItems);
-                logger.debug(`从 React Fiber 提取的 ID 集合:`, fiberMessageIds);
-
-                // 在 ID 集合中查找目标 ID (同时检查原始和规范化的 ID)
-                for (let i = 0; i < messageItems.length; i++) {
-                    const messageIdData = fiberMessageIds[i];
-                    if (messageIdData) {
-                        // 对提取的 ID 也进行规范化处理
-                        const normalizedFiberId = this.normalizeConversationId(messageIdData.conversationId || '');
-
-                        if (messageIdData.id === targetId ||
-                            messageIdData.serverId === targetId ||
-                            messageIdData.platformMessageId === targetId ||
-                            messageIdData.conversationId === targetId ||
-                            // 规范化后的 ID 比对
-                            messageIdData.id === normalizedTargetId ||
-                            messageIdData.serverId === normalizedTargetId ||
-                            messageIdData.platformMessageId === normalizedTargetId ||
-                            messageIdData.conversationId === normalizedTargetId ||
-                            normalizedFiberId === normalizedTargetId
-                        ) {
-                            logger.debug(`通过 React Fiber 在索引 ${i} 找到 ID 匹配的消息`, {
-                                fiberConversationId: messageIdData.conversationId,
-                                normalizedFiberId,
-                                targetId,
-                                normalizedTargetId
-                            });
-                            return messageItems[i];
-                        }
-                    }
-                }
-            } catch (fiberError) {
-                logger.debug(`React Fiber 提取失败:`, fiberError.message);
-            }
-
-            // 2c: 使用哈希匹配处理转换过的 ID (Phase 10 新增)
-            try {
-                const hashMatch = await this.findMessageByContentHash(page, messageItems, targetId);
-                if (hashMatch) {
-                    logger.debug(`通过内容哈希在索引 ${hashMatch} 找到消息`);
-                    return messageItems[hashMatch];
-                }
-            } catch (hashError) {
-                logger.debug(`内容哈希匹配失败:`, hashError.message);
-            }
-        }
-
-        // 第三阶段：发送者 + 时间模糊匹配
-        if (criteria.senderName && criteria.timeIndicator) {
-            for (let i = 0; i < messageItems.length; i++) {
-                const itemText = await messageItems[i].textContent();
-                if (itemText.includes(criteria.senderName) && itemText.includes(criteria.timeIndicator)) {
-                    logger.debug(`在索引 ${i} 找到模糊匹配（发送者+时间）`);
-                    return messageItems[i];
-                }
-            }
-        }
-
-        // 第四阶段：使用索引作为备选
-        if (typeof criteria.index === 'number' && criteria.index < messageItems.length) {
-            logger.warn(`使用索引备选方案：${criteria.index}`);
-            return messageItems[criteria.index];
-        }
-
-        // 最后备选：使用第一条消息
-        logger.warn(`未找到匹配的消息，使用第一条作为备选`);
-        return messageItems[0];
-    }
-
-    /**
-     * 从 React Fiber 树中提取消息 ID 信息 (Phase 10)
-     * @private
-     */
-    async extractMessageIdsFromReactFiber(page, messageItems) {
-        try {
-            const messageIds = await page.evaluate((items) => {
-                const results = [];
-                items.forEach((el, index) => {
-                    try {
-                        // 尝试访问 React Fiber 树
-                        const fiberKey = Object.keys(el).find(key => key.startsWith('__reactFiber'));
-                        if (fiberKey) {
-                            let fiber = el[fiberKey];
-                            let props = null;
-
-                            // 遍历 Fiber 树查找 props
-                            while (fiber && !props) {
-                                if (fiber.memoizedProps) {
-                                    props = fiber.memoizedProps;
-                                    break;
-                                }
-                                fiber = fiber.return;
-                            }
-
-                            if (props) {
-                                results.push({
-                                    index,
-                                    id: props.id || props.message_id,
-                                    serverId: props.serverId,
-                                    platformMessageId: props.platformMessageId || props.platform_message_id,
-                                    conversationId: props.conversationId || props.conversation_id,
-                                    content: props.content || props.text,
-                                    senderId: props.senderId || props.sender_id,
-                                    timestamp: props.timestamp || props.time
-                                });
-                            } else {
-                                results.push(null);
-                            }
-                        } else {
-                            results.push(null);
-                        }
-                    } catch (e) {
-                        results.push(null);
-                    }
-                });
-                return results;
-            }, messageItems);
-
-            return messageIds;
-        } catch (error) {
-            logger.warn(`Failed to extract IDs from React Fiber:`, error.message);
-            return [];
-        }
-    }
-
-    /**
-     * 通过内容哈希查找消息 (Phase 10)
-     * @private
-     */
-    async findMessageByContentHash(page, messageItems, targetId) {
-        try {
-            // 如果 targetId 看起来像是内容哈希（例如 msg_account_hash）
-            if (!targetId.startsWith('msg_') && !targetId.includes('_')) {
-                return null;
-            }
-
-            // 尝试从 targetId 中提取账户 ID
-            const idParts = targetId.split('_');
-            if (idParts.length < 2) {
-                return null;
-            }
-
-            const hashPart = idParts[idParts.length - 1]; // 最后一部分应该是哈希
-
-            // 遍历消息，计算内容哈希并比较
-            for (let i = 0; i < messageItems.length; i++) {
-                const itemText = await messageItems[i].textContent();
-                const contentHash = this.hashContent(itemText);
-
-                if (contentHash === hashPart) {
-                    logger.debug(`内容哈希匹配成功:`, contentHash);
-                    return i;
-                }
-            }
-
-            return null;
-        } catch (error) {
-            logger.debug(`内容哈希查找失败:`, error.message);
-            return null;
-        }
-    }
-
-    /**
-     * 规范化会话 ID (Phase 10)
-     * 处理冒号分隔的 conversation_id 格式
-     * 示例: "douyin:user_123:conv_456" → "conv_456"
-     * @private
-     */
-    normalizeConversationId(conversationId) {
-        if (!conversationId) return '';
-
-        // 如果包含冒号，提取最后一部分
-        if (typeof conversationId === 'string' && conversationId.includes(':')) {
-            const parts = conversationId.split(':');
-            return parts[parts.length - 1]; // 获取最后一部分
-        }
-
-        return conversationId;
-    }
-
-    /**
-     * 计算内容哈希值 (复用 DM 提取的逻辑)
-     * @private
-     */
-    hashContent(content) {
-        if (!content) return 'empty';
-
-        // 简单的哈希: 使用内容的前 100 个字符
-        const str = content.substring(0, 100);
-        return str.split('').reduce((acc, char) => {
-            return ((acc << 5) - acc) + char.charCodeAt(0);
-        }, 0).toString(36);
-    }
-
-    /**
-     * 设置私信 API 拦截器以获取完整 ID 信息 (Phase 10)
-     * @private
-     */
-    async setupDMAPIInterceptors(page, apiResponses) {
-        const requestCache = {
-            conversations: new Set(),
-            history: new Set()
-        };
-
-        const interceptAPI = async (route, apiType, cacheSet) => {
-            const request = route.request();
-            const method = request.method();
-            const url = request.url();
-
-            try {
-                const response = await route.fetch();
-                let body;
-
-                const contentType = response.headers()['content-type'] || '';
-
-                if (contentType.includes('application/json') || contentType.includes('json')) {
-                    body = await response.json();
-                } else {
-                    try {
-                        const text = await response.text();
-                        body = JSON.parse(text);
-                    } catch (parseError) {
-                        logger.debug(`[${apiType}] Response is not JSON, skipping interception`);
-                        await route.fulfill({ response });
-                        return;
-                    }
-                }
-
-                // 验证响应
-                if (!body || typeof body !== 'object') {
-                    await route.fulfill({ response });
-                    return;
-                }
-
-                // 生成请求签名用于去重
-                const signature = JSON.stringify({ method, url, dataHash: this.hashContent(JSON.stringify(body)) });
-
-                if (cacheSet.has(signature)) {
-                    logger.debug(`[${apiType}] Duplicate request detected`);
-                } else {
-                    cacheSet.add(signature);
-                    apiResponses[apiType].push(body);
-                    logger.debug(`[${apiType}] Intercepted response`);
-                }
-
-                await route.fulfill({ response });
-
-            } catch (error) {
-                logger.debug(`[${apiType}] Interception error: ${error.message}`);
-                try {
-                    await route.continue();
-                } catch (continueError) {
-                    logger.debug(`[${apiType}] Failed to continue request`);
-                    await route.abort('failed');
-                }
-            }
-        };
-
-        // 配置 DM 相关 API 端点
-        const apiConfigs = [
-            {
-                pattern: '**/v1/stranger/get_conversation_list**',
-                type: 'conversations',
-                description: '会话列表 API'
-            },
-            {
-                pattern: '**/v1/im/message/history**',
-                type: 'history',
-                description: '消息历史 API'
-            }
-        ];
-
-        for (const config of apiConfigs) {
-            try {
-                await page.route(config.pattern, async (route) => {
-                    await interceptAPI(route, config.type, requestCache[config.type] || new Set());
-                });
-                logger.debug(`[DM API] Registered interceptor for: ${config.description}`);
-            } catch (error) {
-                logger.warn(`[DM API] Failed to register interceptor: ${error.message}`);
-            }
-        }
-
-        logger.debug(`✅ DM API interceptors configured`);
-    }
-
-
 /**
  * 回复评论
  *
@@ -1688,478 +1330,86 @@ async replyToComment(accountId, options) {
      * 回复私信
      * @param {string} accountId - 账户 ID
      * @param {Object} options - 回复选项
-     *   - target_id: string - 被回复的私信 ID
-     *   - reply_content: string - 回复内容
-     *   - context: object - 上下文信息
-     *   - browserManager: BrowserManager
-     * @returns {Promise<{platform_reply_id?, data?}>}
+     * @returns {Promise<{success: boolean, platform_reply_id?: string, data?: Object, reason?: string}>}
      */
     async replyToDirectMessage(accountId, options) {
-        // Phase 10: 增强 ID 处理 + API 拦截 (支持 conversation_id 为主标识)
-        const {
-            target_id,           // 向后兼容
-            conversation_id,     // Phase 9 新增 (优先使用)
-            platform_message_id, // Phase 9 新增 (可选，用于精确定位消息)
-            reply_content,
-            context = {},
-            browserManager
-        } = options;
-
-        // 确定最终使用的会话 ID
-        const finalConversationId = conversation_id || target_id;
-        const finalPlatformMessageId = platform_message_id;
-        const { sender_id, platform_user_id } = context;
+        const { target_id, conversation_id, platform_message_id, reply_content, context = {} } = options;
 
         let page = null;
         let replyTabId = null;
-        const apiResponses = { conversationMessages: [] }; // Phase 10: 新增 API 响应缓存
 
         try {
-            logger.info(`[Douyin] Replying to conversation: ${finalConversationId}`, {
-                accountId,
-                conversationId: finalConversationId,
-                platformMessageId: finalPlatformMessageId,  // Phase 9: 新增
-                senderId: sender_id,
-                replyContent: reply_content.substring(0, 50),
-            });
-
-            // 1. 获取临时标签页处理回复
-            // ⭐ 使用 TabManager 获取私信回复专用临时窗口
-            // 特性：临时窗口，回复完成后立即关闭，不干扰爬虫任务
-            const { tabId, page: replyPage, shouldClose } = await this.browserManager.tabManager.getPageForTask(accountId, {
+            // 1. 获取临时标签页
+            const { tabId, page: replyPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
                 tag: TabTag.REPLY_DM,
-                persistent: false,     // 回复完成后关闭
-                shareable: false,      // 独立窗口
-                forceNew: true         // 每次回复创建新窗口
+                persistent: false,
+                shareable: false,
+                forceNew: true
             });
 
             page = replyPage;
             replyTabId = tabId;
 
-            logger.info(`[Douyin] 为私信回复任务获取临时标签页`, {
+            logger.info(`[Douyin] 开始回复私信`, {
                 accountId,
-                purpose: 'direct_message_reply',
-                conversationId: finalConversationId,
+                conversationId: conversation_id || target_id,
+                platformMessageId: platform_message_id,
                 tabId: replyTabId
             });
 
-            // 设置超时
-            page.setDefaultTimeout(30000);
-
-            // Phase 10: 新增 API 拦截以获取完整 ID 信息
-            await this.setupDMAPIInterceptors(page, apiResponses);
-
-            // 2. 导航到创作者中心私信管理页面（已验证的真实页面）
-            const dmUrl = 'https://creator.douyin.com/creator-micro/data/following/chat';
-            logger.info('Navigating to creator center direct message management page');
-
-            try {
-                await page.goto(dmUrl, {
-                    waitUntil: 'networkidle',
-                    timeout: 30000
-                });
-                await page.waitForTimeout(2000);
-            } catch (navError) {
-                logger.error('Navigation to creator center failed:', navError.message);
-                throw new Error(`Failed to navigate to DM page: ${navError.message}`);
-            }
-
-            // 3. 定位私信列表中的消息项（已验证：[role="grid"] [role="listitem"]）
-            logger.info(`Locating message in list: ${target_id}`);
-
-            // 使用多维度匹配策略查找消息（优先级：内容 > ID > 发送者+时间 > 索引）
-            const searchCriteria = {
-                content: context.conversation_title,      // 从上下文获取对话主题
-                senderName: context.sender_name,          // 发送者名称
-                timeIndicator: context.message_time,      // 时间指示
-                index: 0                                  // 索引作为最后备选
-            };
-
-            const targetMessageItem = await this.findMessageItemInVirtualList(
-                page,
+            // 2. 调用新的回复模块
+            const result = await sendReplyToDirectMessage(page, {
+                accountId,
                 target_id,
-                searchCriteria
-            );
-
-            logger.debug(`Located target message item`);
-            if (!targetMessageItem) {
-                throw new Error(`Failed to locate message ${target_id} in virtual list`);
-            }
-
-            // 4. 点击消息项打开对话（已验证）
-            logger.info('Clicking message item to open conversation');
-            await targetMessageItem.click();
-            await page.waitForTimeout(1500);
-
-            // 5. 定位输入框（已验证的选择器：div[contenteditable="true"]）
-            logger.info('Locating message input field');
-
-            const inputSelectors = [
-                'div[contenteditable="true"]',  // 抖音创作者中心已验证的选择器
-                '[class*="chat-input"]',         // 备选
-            ];
-
-            let dmInput = null;
-            for (const selector of inputSelectors) {
-                try {
-                    dmInput = await page.$(selector);
-                    if (dmInput && await dmInput.isVisible()) {
-                        logger.debug(`Found input with selector: ${selector}`);
-                        break;
-                    }
-                } catch (e) {
-                    logger.debug(`Selector ${selector} not found:`, e.message);
-                }
-            }
-
-            if (!dmInput) {
-                throw new Error('Message input field (contenteditable div) not found');
-            }
-
-            // 6. 激活输入框并清空
-            logger.info('Activating input field');
-            await dmInput.click();
-            await page.waitForTimeout(500);
-
-            // 清空任何现有内容
-            await dmInput.evaluate(el => el.textContent = '');
-            await page.waitForTimeout(300);
-
-            // 7. 输入回复内容（改进：使用fill()支持正确的中文字符）
-            logger.info('Typing reply content');
-            // 使用fill()而不是type()，fill()对Unicode处理更好
-            await dmInput.fill(reply_content);
-            // 触发事件确保React检测到变化
-            await dmInput.evaluate(el => {
-                el.dispatchEvent(new Event('input', { bubbles: true }));
-                el.dispatchEvent(new Event('change', { bubbles: true }));
-                // 也设置内部值以防某些框架需要
-                el.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
-            });
-            await page.waitForTimeout(800);
-
-            // 8. 查找并点击发送按钮
-            logger.info('Looking for send button');
-
-            let sendButtonClicked = false;
-
-            // 方法1：使用 locator 查找包含"发送"文本的button并点击
-            try {
-                const btn = await page.locator('button').filter({ hasText: '发送' }).first();
-                const isVisible = await btn.isVisible({ timeout: 3000 });
-                if (isVisible) {
-                    logger.info('Found send button via locator, clicking it');
-                    await btn.click();
-                    sendButtonClicked = true;
-                }
-            } catch (e) {
-                logger.debug('Locator method failed:', e.message);
-            }
-
-            // 方法2：如果locator失败，用evaluate直接点击
-            if (!sendButtonClicked) {
-                try {
-                    const clicked = await page.evaluate(() => {
-                        const buttons = Array.from(document.querySelectorAll('button'));
-                        const sendBtn = buttons.find(b => {
-                            const text = b.textContent?.trim() || '';
-                            return text === '发送' || text.includes('发送');
-                        });
-                        if (sendBtn && !sendBtn.disabled) {
-                            logger.info('Clicking send button via evaluate');
-                            sendBtn.click();
-                            return true;
-                        }
-                        return false;
-                    });
-                    if (clicked) {
-                        logger.info('Send button clicked via evaluate');
-                        sendButtonClicked = true;
-                    }
-                } catch (e) {
-                    logger.debug('Evaluate method failed:', e.message);
-                }
-            }
-
-            // 方法3：如果还是没点到，尝试按Enter键
-            if (!sendButtonClicked) {
-                logger.info('Send button not found, using Enter key as fallback');
-                await dmInput.press('Enter');
-            }
-
-            // 9. 等待消息发送完成 - 监听网络活动或使用高级等待策略
-            logger.info('Waiting for message to be sent - monitoring network activity');
-
-            try {
-                // 等待所有网络连接稳定（networkidle2 = 至少2个连接空闲）
-                await page.waitForLoadState('networkidle', { timeout: 10000 });
-                logger.info('Network activity settled after sending message');
-            } catch (networkError) {
-                // 如果network idle超时，继续进行（可能有持久连接）
-                logger.debug('Network idle timeout (may have persistent connections), continuing anyway');
-                await page.waitForTimeout(2000);  // 至少等待2秒
-            }
-
-            // 10. 检查错误消息或限制提示
-            logger.info('Checking for error messages or restrictions');
-
-            const dmReplyStatus = await page.evaluate(() => {
-                // 查找所有可能的错误或限制消息
-                const errorSelectors = [
-                    '[class*="error"]',
-                    '[class*="alert"]',
-                    '[role="alert"]',
-                    '[class*="tip"]',
-                    '[class*="message"]',
-                    '[class*="toast"]',
-                    '[class*="notification"]'
-                ];
-
-                let errorMessage = null;
-                let errorElement = null;
-
-                for (const selector of errorSelectors) {
-                    const elements = document.querySelectorAll(selector);
-                    for (const el of elements) {
-                        const text = el.textContent.trim();
-                        // 检查是否是错误或限制消息
-                        if (text && (
-                            text.includes('无法') ||
-                            text.includes('失败') ||
-                            text.includes('error') ||
-                            text.includes('Error') ||
-                            text.includes('禁') ||
-                            text.includes('限制') ||
-                            text.includes('超出') ||
-                            text.includes('blocked') ||
-                            text.includes('restricted')
-                        )) {
-                            errorMessage = text;
-                            errorElement = el;
-                            break;
-                        }
-                    }
-                    if (errorMessage) break;
-                }
-
-                return {
-                    hasError: !!errorMessage,
-                    errorMessage: errorMessage,
-                    errorElement: errorElement ? {
-                        className: errorElement.className,
-                        text: errorElement.textContent.substring(0, 200)
-                    } : null
-                };
+                conversation_id,
+                platform_message_id,
+                reply_content,
+                context,
+                takeScreenshot: (accId, filename) => this.takeScreenshot(accId, filename)
             });
 
-            // 检查是否有错误
-            if (dmReplyStatus.hasError && dmReplyStatus.errorMessage) {
-                logger.warn(`[Douyin] DM reply blocked with error: ${dmReplyStatus.errorMessage}`, {
-                    accountId,
-                    messageId: target_id,
-                    senderId: sender_id,
-                    errorMessage: dmReplyStatus.errorMessage,
-                });
-
-                // 保存错误状态截图
-                try {
-                    await this.takeScreenshot(accountId, `dm_reply_blocked_${Date.now()}.png`);
-                } catch (screenshotError) {
-                    logger.warn('Failed to take screenshot:', screenshotError.message);
-                }
-
-                // 返回错误状态（不抛出异常）
-                return {
-                    success: false,
-                    status: 'blocked',
-                    reason: dmReplyStatus.errorMessage,
-                    data: {
-                        message_id: target_id,
-                        sender_id,
-                        reply_content,
-                        error_message: dmReplyStatus.errorMessage,
-                        timestamp: new Date().toISOString(),
-                    },
-                };
-            }
-
-            // 11. 验证消息发送成功
-            const messageVerified = await page.evaluate((content) => {
-                const messageElements = document.querySelectorAll('[class*="message"], [role="listitem"]');
-                return Array.from(messageElements).some(msg => msg.textContent.includes(content));
-            }, reply_content);
-
-            logger.info(`Message sent ${messageVerified ? 'and verified' : '(verification pending)'}`);
-
-            // 12. 返回成功结果
-            return {
-                success: true,
-                platform_reply_id: `dm_${target_id || 'first'}_${Date.now()}`,
-                data: {
-                    message_id: target_id,
-                    reply_content,
-                    sender_id,
-                    timestamp: new Date().toISOString(),
-                    url: dmUrl,
-                },
-            };
+            return result;
 
         } catch (error) {
-            logger.error(`[Douyin] Failed to reply to direct message: ${target_id}`, {
-                error: error.message,
+            logger.error(`❌ [Douyin] 回复私信失败`, {
                 accountId,
-                stack: error.stack,
+                conversationId: conversation_id || target_id,
+                error: error.message
             });
 
-            // 保存错误截图用于诊断
-            if (page) {
+            // 保存错误截图
+            if (page && !page.isClosed()) {
                 try {
                     await this.takeScreenshot(accountId, `dm_reply_error_${Date.now()}.png`);
-                    logger.info('Error screenshot saved');
-                } catch (screenshotError) {
-                    logger.warn('Failed to take screenshot:', screenshotError.message);
+                } catch (e) {
+                    logger.warn('截图失败:', e.message);
                 }
             }
 
-            // 返回错误状态而不是抛出异常
             return {
                 success: false,
                 status: 'error',
                 reason: error.message,
                 data: {
-                    message_id: target_id,
-                    sender_id,
+                    message_id: target_id || conversation_id,
                     reply_content,
                     error_message: error.message,
-                    timestamp: new Date().toISOString(),
-                },
+                    timestamp: new Date().toISOString()
+                }
             };
 
         } finally {
-            // 清理临时标签页 - 回复完成后立即关闭
-            // ⭐ 使用 TabManager 关闭私信回复窗口
-            if (page && replyTabId) {
+            // 3. 关闭临时标签页
+            if (page && replyTabId && !page.isClosed()) {
                 try {
-                    // 确保只关闭这个特定的临时页面
-                    if (!page.isClosed()) {
-                        logger.info(`[Douyin] Closing temporary DM reply tab`, {
-                            accountId,
-                            conversationId: finalConversationId,
-                            tabId: replyTabId
-                        });
-                        // 使用 TabManager 关闭标签页
-                        await this.browserManager.tabManager.closeTab(accountId, replyTabId);
-                        logger.info('✅ DM reply tab closed via TabManager');
-                    }
-                } catch (closeError) {
-                    // 页面可能已经关闭，忽略这个错误
-                    logger.debug('Error closing DM reply tab:', closeError.message);
+                    await this.browserManager.tabManager.closeTab(accountId, replyTabId);
+                    logger.info('✅ 私信回复标签页已关闭');
+                } catch (e) {
+                    logger.warn('关闭标签页失败:', e.message);
                 }
             }
         }
     }
-
-    /**
-     * 从 conversation_id 提取 platform_user_id (Phase 9 新增)
-     * conversation_id 格式: conv_account-123_user-001
-     *
-     * @param {string} conversationId - 会话 ID
-     * @returns {string|null} platform_user_id 或 null
-     */
-    extractUserIdFromConversationId(conversationId) {
-        if (!conversationId) return null;
-        const match = conversationId.match(/^conv_[^_]+_(.+)$/);
-        return match ? match[1] : null;
-    }
-
-    /**
-     * 在虚拟列表中定位会话项 (Phase 9 新增)
-     * 用于找到目标用户的对话
-     *
-     * @param {Page} page - Playwright 页面对象
-     * @param {string} platformUserId - 平台用户 ID (要对话的用户)
-     * @param {string} userName - 用户名 (可选，帮助定位)
-     * @returns {Promise<Locator|null>} 会话项的 Locator 或 null
-     */
-    async findConversationByPlatformUser(page, platformUserId, userName) {
-        logger.debug(`Finding conversation for platform user: ${platformUserId}`, {
-            userName,
-        });
-
-        try {
-            // 使用 Playwright Locator API 查找所有会话项
-            const conversationItems = page.locator('[role="grid"] [role="listitem"]');
-            const count = await conversationItems.count();
-
-            logger.debug(`Found ${count} conversation items in virtual list`);
-
-            // 逐个检查会话项是否匹配目标用户
-            for (let i = 0; i < count; i++) {
-                const item = conversationItems.nth(i);
-                const text = await item.textContent();
-
-                logger.debug(`Checking conversation item ${i}: ${text?.substring(0, 50)}...`);
-
-                // 匹配条件: 用户名 或 用户 ID
-                if ((userName && text?.includes(userName)) ||
-                    (platformUserId && text?.includes(platformUserId))) {
-                    logger.info(`Located conversation for user ${platformUserId} at index ${i}`);
-                    return item;
-                }
-            }
-
-            logger.warn(`No conversation found for user ${platformUserId}`);
-            return null;
-        } catch (error) {
-            logger.error('Error finding conversation by platform user:', error);
-            return null;
-        }
-    }
-
-    /**
-     * 在已打开的对话中定位具体消息 (Phase 9 新增)
-     * 用于精确定位要回复的消息
-     *
-     * @param {Page} page - Playwright 页面对象
-     * @param {string} platformMessageId - 平台消息 ID
-     * @param {Object} context - 上下文信息 (包含消息内容等)
-     * @returns {Promise<Locator|null>} 消息项的 Locator 或 null
-     */
-    async findMessageInConversation(page, platformMessageId, context) {
-        logger.debug(`Finding message in conversation: ${platformMessageId}`, {
-            contentSnippet: context?.message_content?.substring(0, 30),
-        });
-
-        try {
-            // 获取对话窗口中的所有消息项
-            const messageItems = page.locator('[role="list"] [role="listitem"]');
-            const count = await messageItems.count();
-
-            logger.debug(`Found ${count} message items in conversation`);
-
-            // 逐个检查消息项
-            for (let i = 0; i < count; i++) {
-                const item = messageItems.nth(i);
-                const text = await item.textContent();
-
-                logger.debug(`Checking message item ${i}: ${text?.substring(0, 50)}...`);
-
-                // 匹配条件: 消息 ID 或 消息内容
-                if ((platformMessageId && text?.includes(platformMessageId)) ||
-                    (context?.message_content && text?.includes(context.message_content))) {
-                    logger.info(`Located message ${platformMessageId} at index ${i}`);
-                    return item;
-                }
-            }
-
-            logger.warn(`No message found with ID ${platformMessageId}`);
-            return null;
-        } catch (error) {
-            logger.error('Error finding message in conversation:', error);
-            return null;
-        }
-    }
-
     /**
      * 创建抖音平台的 DataManager
      * @param {string} accountId - 账户 ID
