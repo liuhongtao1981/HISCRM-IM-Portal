@@ -227,9 +227,20 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     // 点击"选择作品"按钮打开模态框
     try {
       await page.click('span:has-text("选择作品")', { timeout: 5000 });
+      logger.info('✅ 已点击"选择作品"按钮，等待弹窗加载...');
+
+      // 等待弹窗出现和视频容器加载
+      try {
+        await page.waitForSelector('.container-Lkxos9', { timeout: 5000, state: 'visible' });
+        logger.info('✅ 视频容器已加载');
+      } catch (waitError) {
+        logger.warn(`⚠️  等待视频容器超时: ${waitError.message}`);
+      }
+
+      // 额外等待弹窗动画和内容渲染完成
       await page.waitForTimeout(2000);
     } catch (error) {
-      logger.warn('无法打开作品选择器，可能已展开');
+      logger.warn(`⚠️  无法打开作品选择器: ${error.message}`);
     }
 
     // ✅ 滚动加载所有作品
@@ -244,15 +255,56 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
     while (scrollAttempts < MAX_SCROLL_ATTEMPTS) {
       // 滚动弹窗中的作品列表
       const scrollResult = await page.evaluate(() => {
-        const modalContainer = document.querySelector('.semi-modal-content') ||
-                              document.querySelector('[class*="modal"]') ||
-                              document.querySelector('[class*="dialog"]');
-        if (!modalContainer) return { success: false, message: '未找到弹窗容器' };
+        // 尝试查找包含视频列表的滚动容器
+        // 方法1: 通过视频元素向上查找滚动容器（推荐）
+        const firstVideo = document.querySelector('.container-Lkxos9');
+        let scrollContainer = null;
+        let containerInfo = null;
 
-        const scrollContainer = modalContainer.querySelector('[class*="scroll"]') ||
-                               modalContainer.querySelector('.semi-scrollbar') ||
-                               modalContainer.querySelector('[style*="overflow"]');
-        const container = scrollContainer || modalContainer;
+        if (firstVideo) {
+          let parent = firstVideo.parentElement;
+          let depth = 0;
+          // 向上遍历10层，查找可滚动的容器
+          while (parent && depth < 10) {
+            const overflow = window.getComputedStyle(parent).overflow;
+            const overflowY = window.getComputedStyle(parent).overflowY;
+            if (overflow === 'auto' || overflow === 'scroll' || overflowY === 'auto' || overflowY === 'scroll') {
+              scrollContainer = parent;
+              containerInfo = {
+                depth,
+                className: parent.className,
+                scrollHeight: parent.scrollHeight,
+                clientHeight: parent.clientHeight
+              };
+              break;
+            }
+            parent = parent.parentElement;
+            depth++;
+          }
+        }
+
+        // 方法2: 备用选择器（如果方法1失败）
+        if (!scrollContainer) {
+          scrollContainer = document.querySelector('.semi-modal-content') ||
+                          document.querySelector('.semi-modal-body') ||
+                          document.querySelector('[role="dialog"]') ||
+                          document.querySelector('[class*="Modal"]') ||
+                          document.querySelector('[class*="modal"]');
+          if (scrollContainer) {
+            containerInfo = {
+              method: 'fallback-selector',
+              className: scrollContainer.className,
+              scrollHeight: scrollContainer.scrollHeight,
+              clientHeight: scrollContainer.clientHeight
+            };
+          }
+        }
+
+        if (!scrollContainer) {
+          return { success: false, message: '未找到滚动容器' };
+        }
+
+        const container = scrollContainer;
         const previousScroll = container.scrollTop;
         container.scrollTop = container.scrollHeight;
         const videoCount = document.querySelectorAll('.container-Lkxos9').length;
@@ -260,13 +312,24 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
         return {
           success: true,
           scrolled: container.scrollTop > previousScroll,
-          videoCount: videoCount
+          videoCount: videoCount,
+          containerInfo: containerInfo
         };
       });
 
       if (!scrollResult.success) {
         logger.warn(`⚠️  滚动失败: ${scrollResult.message}`);
         break;
+      }
+
+      // 首次找到容器时输出详细信息
+      if (scrollAttempts === 0 && scrollResult.containerInfo) {
+        const info = scrollResult.containerInfo;
+        if (info.depth !== undefined) {
+          logger.info(`✅ 找到滚动容器: ${info.className.substring(0, 50)} (深度: ${info.depth}, 高度: ${info.scrollHeight}px/${info.clientHeight}px)`);
+        } else {
+          logger.info(`✅ 找到滚动容器 (备用方法): ${info.className.substring(0, 50)}`);
+        }
       }
 
       logger.debug(`📊 尝试 ${scrollAttempts + 1}: 发现 ${scrollResult.videoCount} 个作品 (上次: ${previousVideoCount})`);
