@@ -178,8 +178,19 @@ const monitorSlice = createSlice({
       if (!state.messages[topicId]) {
         state.messages[topicId] = []
       }
-      state.messages[topicId].push(message)
-      console.log(`[Store] 已添加消息到作品 ${topicId}，当前消息数: ${state.messages[topicId].length}`)
+
+      // ✅ 去重：检查消息是否已存在
+      const existingMessageIndex = state.messages[topicId].findIndex(m => m.id === message.id)
+      if (existingMessageIndex >= 0) {
+        // 消息已存在，更新而不是添加
+        console.log(`[Store] ⚠️ 消息已存在，更新: ${message.id}`)
+        state.messages[topicId][existingMessageIndex] = message
+      } else {
+        // 新消息，添加到列表
+        state.messages[topicId].push(message)
+        console.log(`[Store] ✅ 添加新消息到作品 ${topicId}，消息ID: ${message.id}`)
+      }
+      console.log(`[Store] 当前作品 ${topicId} 消息总数: ${state.messages[topicId].length}`)
 
       // 更新主题信息
       if (!state.topics[channelId]) {
@@ -402,6 +413,84 @@ const monitorSlice = createSlice({
       state.channelDisplayCount = state.channelPageSize
     },
 
+    // ✨ 新增：更新账户未读数（用于新消息提示）
+    updateChannelUnreadCount: (state, action: PayloadAction<{
+      channelId: string
+      unreadCount: number
+    }>) => {
+      const { channelId, unreadCount } = action.payload
+      const channel = state.channels.find(ch => ch.id === channelId)
+      if (channel) {
+        console.log(`[Store] 更新账户未读数: ${channel.name} -> ${unreadCount}`)
+        channel.unreadCount = unreadCount
+
+        // 如果有未读消息，标记为闪烁
+        if (unreadCount > 0) {
+          channel.isFlashing = true
+        }
+
+        // 重新排序账户列表（有未读的在前）
+        state.channels.sort((a, b) => {
+          // 1. 置顶的在前
+          if (a.isPinned && !b.isPinned) return -1
+          if (!a.isPinned && b.isPinned) return 1
+
+          // 2. 有未读消息的在前
+          if (a.unreadCount > 0 && b.unreadCount === 0) return -1
+          if (a.unreadCount === 0 && b.unreadCount > 0) return 1
+
+          // 3. 按最新消息时间降序
+          const aTime = a.lastMessageTime || 0
+          const bTime = b.lastMessageTime || 0
+          return bTime - aTime
+        })
+      }
+    },
+
+    // ✨ 新增：增加单个作品的未读数（用于新消息实时提示）
+    incrementTopicUnreadCount: (state, action: PayloadAction<{
+      channelId: string
+      topicId: string
+      increment: number
+    }>) => {
+      const { channelId, topicId, increment } = action.payload
+
+      console.log(`[Store] incrementTopicUnreadCount 被调用: channelId=${channelId}, topicId=${topicId}, increment=${increment}`)
+
+      // 查找对应的topic
+      if (!state.topics[channelId]) {
+        console.warn(`[Store] ❌ 找不到账户的topics数据: ${channelId}`)
+        console.log(`[Store] 当前 topics keys:`, Object.keys(state.topics))
+        return
+      }
+
+      const topic = state.topics[channelId].find(t => t.id === topicId)
+      if (!topic) {
+        console.warn(`[Store] ❌ 在账户 ${channelId} 中找不到 topic: ${topicId}`)
+        console.log(`[Store] 该账户的 topics:`, state.topics[channelId].map(t => `${t.id}:${t.title}`))
+        return
+      }
+
+      const oldUnread = topic.unreadCount
+      topic.unreadCount = (topic.unreadCount || 0) + increment
+      console.log(`[Store] ✅ 增加作品未读数: ${topic.title} ${oldUnread} -> ${topic.unreadCount}`)
+
+      // 同时更新账户的总未读数
+      const channel = state.channels.find(ch => ch.id === channelId)
+      if (channel) {
+        const oldChannelUnread = channel.unreadCount
+        channel.unreadCount = state.topics[channelId].reduce((sum, t) => sum + (t.unreadCount || 0), 0)
+        console.log(`[Store] ✅ 更新账户总未读数: ${channel.name} ${oldChannelUnread} -> ${channel.unreadCount}`)
+
+        // 如果有未读消息，标记为闪烁
+        if (channel.unreadCount > 0) {
+          channel.isFlashing = true
+        }
+      } else {
+        console.warn(`[Store] ❌ 找不到账户: ${channelId}`)
+      }
+    },
+
     // 移除临时消息（发送中的占位符）
     removeTemporaryMessage: (state, action: PayloadAction<{
       channelId: string
@@ -455,6 +544,8 @@ export const {
   clearAll,
   loadMoreChannels,
   resetChannelDisplay,
+  updateChannelUnreadCount,
+  incrementTopicUnreadCount,
   removeTemporaryMessage
 } = monitorSlice.actions
 

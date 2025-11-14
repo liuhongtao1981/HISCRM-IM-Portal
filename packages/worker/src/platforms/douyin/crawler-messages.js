@@ -318,17 +318,22 @@ async function crawlDirectMessagesV2(page, account, dataManager = null) {
         if (dataManager && messages.length > 0) {
           try {
             // 转换 DOM 格式到 DataManager 期望的格式
-            const formattedMessages = messages.map(msg => ({
-              message_id: msg.platform_message_id,
-              conversation_id: msg.conversation_id,
-              sender_id: msg.platform_sender_id || 'unknown',
-              sender_name: msg.platform_sender_name || msg.sender_nickname || 'Unknown', // ✅ 使用 React Fiber 提取的名称
-              content: msg.content,
-              type: msg.message_type || 'text',
-              direction: msg.direction || 'incoming',
-              created_at: msg.timestamp,
-            }));
+            const formattedMessages = messages.map(msg => {
+              const formatted = {
+                message_id: msg.platform_message_id,
+                conversation_id: msg.conversation_id,
+                sender_id: msg.platform_sender_id || 'unknown',
+                sender_name: msg.platform_sender_name || msg.sender_nickname || 'Unknown', // ✅ 使用 React Fiber 提取的名称
+                content: msg.content,
+                type: msg.type || 'text', // ✅ 修复：使用正确的字段名 msg.type
+                direction: msg.direction || 'inbound', // ✅ 修复：默认值改为 inbound
+                created_at: msg.timestamp || msg.created_at, // ✅ 添加备用字段
+              };
+              logger.debug(`[格式转换] ${formatted.message_id}: type=${formatted.type}, direction=${formatted.direction}, content="${formatted.content?.substring(0, 30)}"`);
+              return formatted;
+            });
 
+            logger.info(`[准备入库] ${formattedMessages.length} 条消息 (会话: ${conversation.platform_user_name})`);
             const upsertedMessages = dataManager.batchUpsertMessages(formattedMessages, DataSource.DOM);
             logger.info(`✅ [DOM] 会话消息 -> DataManager: ${upsertedMessages.length} 条 (会话: ${conversation.platform_user_name})`);
           } catch (error) {

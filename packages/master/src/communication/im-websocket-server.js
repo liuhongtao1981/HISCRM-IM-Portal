@@ -1381,17 +1381,30 @@ class IMWebSocketServer {
      * 广播消息给所有监控客户端
      */
     broadcastToMonitors(event, data) {
+        const monitorCount = this.monitorClients.size;
+        const adminCount = this.adminClients.size;
+        const totalClients = monitorCount + adminCount;
+
+        logger.info(`[Broadcast] 📡 广播事件: ${event}, 客户端数: ${totalClients} (monitor: ${monitorCount}, admin: ${adminCount})`);
+
+        if (totalClients === 0) {
+            logger.warn(`[Broadcast] ⚠️ 没有连接的客户端，事件 ${event} 未能广播`);
+            return;
+        }
+
         // 发送给监控客户端
         this.monitorClients.forEach((socketId, clientId) => {
             this.io.to(socketId).emit(event, data);
+            logger.debug(`[Broadcast] → 发送给 monitor 客户端 ${clientId} (socket: ${socketId})`);
         });
 
         // 发送给管理页面
         this.adminClients.forEach((socketId, clientId) => {
             this.io.to(socketId).emit(event, data);
+            logger.debug(`[Broadcast] → 发送给 admin 客户端 ${clientId} (socket: ${socketId})`);
         });
 
-        logger.debug(`[IM WS] Broadcasted ${event} to ${this.monitorClients.size} monitors and ${this.adminClients.size} admins`);
+        logger.info(`[Broadcast] ✅ 事件 ${event} 已广播给 ${totalClients} 个客户端`);
     }
 
     /**
@@ -1599,26 +1612,22 @@ class IMWebSocketServer {
                 return;
             }
 
-            if (!this.cacheDAO) {
-                socket.emit('error', { message: '评论已读功能未启用（缺少 CacheDAO）' });
-                return;
-            }
-
             const readAt = Math.floor(Date.now() / 1000);
-            const count = this.cacheDAO.markTopicAsRead(topicId, channelId, readAt);
+            let count = 0;
 
-            // ✅ 同步更新内存对象
-            if (count > 0 && channelId) {
-                const accountData = this.dataStore.accounts.get(channelId);
-                if (accountData) {
-                    // 遍历所有评论，找到属于该作品的评论并标记为已读
-                    for (const comment of accountData.data.comments.values()) {
-                        if (comment.contentId === topicId && !comment.isRead) {
-                            comment.isRead = true;
-                        }
+            // ✅ 直接更新 DataStore 内存中的评论（不依赖 CacheDAO）
+            const accountData = this.dataStore.accounts.get(channelId);
+            if (accountData) {
+                // 遍历所有评论，找到属于该作品的未读评论并标记为已读
+                for (const comment of accountData.data.comments.values()) {
+                    if (comment.contentId === topicId && !comment.isRead) {
+                        comment.isRead = true;
+                        count++;
                     }
-                    logger.debug(`[IM WS] Memory objects updated: topic/${topicId} all comments isRead=true`);
                 }
+                logger.info(`[IM WS] ✅ Marked ${count} comments in topic ${topicId} as read in memory`);
+            } else {
+                logger.warn(`[IM WS] ⚠️ No account data found for channelId: ${channelId}`);
             }
 
             // 响应客户端
@@ -1640,9 +1649,17 @@ class IMWebSocketServer {
 
             // ✅ 重新推送更新后的 topics（包含新的未读数）
             const updatedTopics = this.getTopicsFromDataStore(channelId);
+            logger.info(`[IM WS] 📊 重新计算 topics，准备广播`);
             this.broadcastToMonitors('monitor:topics', {
                 channelId,
                 topics: updatedTopics
+            });
+
+            // ✅ 同时推送更新后的 channels（更新左侧账户列表的最后消息）
+            const updatedChannels = this.getChannelsFromDataStore();
+            logger.info(`[IM WS] 📊 重新计算 channels，准备广播`);
+            this.broadcastToMonitors('monitor:channels', {
+                channels: updatedChannels
             });
 
             logger.info(`[IM WS] ${count} comments in topic ${topicId} marked as read`);
@@ -1665,26 +1682,22 @@ class IMWebSocketServer {
                 return;
             }
 
-            if (!this.cacheDAO) {
-                socket.emit('error', { message: '私信已读功能未启用（缺少 CacheDAO）' });
-                return;
-            }
-
             const readAt = Math.floor(Date.now() / 1000);
-            const count = this.cacheDAO.markConversationAsRead(conversationId, channelId, readAt);
+            let count = 0;
 
-            // ✅ 同步更新内存对象
-            if (count > 0 && channelId) {
-                const accountData = this.dataStore.accounts.get(channelId);
-                if (accountData) {
-                    // 遍历所有私信，找到属于该会话的消息并标记为已读
-                    for (const message of accountData.data.messages.values()) {
-                        if (message.conversationId === conversationId && !message.isRead) {
-                            message.isRead = true;
-                        }
+            // ✅ 直接更新 DataStore 内存中的消息（不依赖 CacheDAO）
+            const accountData = this.dataStore.accounts.get(channelId);
+            if (accountData) {
+                // 遍历所有私信，找到属于该会话的未读消息并标记为已读
+                for (const message of accountData.data.messages.values()) {
+                    if (message.conversationId === conversationId && !message.isRead) {
+                        message.isRead = true;
+                        count++;
                     }
-                    logger.debug(`[IM WS] Memory objects updated: conversation/${conversationId} all messages isRead=true`);
                 }
+                logger.info(`[IM WS] ✅ Marked ${count} messages in conversation ${conversationId} as read in memory`);
+            } else {
+                logger.warn(`[IM WS] ⚠️ No account data found for channelId: ${channelId}`);
             }
 
             // 响应客户端
@@ -1706,9 +1719,17 @@ class IMWebSocketServer {
 
             // ✅ 重新推送更新后的 topics（包含新的未读数）
             const updatedTopics = this.getTopicsFromDataStore(channelId);
+            logger.info(`[IM WS] 📊 重新计算 topics，准备广播`);
             this.broadcastToMonitors('monitor:topics', {
                 channelId,
                 topics: updatedTopics
+            });
+
+            // ✅ 同时推送更新后的 channels（更新左侧账户列表的最后消息）
+            const updatedChannels = this.getChannelsFromDataStore();
+            logger.info(`[IM WS] 📊 重新计算 channels，准备广播`);
+            this.broadcastToMonitors('monitor:channels', {
+                channels: updatedChannels
             });
 
             logger.info(`[IM WS] ${count} messages in conversation ${conversationId} marked as read`);

@@ -37,10 +37,20 @@ class DataStore {
    * 更新账户数据（接收 Worker 完整快照）
    * @param {string} accountId - 账户ID
    * @param {object} snapshot - 数据快照 { platform, data: { comments, contents, conversations, messages } }
+   * @returns {object} 返回新增的数据 { success, addedData: { comments, contents, conversations, messages, notifications } }
    */
   updateAccountData(accountId, snapshot) {
     try {
       const { platform, data } = snapshot;
+
+      // ✨ 收集新增的数据
+      const addedData = {
+        comments: [],
+        contents: [],
+        conversations: [],
+        messages: [],
+        notifications: [],
+      };
 
       // 创建或获取账户数据
       let accountData = this.accounts.get(accountId);
@@ -68,17 +78,19 @@ class DataStore {
 
       // 更新评论（增量合并，已有的跳过，新的才添加）
       if (data.comments && Array.isArray(data.comments)) {
-        // ✅ 增量处理：已有的保留（包括 isRead 状态），新的才添加
         let addedCount = 0;
         let skippedCount = 0;
 
         data.comments.forEach((comment) => {
-          if (accountData.data.comments.has(comment.id)) {
+          // ✅ 修复：使用 commentId 作为 key（Worker 推送的字段名）
+          const commentKey = comment.commentId || comment.id;
+          if (accountData.data.comments.has(commentKey)) {
             // 已存在，跳过（保留 Master 中的所有状态，包括 isRead）
             skippedCount++;
           } else {
-            // 新消息，添加进来
-            accountData.data.comments.set(comment.id, comment);
+            // ✨ 新消息，添加进来并记录
+            accountData.data.comments.set(commentKey, comment);
+            addedData.comments.push(comment);
             addedCount++;
           }
         });
@@ -88,17 +100,19 @@ class DataStore {
 
       // 更新作品（增量合并，已有的跳过，新的才添加）
       if (data.contents && Array.isArray(data.contents)) {
-        // ✅ 增量处理：已有的保留，新的才添加
         let addedCount = 0;
         let skippedCount = 0;
 
         data.contents.forEach((content) => {
-          if (accountData.data.contents.has(content.id)) {
+          // ✅ 修复：使用 contentId 作为 key（Worker 推送的字段名）
+          const contentKey = content.contentId || content.id;
+          if (accountData.data.contents.has(contentKey)) {
             // 已存在，跳过（保留 Master 中的状态）
             skippedCount++;
           } else {
-            // 新作品，添加进来
-            accountData.data.contents.set(content.id, content);
+            // ✨ 新作品，添加进来并记录
+            accountData.data.contents.set(contentKey, content);
+            addedData.contents.push(content);
             addedCount++;
           }
         });
@@ -108,17 +122,19 @@ class DataStore {
 
       // 更新会话（增量合并，已有的跳过，新的才添加）
       if (data.conversations && Array.isArray(data.conversations)) {
-        // ✅ 增量处理：已有的保留，新的才添加
         let addedCount = 0;
         let skippedCount = 0;
 
         data.conversations.forEach((conversation) => {
-          if (accountData.data.conversations.has(conversation.id)) {
+          // ✅ 修复：使用 conversationId 作为 key（Worker 推送的字段名）
+          const conversationKey = conversation.conversationId || conversation.id;
+          if (accountData.data.conversations.has(conversationKey)) {
             // 已存在，跳过（保留 Master 中的状态）
             skippedCount++;
           } else {
-            // 新会话，添加进来
-            accountData.data.conversations.set(conversation.id, conversation);
+            // ✨ 新会话，添加进来并记录
+            accountData.data.conversations.set(conversationKey, conversation);
+            addedData.conversations.push(conversation);
             addedCount++;
           }
         });
@@ -128,17 +144,19 @@ class DataStore {
 
       // 更新私信（增量合并，已有的跳过，新的才添加）
       if (data.messages && Array.isArray(data.messages)) {
-        // ✅ 增量处理：已有的保留（包括 isRead 状态），新的才添加
         let addedCount = 0;
         let skippedCount = 0;
 
         data.messages.forEach((message) => {
-          if (accountData.data.messages.has(message.id)) {
+          // ✅ 修复：使用 messageId 作为 key（Worker 推送的字段名）
+          const messageKey = message.messageId || message.id;
+          if (accountData.data.messages.has(messageKey)) {
             // 已存在，跳过（保留 Master 中的所有状态，包括 isRead）
             skippedCount++;
           } else {
-            // 新消息，添加进来
-            accountData.data.messages.set(message.id, message);
+            // ✨ 新消息，添加进来并记录
+            accountData.data.messages.set(messageKey, message);
+            addedData.messages.push(message);
             addedCount++;
           }
         });
@@ -148,7 +166,6 @@ class DataStore {
 
       // 更新通知（增量合并，已有的跳过，新的才添加）
       if (data.notifications && Array.isArray(data.notifications)) {
-        // ✅ 增量处理：已有的保留，新的才添加
         let addedCount = 0;
         let skippedCount = 0;
 
@@ -157,8 +174,9 @@ class DataStore {
             // 已存在，跳过（保留 Master 中的状态）
             skippedCount++;
           } else {
-            // 新通知，添加进来
+            // ✨ 新通知，添加进来并记录
             accountData.data.notifications.set(notification.id, notification);
+            addedData.notifications.push(notification);
             addedCount++;
           }
         });
@@ -179,10 +197,23 @@ class DataStore {
         messages: accountData.data.messages.size,
       });
 
-      return true;
+      // ✨ 返回成功状态和新增的数据
+      return {
+        success: true,
+        addedData,
+      };
     } catch (error) {
       logger.error(`Failed to update account data: ${accountId}`, error);
-      return false;
+      return {
+        success: false,
+        addedData: {
+          comments: [],
+          contents: [],
+          conversations: [],
+          messages: [],
+          notifications: [],
+        },
+      };
     }
   }
 

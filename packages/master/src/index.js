@@ -52,7 +52,18 @@ const LoginHandler = require('./login/login-handler');
 const DataStore = require('./data/data-store');
 const DataSyncReceiver = require('./communication/data-sync-receiver');
 const { PersistenceManager } = require('./persistence');
-const { WORKER_REGISTER, WORKER_HEARTBEAT, WORKER_MESSAGE_DETECTED, WORKER_ACCOUNT_STATUS, WORKER_DATA_SYNC, CLIENT_SYNC_REQUEST } = require('@hiscrm-im/shared/protocol/messages');
+const {
+  WORKER_REGISTER,
+  WORKER_HEARTBEAT,
+  WORKER_MESSAGE_DETECTED,
+  WORKER_ACCOUNT_STATUS,
+  WORKER_DATA_SYNC,
+  WORKER_MESSAGES_UPDATE,
+  WORKER_COMMENTS_UPDATE,
+  WORKER_CONVERSATIONS_UPDATE,
+  WORKER_CONTENTS_UPDATE,
+  CLIENT_SYNC_REQUEST
+} = require('@hiscrm-im/shared/protocol/messages');
 
 // 初始化logger
 const logger = createLogger('master', './logs');
@@ -508,6 +519,11 @@ async function start() {
       // [WORKER_MESSAGE_DETECTED]: (socket, msg) => messageReceiver.handleMessageDetected(socket, msg), // ❌ 已废弃
       [WORKER_ACCOUNT_STATUS]: (socket, msg) => handleAccountStatus(socket, msg),
       [WORKER_DATA_SYNC]: (socket, msg) => dataSyncReceiver.handleWorkerDataSync(socket, msg),
+      // ✨ 增量更新消息处理器（记录日志但不处理，因为我们使用完整快照）
+      [WORKER_MESSAGES_UPDATE]: (socket, msg) => logger.debug(`Received WORKER_MESSAGES_UPDATE (using WORKER_DATA_SYNC instead)`),
+      [WORKER_COMMENTS_UPDATE]: (socket, msg) => logger.debug(`Received WORKER_COMMENTS_UPDATE (using WORKER_DATA_SYNC instead)`),
+      [WORKER_CONVERSATIONS_UPDATE]: (socket, msg) => logger.debug(`Received WORKER_CONVERSATIONS_UPDATE (using WORKER_DATA_SYNC instead)`),
+      [WORKER_CONTENTS_UPDATE]: (socket, msg) => logger.debug(`Received WORKER_CONTENTS_UPDATE (using WORKER_DATA_SYNC instead)`),
       [CLIENT_SYNC_REQUEST]: (socket, msg) => handleClientSync(socket, msg),
       onWorkerDisconnect: (socket) => workerRegistry.handleDisconnect(socket),
       onClientConnect: (socket) => handleClientConnect(socket),
@@ -546,9 +562,18 @@ async function start() {
     imWebSocketServer.setupHandlers();
     logger.info('IM WebSocket Server initialized with CacheDAO, AccountsDAO and WorkerRegistry support');
 
-    // 4.3.1 启动未读消息定期推送（每 5 秒检测一次）
-    imWebSocketServer.startUnreadNotificationPolling(5000);
-    logger.info('IM WebSocket unread notification polling started (interval: 5s)');
+    // 4.3.1 将 imWebSocketServer 注入到 DataSyncReceiver（延迟注入）
+    dataSyncReceiver.setIMWebSocketServer(imWebSocketServer);
+    logger.info('DataSyncReceiver connected to IM WebSocket Server for message broadcasting');
+
+    // 4.3.1 启动未读消息定期推送（已移除）
+    // ✅ 新消息实时推送架构优化：移除Master层定时推送，改用Worker立即推送 + Master简易概要推送
+    // - Worker层在检测到新消息时立即推送（account-data-manager.js中的syncToMasterNow()）
+    // - Master层只推送简易概要（data-sync-receiver.js中的buildNewMessageHints()）
+    // - 客户端按需拉取详细数据，减少服务器推送压力
+    // - Worker保留30s定时推送作为fallback机制
+    // imWebSocketServer.startUnreadNotificationPolling(5000);
+    // logger.info('IM WebSocket unread notification polling started (interval: 5s)');
 
     // 4.3.2 清理DataStore中已删除账户的数据
     imWebSocketServer.cleanupDeletedAccounts();

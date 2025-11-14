@@ -18,7 +18,7 @@ const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
 const { onWorksListAPI, onWorkDetailAPI } = require('./crawler-contents');
-const { onCommentsListAPI, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
+const { onCommentsListAPI, onCommentsListV2API, onDiscussionsListV2API, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
 const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
 
 // 导入实时监控管理器
@@ -85,12 +85,13 @@ class DouyinPlatform extends PlatformBase {
         logger.info(`Registering API handlers for account ${accountId}`);
 
         // 作品相关 API
-        manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // ✅ 只匹配 /aweme/v1/creator/item/list
+        manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // 只匹配 /aweme/v1/creator/item/list
         manager.register('**/aweme/v1/web/aweme/detail/**', onWorkDetailAPI);
 
-        // 评论相关 API
-        manager.register('**/comment/list/select/**', onCommentsListAPI);  // 修正：匹配 /comment/list/select/
-        manager.register('**/comment/reply/list/**', onDiscussionsListAPI);  // 修正：更宽松的模式
+        // 评论相关 API（只使用V2 API）
+        manager.register('**/aweme/v1/web/comment/list/select/**', onCommentsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/select/?aweme_id=7571732586456812800
+        manager.register('**/aweme/v1/web/comment/list/reply/**', onDiscussionsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/reply/?comment_id=7572250319850095397
+
         manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 通知详情 API（评论通知）
 
         // 评论回复 API（回调函数内部会排除 /comment/reply/list 列表接口）
@@ -98,10 +99,10 @@ class DouyinPlatform extends PlatformBase {
 
         // 私信相关 API
         manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
-        manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // ✅ 修正：匹配实际的会话 API
+        manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // 修正：匹配实际的会话 API
         manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
-        logger.info(`✅ API handlers registered (9 total) for account ${accountId}`);
+        logger.info(`✅ API handlers registered (7 total) for account ${accountId}`);
     }
 
     /**

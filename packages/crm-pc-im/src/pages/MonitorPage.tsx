@@ -19,10 +19,12 @@ import {
   setConnected,
   setTopics,
   setMessages,
-  loadMoreChannels
+  loadMoreChannels,
+  updateChannelUnreadCount,
+  incrementTopicUnreadCount
 } from '../store/monitorSlice'
 import websocketService from '../services/websocket'
-import type { ChannelMessage, Topic, Message } from '../shared/types-monitor'
+import type { ChannelMessage, Topic, Message, NewMessageHint } from '../shared/types-monitor'
 import './MonitorPage.css'
 
 // 声明 Electron API
@@ -98,9 +100,17 @@ export default function MonitorPage() {
   const textAreaRef = useRef<any>(null)
   const channelListRef = useRef<HTMLDivElement>(null)
   const messageListRef = useRef<HTMLDivElement>(null)
+  // ✨ 新增：防抖定时器（用于合并短时间内的多条消息提示）
+  const refreshTimers = useRef<Map<string, NodeJS.Timeout>>(new Map())
 
   const selectedChannel = channels.find(ch => ch.id === selectedChannelId)
-  const currentTopics = selectedChannelId ? topics[selectedChannelId] || [] : []
+
+  // ✨ 优化：使用 useSelector 直接选择当前账户的 topics，确保能检测到变化
+  const currentTopics = useSelector((state: RootState) => {
+    if (!state.monitor.selectedChannelId) return []
+    return state.monitor.topics[state.monitor.selectedChannelId] || []
+  })
+
   const selectedTopic = currentTopics.find(tp => tp.id === selectedTopicId)
 
   // 计算私信和评论的未处理数量（汇总该账户下所有作品的未读消息）
@@ -287,6 +297,128 @@ export default function MonitorPage() {
   // 显示所有账户（不限制数量）
   const displayedChannels = filteredChannels
 
+  // ✨ 新增：处理新消息简易提示（带防抖机制）
+  const handleNewMessageHint = React.useCallback((hint: NewMessageHint) => {
+    console.log('🔔 收到新消息提示:', hint)
+
+    // 1️⃣ 立即更新红点未读数（不防抖，实时显示）
+    dispatch(updateChannelUnreadCount({
+      channelId: hint.channelId,
+      unreadCount: hint.totalUnreadCount,
+    }))
+
+    // 🆕 立即更新个别作品/会话的未读数（解决左侧列表红点不实时显示的问题）
+    if (hint.messageType === 'comment' && hint.topicId && hint.commentCount) {
+      // 评论：立即增加作品未读数
+      dispatch(incrementTopicUnreadCount({
+        channelId: hint.channelId,
+        topicId: hint.topicId,
+        increment: hint.commentCount,
+      }))
+      console.log(`🔴 立即更新作品未读数: ${hint.topicTitle} +${hint.commentCount}`)
+    } else if (hint.messageType === 'private_message' && hint.conversationId && hint.messageCount) {
+      // 私信：立即增加会话未读数
+      dispatch(incrementTopicUnreadCount({
+        channelId: hint.channelId,
+        topicId: hint.conversationId,
+        increment: hint.messageCount,
+      }))
+      console.log(`🔴 立即更新会话未读数: ${hint.fromUserName} +${hint.messageCount}`)
+    }
+
+    // 2️⃣ 显示浏览器通知（不防抖，实时提醒）
+    if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+      const title = hint.messageType === 'comment' ? '新评论' : '新私信'
+      const body = hint.messageType === 'comment'
+        ? `${hint.topicTitle} 收到 ${hint.commentCount} 条新评论`
+        : `${hint.fromUserName} 发来 ${hint.messageCount} 条新消息`
+
+      new Notification(title, { body })
+    }
+
+    // 3️⃣ 防抖刷新详细数据（1秒内多次提示合并处理）
+    const refreshKey = hint.messageType === 'comment'
+      ? `${hint.channelId}_comment_${hint.topicId}`
+      : `${hint.channelId}_message_${hint.conversationId}`
+
+    // 清除之前的定时器
+    if (refreshTimers.current.has(refreshKey)) {
+      clearTimeout(refreshTimers.current.get(refreshKey)!)
+      console.log('⏰ 清除旧的刷新定时器:', refreshKey)
+    }
+
+    // 设置新的定时器（1秒后执行）
+    const timer = setTimeout(() => {
+      console.log('📥 执行防抖刷新:', refreshKey)
+
+      if (hint.messageType === 'comment') {
+        handleCommentHint(hint)
+      } else if (hint.messageType === 'private_message') {
+        handlePrivateMessageHint(hint)
+      }
+
+      // 清理定时器
+      refreshTimers.current.delete(refreshKey)
+    }, 1000) // 1秒防抖
+
+    refreshTimers.current.set(refreshKey, timer)
+    console.log('⏰ 设置新的刷新定时器:', refreshKey)
+  }, [dispatch])
+
+  // ✨ 新增：处理评论提示
+  const handleCommentHint = React.useCallback((hint: NewMessageHint) => {
+    // 如果当前在该账户的页面
+    if (selectedChannelId === hint.channelId) {
+      console.log('📥 当前在该账户页面，刷新 topics')
+
+      // 主动请求 topics 刷新
+      websocketService.emit('monitor:request_topics', {
+        channelId: hint.channelId,
+      })
+
+      // 如果当前正在查看该作品的评论
+      if (selectedTopicId === hint.topicId) {
+        console.log('📥 当前在该作品页面，刷新 messages')
+
+        // 主动请求 messages 刷新
+        websocketService.emit('monitor:request_messages', {
+          channelId: hint.channelId,
+          topicId: hint.topicId,
+          messageType: 'comment',
+        })
+      }
+    } else {
+      console.log('📌 不在该账户页面，只更新红点')
+    }
+  }, [selectedChannelId, selectedTopicId])
+
+  // ✨ 新增：处理私信提示
+  const handlePrivateMessageHint = React.useCallback((hint: NewMessageHint) => {
+    // 如果当前在该账户的页面
+    if (selectedChannelId === hint.channelId) {
+      console.log('📥 当前在该账户页面，刷新 topics')
+
+      // 主动请求 topics 刷新
+      websocketService.emit('monitor:request_topics', {
+        channelId: hint.channelId,
+      })
+
+      // 如果当前正在查看该会话的私信
+      if (selectedTopicId === hint.conversationId) {
+        console.log('📥 当前在该会话页面，刷新 messages')
+
+        // 主动请求 messages 刷新
+        websocketService.emit('monitor:request_messages', {
+          channelId: hint.channelId,
+          topicId: hint.conversationId,
+          messageType: 'direct_message',
+        })
+      }
+    } else {
+      console.log('📌 不在该账户页面，只更新红点')
+    }
+  }, [selectedChannelId, selectedTopicId])
+
   // 连接服务器
   useEffect(() => {
     const connectToServer = async () => {
@@ -408,6 +540,9 @@ export default function MonitorPage() {
           setIsSending(false)
         })
 
+        // ✨ 新增：监听新消息简易提示
+        websocketService.on('monitor:new_message_hint', handleNewMessageHint)
+
         websocketService.emit('monitor:request_channels')
       } catch (error) {
         console.error('[监控] 连接失败:', error)
@@ -417,9 +552,18 @@ export default function MonitorPage() {
 
     connectToServer()
     return () => {
+      websocketService.off('monitor:new_message_hint')
       websocketService.disconnect()
     }
-  }, [dispatch])
+  }, [dispatch, handleNewMessageHint])
+
+  // ✨ 新增：清理防抖定时器
+  useEffect(() => {
+    return () => {
+      refreshTimers.current.forEach(timer => clearTimeout(timer))
+      refreshTimers.current.clear()
+    }
+  }, [])
 
   // 滚动到底部
   useEffect(() => {
@@ -458,9 +602,26 @@ export default function MonitorPage() {
         }
 
         if (targetTopic) {
-          console.log('[选择作品]', targetTopic.id, targetTopic.title)
+          console.log('[自动选择作品]', targetTopic.id, targetTopic.title)
           dispatch(selectTopic(targetTopic.id))
           websocketService.emit('monitor:request_messages', { topicId: targetTopic.id })
+
+          // ✅ 标记为已读：根据作品类型发送对应的标记已读事件
+          if (targetTopic.isPrivate) {
+            // 私信会话
+            console.log('[标记已读] 私信会话 conversationId:', targetTopic.id, 'channelId:', channelId)
+            websocketService.emit('monitor:mark_conversation_as_read', {
+              channelId: channelId,
+              conversationId: targetTopic.id
+            })
+          } else {
+            // 评论作品
+            console.log('[标记已读] 作品评论 topicId:', targetTopic.id, 'channelId:', channelId)
+            websocketService.emit('monitor:mark_topic_as_read', {
+              channelId: channelId,
+              topicId: targetTopic.id
+            })
+          }
         }
       }
     }, 100)
@@ -474,6 +635,28 @@ export default function MonitorPage() {
     // 请求该作品的消息列表
     websocketService.emit('monitor:request_messages', { topicId })
     console.log('[请求消息] topicId:', topicId)
+
+    // ✅ 标记为已读：根据作品类型发送对应的标记已读事件
+    if (selectedChannelId) {
+      const topic = currentTopics.find(t => t.id === topicId)
+      if (topic) {
+        if (topic.isPrivate) {
+          // 私信会话
+          console.log('[标记已读] 私信会话 conversationId:', topicId, 'channelId:', selectedChannelId)
+          websocketService.emit('monitor:mark_conversation_as_read', {
+            channelId: selectedChannelId,
+            conversationId: topicId
+          })
+        } else {
+          // 评论作品
+          console.log('[标记已读] 作品评论 topicId:', topicId, 'channelId:', selectedChannelId)
+          websocketService.emit('monitor:mark_topic_as_read', {
+            channelId: selectedChannelId,
+            topicId: topicId
+          })
+        }
+      }
+    }
   }
 
   // 从未读评论列表点击进入对话

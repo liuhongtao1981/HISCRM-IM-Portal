@@ -169,6 +169,16 @@ async function onWorkDetailAPI(body, response) {
   const page = response.frame().page();
   const { accountId, dataManager } = page._accountContext || {};
 
+  // 📊 作品ID日志（加密ID和数字ID对照）
+  if (body.aweme_detail) {
+    const aweme = body.aweme_detail;
+    logger.info(`📊 [作品API] ID对照:`);
+    logger.info(`  - 加密ID (item_id): ${aweme.item_id?.substring(0, 60)}...`);
+    logger.info(`  - 数字ID (item_id_plain): ${aweme.item_id_plain}`);
+    logger.info(`  - 数字ID (aweme_id): ${aweme.aweme_id}`);
+    logger.info(`  - 标题: ${aweme.desc?.substring(0, 30)}...`);
+  }
+
   // 使用账号级别隔离的 DataManager
   if (dataManager && body.aweme_detail) {
     try {

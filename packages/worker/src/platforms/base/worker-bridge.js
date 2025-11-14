@@ -277,32 +277,52 @@ class WorkerBridge {
    * @param {Object} message - 标准消息对象 (通过 createMessage 创建)
    * @returns {Promise<void>}
    */
-  async sendToMaster(message) {
-    if (!this.socket) {
-      const error = new Error('Socket not connected');
-      logger.error('Failed to send message to Master:', error);
-      throw error;
-    }
+  async sendToMaster(message, retries = 5, retryDelay = 1000) {
+    for (let attempt = 1; attempt <= retries; attempt++) {
+      // 检查 Socket 是否连接
+      if (!this.socket) {
+        logger.warn(`Attempt ${attempt}/${retries}: Socket instance not found, waiting for reconnection...`);
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        const error = new Error('Socket not connected after max retries');
+        logger.error('Failed to send message to Master:', error);
+        throw error;
+      }
 
-    if (!this.socket.connected) {
-      const error = new Error('Socket is not connected');
-      logger.error('Failed to send message to Master:', error);
-      throw error;
-    }
+      if (!this.socket.connected) {
+        logger.warn(`Attempt ${attempt}/${retries}: Socket not connected (socketId: ${this.socket?.id}), waiting ${retryDelay}ms...`);
+        if (attempt < retries) {
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          continue;
+        }
+        const error = new Error('Socket is not connected after max retries');
+        logger.error('Failed to send message to Master:', error);
+        throw error;
+      }
 
-    try {
-      logger.debug(`Sending ${message.type} message to Master`, {
-        type: message.type,
-        hasPayload: !!message.payload,
-      });
+      // Socket 已连接，尝试发送
+      try {
+        logger.info(`📤 Sending ${message.type} message to Master (Attempt ${attempt}/${retries})`, {
+          type: message.type,
+          hasPayload: !!message.payload,
+          socketId: this.socket.id,
+          connected: this.socket.connected,
+        });
 
-      // 通过标准 'message' 事件发送
-      this.socket.emit('message', message);
+        // 通过标准 'message' 事件发送
+        this.socket.emit('message', message);
 
-      logger.debug(`Message ${message.type} sent successfully`);
-    } catch (error) {
-      logger.error(`Failed to send ${message.type} message to Master:`, error);
-      throw error;
+        logger.info(`✅ Message ${message.type} emitted successfully (event: 'message')`);
+        return; // 发送成功，退出函数
+      } catch (error) {
+        logger.error(`Attempt ${attempt}/${retries} failed to send ${message.type} message:`, error);
+        if (attempt === retries) {
+          throw error; // 最后一次重试失败，抛出错误
+        }
+        await new Promise(resolve => setTimeout(resolve, retryDelay));
+      }
     }
   }
 

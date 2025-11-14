@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 抖音评论爬虫 - crawl-comments.js
  *
  * 功能：爬取抖音创作者中心的评论数据（包括一级评论和二级/三级讨论）
@@ -37,82 +37,207 @@ const apiData = {
   discussions: []    // 二级/三级回复（讨论）
 };
 
+// ==================== 数据统一转换函数 ====================
+
+/**
+ * 统一转换评论数据格式（只处理V2 API格式）
+ * @param {Object} comment - V2 API原始评论数据
+ * @param {Object} context - 上下文信息（aweme_id等）
+ * @returns {Object} 统一格式的评论数据
+ */
+function normalizeCommentData(comment, context = {}) {
+  return {
+    // ✅ 评论ID：统一为字符串
+    comment_id: String(comment.cid),
+    cid: String(comment.cid),
+
+    // ✅ 作品ID：V2自带aweme_id
+    aweme_id: comment.aweme_id || context.aweme_id,
+    item_id: comment.aweme_id || context.aweme_id,
+
+    // ✅ 父评论ID：从reply_id获取
+    parent_comment_id: context.parent_comment_id || comment.reply_id || null,
+    reply_id: comment.reply_id || null,
+
+    // ✅ 评论内容
+    text: comment.text,
+    content: comment.text,
+
+    // ✅ 时间戳：V2已经是数字
+    create_time: comment.create_time,
+
+    // ✅ 统计数据：V2已经是数字
+    digg_count: comment.digg_count || 0,
+    reply_count: comment.reply_comment_total || 0,
+
+    // ✅ 用户信息：统一为user_info格式
+    user_info: {
+      user_id: comment.user.uid,
+      uid: comment.user.uid,
+      screen_name: comment.user.nickname,
+      nickname: comment.user.nickname,
+      avatar_url: comment.user.avatar_thumb?.url_list?.[0] || null,
+    },
+
+    // ✅ 保留原始user对象
+    user: comment.user,
+
+    // ✅ 状态字段
+    is_author: comment.label_text === '作者',
+    user_digg: comment.user_digged === 1,
+    user_digged: comment.user_digged,
+    level: comment.level,
+    status: comment.status,
+
+    // ✅ V2独有字段
+    image_list: comment.image_list || null,
+    ip_label: comment.ip_label || null,
+
+    // ⚠️ 保留原始数据（便于调试）
+    _raw: comment,
+    _api_version: 'v2',
+  };
+}
+
 // ==================== API 回调函数（从 page 对象读取账号上下文）====================
 
 /**
  * API 回调：评论列表
  * 由 platform.js 注册到 APIInterceptorManager
- * 注意：真实 API 返回 comments 字段，不是 comment_info_list
+ * 注意：真实 API 返回 comments 字段
  */
-async function onCommentsListAPI(body, response) {
-  if (!body || !body.comments || !Array.isArray(body.comments)) {
-    logger.warn(`⚠️  [API] 评论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
-    return;
-  }
+async function onCommentsListV2API(body, response) {
 
-  const url = response.url();
-  const itemId = extractItemId(url);
-  const cursor = extractCursor(url);
+    const url = response.url();
+    const itemId = extractItemId(url);
+    const awemeId = extractAwemeId(url);
+    const cursor = extractCursor(url);
 
-  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
-  const page = response.frame().page();
-  const { accountId, dataManager } = page._accountContext || {};
+    const comments = body?.comments;
 
-  // 使用账号级别隔离的 DataManager
-  if (dataManager && body.comments.length > 0) {
-    const comments = dataManager.batchUpsertComments(
-      body.comments,
-      DataSource.API
-    );
-    logger.info(`[API] [${accountId}] 评论列表: ${comments.length} 条`);
-  }
+    if (!body || !comments || !Array.isArray(comments)) {
+        logger.warn(`⚠️  [API] 评论列表V2响应无效（无 comments 字段），url: ${url}，body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
+        return;
+    }
 
-  // 保留旧逻辑（向后兼容）
-  apiData.comments.push({
-    timestamp: Date.now(),
-    url: url,
-    item_id: itemId,
-    cursor: cursor,
-    data: body,
-  });
+    logger.warn(`[API V2] 评论列表V2 comments.length: ${comments.length}, awemeId: ${awemeId}`);
+
+    // 📊 V2 API数据样本日志
+    if (comments.length > 0) {
+        const sample = comments[0];
+        logger.info(`📊 [V2 API 数据样本] 评论列表V2`);
+        logger.info(`  - cid: ${sample.cid} (${typeof sample.cid})`);
+        logger.info(`  - create_time: ${sample.create_time} (${typeof sample.create_time})`);
+        logger.info(`  - digg_count: ${sample.digg_count} (${typeof sample.digg_count})`);
+        logger.info(`  - reply_comment_total: ${sample.reply_comment_total} (${typeof sample.reply_comment_total})`);
+        logger.info(`  - user.uid: ${sample.user?.uid} (${typeof sample.user?.uid})`);
+        logger.info(`  - user.nickname: ${sample.user?.nickname} (${typeof sample.user?.nickname})`);
+        logger.info(`  - aweme_id: ${sample.aweme_id} (${typeof sample.aweme_id})`);
+        logger.info(`  - image_list: ${sample.image_list ? `✅ 有 (${sample.image_list.length}张)` : '❌ 无'}`);
+        logger.info(`  - ip_label: ${sample.ip_label || '❌ 无'}`);
+        logger.info(`  - 完整字段: ${Object.keys(sample).join(', ')}`);
+    }
+
+    // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+    const page = response.frame().page();
+    const { accountId, dataManager } = page._accountContext || {};
+
+    // 使用账号级别隔离的 DataManager
+    if (dataManager && comments.length > 0) {
+        // ✅ 使用统一转换函数：补充作品ID（V2 API数据中已包含aweme_id）
+        const normalizedComments = comments.map(comment =>
+            normalizeCommentData(comment, {
+                aweme_id: comment.aweme_id || awemeId,  // ✅ 优先使用数据中的aweme_id
+            })
+        );
+
+        const savedComments = dataManager.batchUpsertComments(
+            normalizedComments,
+            DataSource.API
+        );
+        logger.info(`[API] [${accountId}] 评论列表V2: ${savedComments.length} 条`);
+    }
+
+    // 保留旧逻辑（向后兼容）
+    apiData.comments.push({
+        timestamp: Date.now(),
+        url: url,
+        aweme_id: awemeId,
+        cursor: cursor,
+        data: body,
+    });
 }
+
 
 /**
  * API 回调：回复列表（讨论）
  * 由 platform.js 注册到 APIInterceptorManager
- * 注意：真实 API 返回 comments 字段，不是 comment_info_list
+ * ⚠️  注意：真实 API 返回 comments 字段
  */
-async function onDiscussionsListAPI(body, response) {
-  if (!body || !body.comments || !Array.isArray(body.comments)) {
-    logger.warn(`⚠️  [API] 讨论列表响应无效（无 comments 字段），body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
-    return;
-  }
+async function onDiscussionsListV2API(body, response) {
 
-  const url = response.url();
-  const commentId = extractCommentId(url);
-  const cursor = extractCursor(url);
+    const url = response.url();
+    const commentId = extractCommentId(url);  // ✅ 从URL提取父评论ID
+    const awemeId = extractAwemeId(url);  // ✅ 从URL提取作品ID
+    const cursor = extractCursor(url);
 
-  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
-  const page = response.frame().page();
-  const { accountId, dataManager } = page._accountContext || {};
+    const comments = body?.comments;
 
-  // 使用账号级别隔离的 DataManager
-  if (dataManager && body.comments.length > 0) {
-    const discussions = dataManager.batchUpsertComments(
-      body.comments,
-      DataSource.API
-    );
-    logger.info(`[API] [${accountId}] 讨论列表: ${discussions.length} 条`);
-  }
+    if (!body || !comments || !Array.isArray(comments)) {
+        logger.warn(`⚠️  [API] 讨论列表V2响应无效（无 comments 字段），url: ${url}，body keys: ${body ? Object.keys(body).join(', ') : 'null'}`);
+        return;
+    }
 
-  // 保留旧逻辑（向后兼容）
-  apiData.discussions.push({
-    timestamp: Date.now(),
-    url: url,
-    comment_id: commentId,
-    cursor: cursor,
-    data: body,
-  });
+    logger.warn(`[API V2] 讨论列表V2 comments.length: ${comments.length}, commentId: ${commentId?.substring(0, 20)}..., awemeId: ${awemeId}`);
+
+    // 📊 V2 API数据样本日志
+    if (comments.length > 0) {
+        const sample = comments[0];
+        logger.info(`📊 [V2 API 数据样本] 讨论列表V2`);
+        logger.info(`  - cid: ${sample.cid} (${typeof sample.cid})`);
+        logger.info(`  - create_time: ${sample.create_time} (${typeof sample.create_time})`);
+        logger.info(`  - digg_count: ${sample.digg_count} (${typeof sample.digg_count})`);
+        logger.info(`  - reply_comment_total: ${sample.reply_comment_total} (${typeof sample.reply_comment_total})`);
+        logger.info(`  - user.uid: ${sample.user?.uid} (${typeof sample.user?.uid})`);
+        logger.info(`  - user.nickname: ${sample.user?.nickname} (${typeof sample.user?.nickname})`);
+        logger.info(`  - aweme_id: ${sample.aweme_id} (${typeof sample.aweme_id})`);
+        logger.info(`  - reply_id: ${sample.reply_id || '❌ 缺失'}`);
+        logger.info(`  - image_list: ${sample.image_list ? `✅ 有 (${sample.image_list.length}张)` : '❌ 无'}`);
+        logger.info(`  - ip_label: ${sample.ip_label || '❌ 无'}`);
+        logger.info(`  - 完整字段: ${Object.keys(sample).join(', ')}`);
+    }
+
+
+
+    // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+    const page = response.frame().page();
+    const { accountId, dataManager } = page._accountContext || {};
+
+    // 使用账号级别隔离的 DataManager
+    if (dataManager && comments.length > 0) {
+        // ✅ 使用统一转换函数：补充父评论ID和作品ID
+        const normalizedComments = comments.map(comment =>
+            normalizeCommentData(comment, {
+                parent_comment_id: commentId,  // ✅ 补充父评论ID（从URL提取）
+                aweme_id: comment.aweme_id || awemeId,  // ✅ 确保有作品ID（优先使用数据中的）
+            })
+        );
+
+        const discussions = dataManager.batchUpsertComments(
+            normalizedComments,
+            DataSource.API
+        );
+        logger.info(`[API] [${accountId}] 讨论列表V2: ${discussions.length} 条`);
+    }
+
+    // 保留旧逻辑（向后兼容）
+    apiData.discussions.push({
+        timestamp: Date.now(),
+        url: url,
+        aweme_id: awemeId,  // ✅ V2 API 使用 aweme_id 而不是 comment_id
+        cursor: cursor,
+        data: body,
+    });
 }
 
 /**
@@ -136,6 +261,10 @@ async function onNoticeDetailAPI(body, response) {
     return;
   }
 
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
   // 提取评论数据和作品数据
   const comments = [];
   const contents = [];
@@ -146,7 +275,11 @@ async function onNoticeDetailAPI(body, response) {
       const awemeData = notice.comment?.aweme;
 
       if (commentData) {
-        comments.push(commentData);
+        // ✅ 使用统一转换函数：补充作品ID（从通知中提取）
+        const normalizedComment = normalizeCommentData(commentData, {
+          aweme_id: awemeData?.aweme_id,  // ✅ 从通知关联的作品中获取ID
+        });
+        comments.push(normalizedComment);
       }
 
       if (awemeData) {
@@ -156,10 +289,6 @@ async function onNoticeDetailAPI(body, response) {
       logger.error(`[API] 处理通知数据时出错：${error.message}`);
     }
   }
-
-  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
-  const page = response.frame().page();
-  const { accountId, dataManager } = page._accountContext || {};
 
   // 使用账号级别隔离的 DataManager
   if (dataManager) {
@@ -869,6 +998,16 @@ function extractCommentId(url) {
 }
 
 /**
+ * 从 URL 中提取 aweme_id (作品ID)
+ * @param {string} url - API URL
+ * @returns {string|null} - aweme_id
+ */
+function extractAwemeId(url) {
+  const match = url.match(/aweme_id=([^&]+)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+/**
  * 按comment_id分组讨论API响应
  * @param {Array} responses - 讨论API响应数组
  * @returns {Object} 按comment_id分组的响应
@@ -1016,9 +1155,9 @@ async function clickAllReplyButtons(page) {
 }
 
 module.exports = {
-  // API 回调函数（从 page._accountContext 读取账号信息）
-  onCommentsListAPI,
-  onDiscussionsListAPI,
+  // API 回调函数（只使用V2 API）
+  onCommentsListV2API,
+  onDiscussionsListV2API,
   onNoticeDetailAPI,
 
   // 爬取函数
@@ -1032,6 +1171,7 @@ module.exports = {
   extractItemId,
   extractCursor,
   extractCommentId,
+  extractAwemeId,  // ✅ 新增：提取作品ID
   groupResponsesByItemId,
   groupDiscussionsByCommentId,
   loadAllComments,

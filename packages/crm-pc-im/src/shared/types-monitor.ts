@@ -79,3 +79,25 @@ export interface ChannelMessage {
   status?: 'sending' | 'sent' | 'failed' // ✅ 新增: 消息状态
   isTemporary?: boolean // ✅ 新增: 是否为临时消息（发送中占位符）
 }
+
+// ✨ 新增：新消息简易提示
+export interface NewMessageHint {
+  channelId: string          // 账户 ID
+  platform: string           // 平台（douyin, xiaohongshu）
+  messageType: 'comment' | 'private_message'  // 消息类型
+
+  // 评论相关（messageType='comment' 时）
+  topicId?: string           // 作品 ID
+  topicTitle?: string        // 作品标题
+  commentCount?: number      // 该作品新增评论数
+
+  // 私信相关（messageType='private_message' 时）
+  conversationId?: string    // 会话 ID
+  fromUserId?: string        // 发送者 ID
+  fromUserName?: string      // 发送者名称
+  messageCount?: number      // 该会话新增消息数
+
+  // 汇总信息
+  totalUnreadCount: number   // 该账户总未读数
+  timestamp: number          // 时间戳
+}

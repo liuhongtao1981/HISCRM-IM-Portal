@@ -28,6 +28,7 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
     },
     pingTimeout: 60000,
     pingInterval: 25000,
+    maxHttpBufferSize: 10e6,  // 10MB (默认 1MB，防止大消息被丢弃)
   });
 
   // Worker命名空间
@@ -128,6 +129,7 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
 
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
+      logger.info(`📥 Worker ${socket.id} sent MESSAGE event`);
       try {
         // 验证消息格式
         const validation = validateMessage(msg);
@@ -142,7 +144,7 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
           return;
         }
 
-        logger.debug(`Worker ${socket.id} message:`, msg.type);
+        logger.info(`📋 Worker ${socket.id} message type: ${msg.type}`);
 
         // 路由到相应的处理器
         const handler = handlers[msg.type];

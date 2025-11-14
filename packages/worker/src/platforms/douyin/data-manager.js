@@ -266,49 +266,55 @@ class DouyinDataManager extends AccountDataManager {
 
   /**
    * 映射抖音评论数据到标准格式
-   * API: /comment/list 返回 { comment_info_list: [...] }
+   * ✅ 简化版：数据已在 API 回调中通过 normalizeCommentData() 统一转换
+   *
+   * 注意：此方法接收的 douyinData 已经是统一格式，包含：
+   * - comment_id, cid (统一为字符串)
+   * - aweme_id, item_id (作品ID已补充)
+   * - user_info (统一格式，包含 uid, nickname, avatar_url)
+   * - create_time, digg_count, reply_count (统一为数字)
    */
   mapCommentData(douyinData) {
-    // 🔍 调试：记录所有 ID 相关字段
+    // ✅ 数据已统一，字段访问简单明了
     const awemeId = douyinData.aweme_id || douyinData.item_id;
-    const secAwemeId = douyinData.sec_aweme_id;
+    const contentId = awemeId || 'undefined';
 
-    this.logger.debug(`💬 [mapCommentData] ID 字段:`, {
-      aweme_id: awemeId,
-      sec_aweme_id: secAwemeId ? secAwemeId.substring(0, 40) + '...' : null,
-      cid: douyinData.cid
-    });
+    if (contentId === 'undefined' || !contentId) {
+      this.logger.warn(`⚠️ [mapCommentData] 评论缺少 aweme_id，这可能是讨论回复`);
+    }
 
     return {
-      // 关联信息
+      // 关联信息（字段已统一）
       commentId: String(douyinData.cid || douyinData.comment_id),
-      contentId: String(awemeId),
-      parentCommentId: douyinData.reply_id ? String(douyinData.reply_id) : null,
+      contentId: String(contentId),
+      parentCommentId: douyinData.parent_comment_id
+        ? String(douyinData.parent_comment_id)
+        : null,
 
-      // 作者信息
-      authorId: String(douyinData.user?.uid || douyinData.user_id),
-      authorName: douyinData.user?.nickname || douyinData.nickname || 'Unknown',
-      authorAvatar: this.extractAvatarUrl(douyinData.user?.avatar_thumb),
+      // 作者信息（字段已统一为 user_info）
+      authorId: String(douyinData.user_info?.uid || 'unknown'),
+      authorName: douyinData.user_info?.nickname || 'Unknown',
+      authorAvatar: douyinData.user_info?.avatar_url || null,
       authorLevel: douyinData.user?.level || null,
 
-      // 评论内容
+      // 评论内容（字段已统一）
       content: douyinData.text || douyinData.content || '',
-      images: this.extractCommentImages(douyinData),
+      images: douyinData.image_list || null,
 
       // 回复信息
       replyToUserId: douyinData.reply_to_userid ? String(douyinData.reply_to_userid) : null,
       replyToUserName: douyinData.reply_to_username || null,
 
-      // 统计数据
-      likeCount: douyinData.digg_count || douyinData.like_count || 0,
-      replyCount: douyinData.reply_comment_total || douyinData.reply_count || 0,
+      // 统计数据（类型已统一为数字）
+      likeCount: douyinData.digg_count || 0,
+      replyCount: douyinData.reply_count || 0,
 
       // 状态
       isPinned: douyinData.is_pinned || false,
       isAuthorReply: douyinData.is_author || false,
       isLiked: douyinData.user_digged === 1,
 
-      // 时间戳
+      // 时间戳（类型已统一为数字）
       createdAt: douyinData.create_time || Date.now(),
       updatedAt: Date.now(),
 

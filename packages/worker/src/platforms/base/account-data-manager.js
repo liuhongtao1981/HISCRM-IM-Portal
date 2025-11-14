@@ -61,6 +61,14 @@ class AccountDataManager {
       pendingPush: 0,
     };
 
+    // ✨ 新增：新消息检测标志
+    this.hasNewMessages = false;
+    this.newMessageDetails = {
+      comments: [],    // 新评论列表
+      messages: [],    // 新私信列表
+    };
+    this._isSyncing = false;  // 防抖标志
+
     this.logger.info(`AccountDataManager initialized for ${accountId}`);
 
     // 启动数据快照定时器（每30秒记录一次完整数据）
@@ -135,6 +143,10 @@ class AccountDataManager {
    * 添加或更新消息
    */
   upsertMessage(messageData, source = DataSource.API) {
+    // 检查是否已存在（用于判断是否为新消息）
+    const tempId = this.generateMessageId({ messageId: messageData.messageId || messageData.msg_id });
+    const isNew = !this.messages.items.has(tempId); // ✅ 修复：使用 items.has()
+
     const message = new Message();
     message.accountId = this.accountId;
     message.platform = this.platform;
@@ -150,6 +162,16 @@ class AccountDataManager {
 
     // 更新会话的最后消息信息
     this.updateConversationLastMessage(message);
+
+    // ✨ 新增：检测是否为新消息（inbound 且未读）
+    if (isNew && message.direction === 'inbound' && !message.isRead) {
+      this.hasNewMessages = true;
+      this.newMessageDetails.messages.push(message);
+
+      // 立即推送
+      this.logger.info(`🔔 检测到新私信，触发立即推送: ${message.messageId}`);
+      this.syncToMasterNow();
+    }
 
     this.logger.debug(`Upserted message: ${id}`);
 
@@ -236,6 +258,10 @@ class AccountDataManager {
    * 添加或更新评论
    */
   upsertComment(commentData, source = DataSource.API) {
+    // 检查是否已存在（用于判断是否为新消息）
+    const tempId = this.generateCommentId({ commentId: commentData.commentId || commentData.cid });
+    const isNew = !this.comments.items.has(tempId); // ✅ 修复：使用 items.has()
+
     const comment = new Comment();
     comment.accountId = this.accountId;
     comment.platform = this.platform;
@@ -248,6 +274,16 @@ class AccountDataManager {
     comment.id = id;
 
     this.comments.set(id, comment);
+
+    // ✨ 新增：检测是否为新评论（inbound 且未读）
+    if (isNew && comment.direction === 'inbound' && !comment.isRead) {
+      this.hasNewMessages = true;
+      this.newMessageDetails.comments.push(comment);
+
+      // 立即推送
+      this.logger.info(`🔔 检测到新评论，触发立即推送: ${comment.commentId}`);
+      this.syncToMasterNow();
+    }
 
     this.logger.debug(`Upserted comment: ${id}`);
 
@@ -573,6 +609,33 @@ class AccountDataManager {
     } catch (error) {
       console.error('[syncToMaster] ❌ 推送失败:', error);
       this.logger.error('Failed to sync data to Master:', error);
+    }
+  }
+
+  /**
+   * ✨ 新增：立即推送数据到 Master（新消息时调用）
+   * 相比定期推送，这个方法会立即执行，不等待定时器
+   */
+  async syncToMasterNow() {
+    // 防抖：如果正在推送，则跳过
+    if (this._isSyncing) {
+      this.logger.debug('Already syncing, skip immediate push');
+      return;
+    }
+
+    this._isSyncing = true;
+
+    try {
+      await this.syncToMaster();
+
+      // 清除新消息标志
+      this.hasNewMessages = false;
+      this.newMessageDetails = {
+        comments: [],
+        messages: [],
+      };
+    } finally {
+      this._isSyncing = false;
     }
   }
 

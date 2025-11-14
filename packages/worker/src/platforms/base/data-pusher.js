@@ -298,7 +298,15 @@ class DataPusher {
     try {
       const { accountId, platform, snapshot, timestamp } = syncData;
 
-      logger.debug(`[${accountId}] Pushing data sync to Master`);
+      // 统计数据量
+      const dataStats = {
+        comments: snapshot?.data?.comments?.length || 0,
+        contents: snapshot?.data?.contents?.length || 0,
+        conversations: snapshot?.data?.conversations?.length || 0,
+        messages: snapshot?.data?.messages?.length || 0,
+      };
+
+      logger.info(`[${accountId}] 📤 推送数据快照到 Master`, dataStats);
 
       // 创建 WORKER_DATA_SYNC 消息
       const message = createMessage(MessageTypes.WORKER_DATA_SYNC, {
@@ -311,9 +319,9 @@ class DataPusher {
       // 发送到 Master
       await this.workerBridge.sendToMaster(message);
 
-      logger.info(`[${accountId}] Data sync pushed successfully`);
+      logger.info(`[${accountId}] ✅ 数据快照推送成功`);
     } catch (error) {
-      logger.error(`Failed to push data sync:`, error);
+      logger.error(`[${accountId}] ❌ 数据快照推送失败:`, error);
       throw error;
     }
   }
