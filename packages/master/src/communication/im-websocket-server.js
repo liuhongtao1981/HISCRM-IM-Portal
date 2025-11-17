@@ -896,13 +896,14 @@ class IMWebSocketServer {
 
                 // ✅ 修复: 计算该作品的最新评论时间（从评论列表中获取，而不是 lastCrawlTime）
                 let actualLastCommentTime = content.lastCrawlTime;
+                let latestComment = null;
                 if (contentComments.length > 0) {
                     const sortedComments = [...contentComments].sort((a, b) => {
                         const aTime = a.createdAt || a.timestamp || 0;
                         const bTime = b.createdAt || b.timestamp || 0;
                         return bTime - aTime;
                     });
-                    const latestComment = sortedComments[0];
+                    latestComment = sortedComments[0];
                     actualLastCommentTime = latestComment.createdAt || latestComment.timestamp || content.lastCrawlTime;
                 }
 
@@ -914,6 +915,8 @@ class IMWebSocketServer {
                     description: content.description || '',
                     createdTime: normalizeTimestamp(content.publishTime),  // ✅ 归一化时间戳
                     lastMessageTime: normalizeTimestamp(actualLastCommentTime),  // ✅ 修复: 使用评论列表中的实际最新时间
+                    lastMessageContent: latestComment?.content || '',  // ✅ 新增: 最后评论的内容
+                    lastMessageFromName: latestComment?.fromName || latestComment?.authorName || '',  // ✅ 新增: 最后评论的发送者
                     messageCount: contentComments.length,
                     // ✅ 修复: 排除客服发送的消息 (direction='outbound') 和已读消息 (isRead=true)
                     unreadCount: contentComments.filter(c => {
@@ -1003,6 +1006,8 @@ class IMWebSocketServer {
                     description: `私信会话 (${conversationMessages.length}条消息)`,
                     createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
                     lastMessageTime: normalizeTimestamp(actualLastMessageTime),  // ✅ 修复: 使用消息列表中的实际最新时间
+                    lastMessageContent: latestMessage?.content || '',  // ✅ 新增: 最后消息的内容
+                    lastMessageFromName: latestMessage?.fromName || latestMessage?.senderName || '',  // ✅ 新增: 最后消息的发送者
                     messageCount: conversationMessages.length,
                     unreadCount: unreadMessages.length,  // ✅ 实时计算: 从内存中的消息列表计算未读数量
                     isPinned: false,

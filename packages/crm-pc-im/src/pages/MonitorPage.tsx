@@ -1084,7 +1084,12 @@ export default function MonitorPage() {
                             }
                             description={
                               <div>
-                                {item.lastMessage ? (
+                                {/* ✅ 优先使用 topic 的 lastMessageContent（服务端计算的最新消息） */}
+                                {item.topic.lastMessageContent ? (
+                                  <Text type="secondary" style={{ fontSize: 13 }}>
+                                    {item.topic.lastMessageFromName || '未知用户'}: {truncateText(item.topic.lastMessageContent, 50)}
+                                  </Text>
+                                ) : item.lastMessage ? (
                                   <Text type="secondary" style={{ fontSize: 13 }}>
                                     {item.lastMessage.fromName}: {truncateText(item.lastMessage.content, 50)}
                                   </Text>
@@ -1157,7 +1162,10 @@ export default function MonitorPage() {
                           description={
                             <div>
                               <Text type="secondary" style={{ fontSize: 13 }}>
-                                {item.lastMessage
+                                {/* ✅ 优先使用 topic 的 lastMessageContent（服务端计算的最新消息） */}
+                                {item.topic.lastMessageContent
+                                  ? `${item.topic.lastMessageFromName || '未知用户'}: ${truncateText(item.topic.lastMessageContent, 50)}`
+                                  : item.lastMessage
                                   ? `${item.lastMessage.fromName}: ${truncateText(item.lastMessage.content, 50)}`
                                   : (item.topic.description || '暂无消息')}
                               </Text>

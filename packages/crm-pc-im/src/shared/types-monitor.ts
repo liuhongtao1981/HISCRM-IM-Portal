@@ -29,9 +29,11 @@ export interface Topic {
   description?: string // 作品描述
   createdTime: number  // 创建时间
   lastMessageTime?: number  // 最后消息时间
+  lastMessageContent?: string  // ✅ 新增: 最后一条消息的内容
+  lastMessageFromName?: string // ✅ 新增: 最后一条消息的发送者
   messageCount: number // 消息总数
   unreadCount: number  // 未读消息数
-  lastMessage?: string // 最后一条消息内容
+  lastMessage?: string // 最后一条消息内容（已废弃，使用 lastMessageContent）
   isPinned: boolean    // 是否置顶
   isPrivate?: boolean  // 是否为私信主题
 }
