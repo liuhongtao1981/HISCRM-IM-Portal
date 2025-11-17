@@ -39,8 +39,17 @@ class IMWebSocketServer {
         this.io.on('connection', (socket) => {
             logger.info(`[IM WS] New client connected: ${socket.id}`);
 
+            // 🔍 调试: 监听所有事件
+            socket.onAny((eventName, ...args) => {
+                logger.info(`[IM WS] 📨 收到事件: ${eventName} from ${socket.id}`);
+                if (args.length > 0) {
+                    logger.info(`[IM WS] 📦 事件数据:`, JSON.stringify(args[0]).substring(0, 200));
+                }
+            });
+
             // 监控客户端注册
             socket.on('monitor:register', (data) => {
+                logger.info(`[IM WS] 🔔 收到注册请求: ${socket.id}`);
                 this.handleMonitorRegister(socket, data);
             });
 
@@ -996,6 +1005,19 @@ class IMWebSocketServer {
                 });
                 const latestMessage = sortedMessages[0];
                 const actualLastMessageTime = latestMessage ? (latestMessage.createdAt || latestMessage.timestamp) : conversation.lastMessageTime;
+
+                // 🔍 调试: 打印消息对象的所有字段
+                if (latestMessage && topics.length < 3) {
+                    logger.info(`[DEBUG] latestMessage 对象字段:`, Object.keys(latestMessage));
+                    logger.info(`[DEBUG] latestMessage 详细信息:`, {
+                        content: latestMessage.content,
+                        fromName: latestMessage.fromName,
+                        senderName: latestMessage.senderName,
+                        authorName: latestMessage.authorName,
+                        userName: latestMessage.userName,
+                        direction: latestMessage.direction
+                    });
+                }
 
                 // ✅ 只推送有消息的会话
                 const topic = {
