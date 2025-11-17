@@ -82,16 +82,7 @@ class SocketClient {
         this.handleMessage(msg);
       });
 
-      // DEBUG: 监听所有直接事件（用于调试）
-      this.socket.on('master:reply:request', (data) => {
-        logger.info('✅✅✅ Received DIRECT master:reply:request event at socket level', {
-          replyId: data.reply_id,
-          requestId: data.request_id,
-          timestamp: Date.now(),
-        });
-      });
-
-      // ⭐ 监听账户配置更新通知
+      // 监听账户配置更新通知
       const { MASTER_ACCOUNT_CONFIG_UPDATE } = require('@hiscrm-im/shared/protocol/messages');
       this.socket.on(MASTER_ACCOUNT_CONFIG_UPDATE, (msg) => {
         logger.info('📥 Received account config update notification from Master', {
@@ -108,19 +99,6 @@ class SocketClient {
           logger.warn('No handler registered for MASTER_ACCOUNT_CONFIG_UPDATE');
         }
       });
-
-      // 额外调试：监听所有事件
-      const originalOn = this.socket.on.bind(this.socket);
-      this.socket.on = function(event, handler) {
-        if (event.startsWith('master:')) {
-          const wrappedHandler = function(...args) {
-            logger.debug(`🔔 Event '${event}' fired with args:`, args);
-            return handler.apply(this, args);
-          };
-          return originalOn(event, wrappedHandler);
-        }
-        return originalOn(event, handler);
-      };
 
       // 错误处理
       this.socket.on('error', (error) => {

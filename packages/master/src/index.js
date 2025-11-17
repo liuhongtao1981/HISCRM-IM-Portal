@@ -257,15 +257,6 @@ function handleAccountStatus(socket, message) {
       accountCount: account_statuses?.length,
     });
 
-    // ⭐ 调试日志：打印 Worker 发送的原始数据
-    if (account_statuses && account_statuses.length > 0) {
-      logger.info(`📊 Worker ${worker_id} 发送的账户状态详情:`);
-      account_statuses.forEach((item, index) => {
-        logger.info(`  [${index}] Account ID: ${item.account_id}`);
-        logger.info(`      Status:`, item.status);
-      });
-    }
-
     if (!Array.isArray(account_statuses)) {
       throw new Error('account_statuses must be an array');
     }

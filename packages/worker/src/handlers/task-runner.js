@@ -283,10 +283,6 @@ class TaskRunner {
           platform: data.platform,
         });
 
-        // 🔍 DEBUG: 打印 Worker 接收到的完整数据
-        logger.warn(`[DEBUG] Worker 接收到的完整 reply request:`, JSON.stringify(data, null, 2));
-        logger.warn(`[DEBUG] target_type: "${data.target_type}", conversation_id: "${data.conversation_id}", platform_message_id: "${data.platform_message_id}"`);
-
         try {
           // 异步执行回复，不阻塞主线程
           setImmediate(() => {

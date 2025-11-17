@@ -261,7 +261,6 @@ class DouyinPlatform extends PlatformBase {
         try {
             const currentUrl = page.url();
             logger.info(`[checkLoginStatus] 📍 Checking login status on current page: ${currentUrl}`);
-            logger.info(`[checkLoginStatus] 🔍 Detection method: ${checkMethod}`);
 
             // ⚠️ 不进行任何导航操作，直接检测当前页面
             // 调用者负责确保页面已在正确的 URL

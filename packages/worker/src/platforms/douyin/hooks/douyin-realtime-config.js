@@ -46,12 +46,10 @@ function getDouyinRealtimeConfig() {
    */
   function startConversationPolling(imStore) {
     if (conversationCheckInterval) {
-      console.log('[Douyin] 会话轮询已在运行');
       return;
     }
-    
+
     // ========== 🔥 关键修复: 启动前先记录所有现有消息,避免重复推送历史 ==========
-    console.log('📝 [Douyin] 初始化已处理消息列表...');
     if (imStore && imStore.converSationListOrigin) {
       imStore.converSationListOrigin.forEach((conversation) => {
         const lastMsg = conversation.lastMessage || conversation._lastMessage;
@@ -59,11 +57,8 @@ function getDouyinRealtimeConfig() {
           processedMessageIds.add(lastMsg.serverId);
         }
       });
-      console.log(`✅ [Douyin] 已记录 ${processedMessageIds.size} 条现有消息,轮询将只捕获新消息`);
     }
     // ========== 修复结束 ==========
-    
-    console.log('🔄 [Douyin] 启动会话列表轮询 (每1秒检查一次)');
     
     conversationCheckInterval = setInterval(() => {
       if (!imStore || !imStore.converSationListOrigin) {
@@ -107,30 +102,21 @@ function getDouyinRealtimeConfig() {
     if (!imStore || !imStore.converSationListOrigin) {
       return;
     }
-    
-    console.log('📨 [Douyin] 发送历史私信...');
-    let sentCount = 0;
-    let skippedCount = 0;
-    
+
     imStore.converSationListOrigin.forEach((conversation) => {
       const lastMsg = conversation.lastMessage || conversation._lastMessage;
-      
+
       if (lastMsg && lastMsg.serverId) {
         // 记录为已处理,避免轮询重复
         processedMessageIds.add(lastMsg.serverId);
-        
+
         // 只发送私信类型 (handleMessage 内部会再次过滤)
         if (lastMsg.type === 7 || lastMsg.type === 1) {
           // 🔥 传入 conversation 对象以便正确判断方向
           handleMessage(lastMsg, imStore, true, conversation);
-          sentCount++;
-        } else {
-          skippedCount++;
         }
       }
     });
-    
-    console.log(`✅ [Douyin] 历史私信发送完成: ${sentCount} 条私信, 跳过 ${skippedCount} 条其他类型`);
   }
   
   function handleMessage(msg, imStoreOrConversation, isHistory = false, conversation = null) {
@@ -173,17 +159,8 @@ function getDouyinRealtimeConfig() {
         textContent = contentObj.text || '';
       }
     } catch (error) {
-      console.warn('⚠️ [Douyin] 解析content失败:', error);
+      // Parse error ignored
     }
-    
-    console.log('📩 [Douyin] 捕获私信:', {
-      serverId: msg.serverId,
-      type: msg.type,
-      conversationId: msg.conversationId,
-      secSender: msg.secSender,
-      text: textContent ? textContent.substring(0, 50) : '(无文本)',
-      timestamp: msg.timestamp
-    });
 
     // 从会话列表中查找完整的用户信息和会话信息
     let senderName = 'Unknown';
@@ -203,8 +180,6 @@ function getDouyinRealtimeConfig() {
         }
         
         if (conversation) {
-          console.log('✅ [Douyin] 找到匹配的会话:', conversation.id);
-          
           // 提取会话信息(使用正确的字段名)
           conversationInfo = {
             conversationId: conversation.id,
@@ -231,29 +206,12 @@ function getDouyinRealtimeConfig() {
                 followStatus: userInfoFromServer.follow_status || 0,
                 followerStatus: userInfoFromServer.follower_status || 0
               };
-
-              console.log('✅ [Douyin] 找到用户信息:', {
-                nickname: senderName,
-                userId: userInfo.userId,
-                avatar: userInfo.avatar ? '有头像' : '无头像'
-              });
-            } else {
-              console.warn('⚠️ [Douyin] userInfoFromServerMap 中无此用户:', toUserId);
             }
-          } else {
-            console.warn('⚠️ [Douyin] 无法获取 toParticipantUserId 或 userInfoFromServerMap');
           }
-          
-          console.log('✅ [Douyin] 找到会话信息:', {
-            conversationId: conversationInfo.conversationId,
-            unreadCount: conversationInfo.unreadCount
-          });
-        } else {
-          console.warn('⚠️ [Douyin] 未找到对应的会话');
         }
       }
     } catch (error) {
-      console.warn('⚠️ [Douyin] 查找用户/会话信息失败:', error);
+      // Error ignored
     }
 
     // ✅ 改进方向判断逻辑
@@ -282,7 +240,7 @@ function getDouyinRealtimeConfig() {
     }
     // 方法3: 如果没有 userInfo,回退到默认判断
     else if (!msg.isFromMe) {
-      console.warn('⚠️ [Douyin] 无法获取对方 secUid,使用默认判断 (incoming)');
+      // Use default direction (incoming)
     }
     
     // 根据方向设置正确的 conversation_id
@@ -290,8 +248,6 @@ function getDouyinRealtimeConfig() {
       // 发出的消息: 使用接收人的 secUid
       if (userInfo && userInfo.secUid) {
         conversationIdForMessage = userInfo.secUid;
-      } else {
-        console.warn('⚠️ [Douyin] 无法获取对方 secUid,使用 msg.secSender 作为后备');
       }
     } else {
       // 收到的消息: 使用发送人的 secUid
@@ -322,18 +278,6 @@ function getDouyinRealtimeConfig() {
       finalSenderName = senderName; // 已经从 userInfo 获取了对方昵称
       // sender_id 已经是正确的 (msg.sender = 对方用户ID)
     }
-    
-    console.log('📝 [Douyin] 消息方向判断:', {
-      direction: direction,
-      method: msg.isFromMe ? 'isFromMe' : (otherUserSecUid ? 'secUid比对' : '默认'),
-      msgSecSender: msg.secSender,
-      otherUserSecUid: otherUserSecUid,
-      isMatch: msg.secSender === otherUserSecUid,
-      finalSenderId: finalSenderId,
-      finalSenderName: finalSenderName,
-      conversation_id: conversationIdForMessage,
-      content: textContent.substring(0, 20) + '...'
-    });
 
     // 映射字段到解析器期望的格式
     const mappedData = {
@@ -382,17 +326,6 @@ function getDouyinRealtimeConfig() {
       }
     };
 
-    console.log('🔄 [Douyin] 映射后的数据:', {
-      platform_message_id: mappedData.platform_message_id,
-      conversation_id: mappedData.conversation_id,
-      sender_id: mappedData.sender_id,
-      sender_name: mappedData.sender_name,
-      content: mappedData.content?.substring(0, 50) || '',
-      direction: mappedData.direction,
-      has_user_info: !!mappedData.user_info,
-      has_conversation_info: !!mappedData.conversation_info
-    });
-
     // 发送到 Node.js
     if (typeof window.__sendRealtimeData === 'function') {
       try {
@@ -401,24 +334,11 @@ function getDouyinRealtimeConfig() {
           data: mappedData,
           timestamp: Date.now()
         };
-        
-        console.log('📤 [Douyin] 准备发送数据:', {
-          message_id: payload.data.message_id,
-          conversation_id: payload.data.conversation_id,
-          content: payload.data.content,
-          sender_name: payload.data.sender_name,
-          created_at: payload.data.created_at,
-          has_user_info: !!payload.data.user_info,
-          has_conversation_info: !!payload.data.conversation_info
-        });
-        
+
         window.__sendRealtimeData(payload);
-        console.log('✅ [Douyin] 私信数据已发送');
       } catch (error) {
         console.error('❌ [Douyin] 发送私信数据失败:', error);
       }
-    } else {
-      console.warn('❌ [Douyin] window.__sendRealtimeData 未定义');
     }
   }
 
@@ -431,13 +351,6 @@ function getDouyinRealtimeConfig() {
     if (notice.type !== 31) {
       return;
     }
-
-    console.log('💬 [Douyin] 捕获评论:', {
-      nid_str: notice.nid_str,
-      type: notice.type,
-      content: notice.content ? notice.content.substring(0, 50) : '(无内容)',
-      timestamp: notice.timestamp
-    });
 
     if (typeof window.__sendRealtimeData === 'function') {
       window.__sendRealtimeData({
@@ -504,19 +417,15 @@ function getDouyinRealtimeConfig() {
     
     // 🔥 新增: Hook 成功回调 - 立即启动轮询和发送历史消息
     onSuccess: function(result) {
-      console.log('🎉 [Douyin] Hook 初始化成功,开始启动轮询和发送历史消息...');
-      
       // 获取 imStore
       const imStore = result.stores?.imStore;
       if (!imStore) {
-        console.warn('⚠️ [Douyin] 未找到 imStore,无法启动轮询');
         return;
       }
-      
+
       // 1. 启动会话轮询 (用于捕获手动发送的消息)
       if (!pollingStarted) {
         pollingStarted = true;
-        console.log('🚀 [Douyin] 启动会话轮询...');
         startConversationPolling(imStore);
       }
       
@@ -535,8 +444,6 @@ function getDouyinRealtimeConfig() {
 (function() {
   'use strict';
 
-  console.log('🚀 [Douyin] 抖音实时监控配置脚本加载...');
-
   /**
    * 执行初始化
    */
@@ -549,11 +456,9 @@ function getDouyinRealtimeConfig() {
 
     // 获取配置
     const config = getDouyinRealtimeConfig();
-    console.log('📋 [Douyin] 配置已生成:', config);
 
     // 初始化 Hook
     const result = window.__initRealtimeHook(config);
-    console.log('📊 [Douyin] 初始化结果:', result);
 
     return result;
   }
@@ -562,20 +467,13 @@ function getDouyinRealtimeConfig() {
    * 带重试的初始化
    */
   function initializeWithRetry(currentRetry = 0, maxRetries = 3) {
-    console.log(`🔄 [Douyin] 尝试初始化 (${currentRetry + 1}/${maxRetries + 1})...`);
-
     const result = initialize();
 
     if (!result.success && currentRetry < maxRetries) {
       const delay = 3000;
-      console.log(`⏳ [Douyin] ${delay}ms 后重试...`);
       setTimeout(() => {
         initializeWithRetry(currentRetry + 1, maxRetries);
       }, delay);
-    } else if (result.success) {
-      console.log(`✅ [Douyin] 初始化成功 (${result.installedCount} 个监听)`);
-    } else {
-      console.warn('⚠️ [Douyin] 多次重试后仍未成功，可能需要用户交互');
     }
 
     return result;
@@ -583,13 +481,10 @@ function getDouyinRealtimeConfig() {
 
   // 等待 DOM 完全加载
   if (document.readyState === 'loading') {
-    console.log('[Douyin] ⏳ DOM 正在加载，等待 DOMContentLoaded...');
     document.addEventListener('DOMContentLoaded', function() {
-      console.log('[Douyin] ✅ DOMContentLoaded 触发');
       setTimeout(() => initializeWithRetry(), 1000);
     });
   } else {
-    console.log('[Douyin] ✅ DOM 已加载');
     // 延迟 1 秒执行,确保通用框架已初始化
     setTimeout(() => initializeWithRetry(), 1000);
   }
@@ -602,12 +497,6 @@ function getDouyinRealtimeConfig() {
    * 手动重新初始化 (用于调试)
    */
   window.__reinitDouyinHook = function() {
-    console.log('🔄 [Douyin] 手动重新初始化...');
     return initialize();
   };
-
-  console.log('✅ [Douyin] 配置脚本加载完成');
-  console.log('💡 [Douyin] 可用命令:');
-  console.log('   - window.__reinitDouyinHook() : 重新初始化');
-  console.log('   - window.__diagnoseStores(["imStore", "noticeStore"]) : 诊断 Store');
 })();

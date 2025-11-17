@@ -165,7 +165,7 @@ class DouyinDataManager extends AccountDataManager {
    * API: /creator/item/list 返回 { item_info_list: [...] }
    */
   mapContentData(douyinData) {
-    // 🔍 优先使用 aweme_id，如果没有则从分享链接提取
+    // 优先使用 aweme_id，如果没有则从分享链接提取
     let awemeId = douyinData.aweme_id || douyinData.item_id_plain;
     const secItemId = douyinData.sec_item_id || douyinData.item_id;
 
@@ -179,9 +179,6 @@ class DouyinDataManager extends AccountDataManager {
         this.logger.warn(`⚠️  [mapContentData] 无法从 share_url 提取 aweme_id: ${douyinData.share_url}`);
       }
     }
-
-    // 🔍 强制输出日志用于调试
-    this.logger.info(`[mapContentData] 最终 awemeId=${awemeId}, secItemId=${secItemId?.substring(0, 30)}...`);
 
     // 如果还是没有，尝试从生成的 URL 提取（使用 item_id 作为 aweme_id）
     if (!awemeId && secItemId) {

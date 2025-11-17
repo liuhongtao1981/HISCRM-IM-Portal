@@ -38,7 +38,6 @@
 (function() {
   'use strict';
 
-  console.log('🚀 [BaseHook] 通用实时监控框架加载...');
 
   // ============================================================================
   // 核心工具: React Fiber Store 提取
@@ -55,20 +54,16 @@
     const { debug = false, maxDepth = 50 } = options;
 
     if (debug) {
-      console.log(`[BaseHook] ========== 开始查找 ${storeName} ==========`);
     }
 
     // 方法1: 从特定的入口元素开始查找
     if (selectors.length > 0) {
-      if (debug) console.log(`[BaseHook] 方法1: 从入口元素查找 (${selectors.length} 个选择器)...`);
       
       for (const selector of selectors) {
         const element = document.querySelector(selector);
         if (element) {
-          if (debug) console.log(`[BaseHook] 找到入口元素: ${selector}`);
           const store = searchFiberForStore(element, storeName, 30, debug);
           if (store) {
-            if (debug) console.log(`✅ [BaseHook] 方法1成功: 从入口元素找到 ${storeName}`);
             return store;
           }
         }
@@ -76,30 +71,25 @@
     }
 
     // 方法2: 从根节点开始查找
-    if (debug) console.log('[BaseHook] 方法2: 从根节点查找...');
     const root = document.querySelector('#root') || document.querySelector('[data-reactroot]');
     if (root) {
       const store = searchFiberForStore(root, storeName, maxDepth, debug);
       if (store) {
-        if (debug) console.log(`✅ [BaseHook] 方法2成功: 从根节点找到 ${storeName}`);
         return store;
       }
     }
 
     // 方法3: 遍历页面元素查找（最后的备用方案）
-    if (debug) console.log('[BaseHook] 方法3: 遍历页面元素查找...');
     const elements = document.querySelectorAll('*');
     const maxElements = Math.min(elements.length, 500);
     
     for (let i = 0; i < maxElements; i++) {
       const store = searchFiberForStore(elements[i], storeName, 20, debug);
       if (store) {
-        if (debug) console.log(`✅ [BaseHook] 方法3成功: 从元素${i}找到 ${storeName}`);
         return store;
       }
     }
 
-    if (debug) console.warn(`❌ [BaseHook] 所有方法都失败，未找到 ${storeName}`);
     return null;
   }
 
@@ -133,7 +123,6 @@
 
       for (const loc of locations) {
         if (loc.obj && loc.obj[storeName]) {
-          if (debug) console.log(`✅ [BaseHook] 在 ${loc.name} 找到 ${storeName} (depth: ${depth})`);
           return loc.obj[storeName];
         }
       }
@@ -161,16 +150,13 @@
   function observeArray(arr, onAdd, name, options = {}, store = null) {
     const { debug = false } = options;
 
-    if (debug) console.log(`🔧 [BaseHook] 监听数组: ${name}`);
     
     if (!Array.isArray(arr)) {
-      if (debug) console.warn(`[BaseHook] ${name} 不是数组，跳过监听`);
       return { success: false, disposer: null };
     }
 
     // 1. 检查数组是否已经被监听过
     if (arr.__hijackSignature) {
-      if (debug) console.warn(`⚠️ [BaseHook] ${name} 已经被监听过，跳过`);
       return { success: false, disposer: null };
     }
 
@@ -187,15 +173,12 @@
         const mobxObj = arr[mobxSymbol];
         
         if (mobxObj && typeof mobxObj.observe_ === 'function') {
-          if (debug) console.log(`✅ [BaseHook] 找到 Mobx observe_ 方法`);
           
           // 使用 Mobx 内部 observe_ API 监听变化
           const disposer = mobxObj.observe_(change => {
-            if (debug) console.log(`🎯 [BaseHook] ${name} Mobx 变化事件:`, change.type);
             
             // splice 事件: { type: 'splice', index, removedCount, added, addedCount }
             if (change.type === 'splice' && change.added && change.added.length > 0) {
-              if (debug) console.log(`📦 [BaseHook] 新增了 ${change.added.length} 个元素`);
               
               // 克隆新增的数据
               const clonedItems = change.added.map(item => {
@@ -220,17 +203,14 @@
             }
           });
           
-          if (debug) console.log(`✅ [BaseHook] ${name} Mobx observe 监听已启动`);
           return { success: true, disposer };
         }
       }
       
     } catch (error) {
-      if (debug) console.warn(`⚠️ [BaseHook] Mobx observe_ 失败:`, error);
     }
 
     // 4. 降级方案: 劫持 push 方法
-    if (debug) console.log(`🔧 [BaseHook] 使用 push 劫持降级方案...`);
     
     try {
       const originalPush = arr.push;
@@ -254,7 +234,6 @@
         return result;
       };
       
-      if (debug) console.log(`✅ [BaseHook] ${name} push 方法劫持成功`);
       return { success: true, disposer: null };
     } catch (error) {
       console.error(`❌ [BaseHook] ${name} push 方法劫持失败:`, error);
@@ -289,8 +268,6 @@
    * @returns {Object} { success: boolean, installedCount: number, stores: Object }
    */
   window.__initRealtimeHook = function(config) {
-    console.log('🚀 [BaseHook] ========== 开始初始化实时监控 ==========');
-    console.log('[BaseHook] 配置:', config);
 
     const {
       stores: storeConfigs = [],
@@ -305,8 +282,6 @@
     } = options;
 
     if (debug) {
-      console.log('[BaseHook] 当前 URL:', window.location.href);
-      console.log('[BaseHook] 当前时间:', new Date().toLocaleString());
     }
 
     const result = {
@@ -324,17 +299,14 @@
         arrays = []
       } = storeConfig;
 
-      if (debug) console.log(`[BaseHook] 处理 Store: ${storeName}`);
 
       // 1. 提取 Store
       const store = extractStore(storeName, selectors, { debug, maxDepth: options.maxDepth || 50 });
       
       if (!store) {
-        if (debug) console.warn(`❌ [BaseHook] 未找到 Store: ${storeName}`);
         continue;
       }
 
-      if (debug) console.log(`✅ [BaseHook] 找到 Store: ${storeName}`);
       result.stores[storeName] = store;
 
       // 2. 监听数组
@@ -346,14 +318,12 @@
         } = arrayConfig;
 
         if (!enabled) {
-          if (debug) console.log(`⏭️ [BaseHook] 跳过禁用的数组: ${storeName}.${arrayPath}`);
           continue;
         }
 
         // 获取数组对象
         const arr = getByPath(store, arrayPath);
         if (!arr) {
-          if (debug) console.warn(`❌ [BaseHook] 未找到数组: ${storeName}.${arrayPath}`);
           continue;
         }
 
@@ -378,23 +348,16 @@
           if (observeResult.disposer) {
             result.disposers.push(observeResult.disposer);
           }
-          if (debug) console.log(`✅ [BaseHook] 成功监听: ${storeName}.${arrayPath}`);
         }
       }
     }
 
     // 3. 返回结果
     result.success = result.installedCount > 0;
-    
-    console.log(result.success
-      ? `✅ [BaseHook] ========== 初始化成功! (${result.installedCount} 个监听) ==========`
-      : '❌ [BaseHook] ========== 初始化失败，未找到任何 Store =========='
-    );
 
     // 🔥 新增: 如果初始化成功且提供了 onSuccess 回调,则调用
     if (result.success && config.onSuccess && typeof config.onSuccess === 'function') {
       try {
-        console.log('🎯 [BaseHook] 调用 onSuccess 回调...');
         config.onSuccess(result);
       } catch (error) {
         console.error('❌ [BaseHook] onSuccess 回调执行失败:', error);
@@ -425,7 +388,6 @@
    * @returns {Object} 诊断结果
    */
   window.__diagnoseStores = function(storeNames = []) {
-    console.log('🔍 [BaseHook] ========== Store 诊断工具 ==========');
     
     const results = {
       reactRoot: null,
@@ -436,18 +398,15 @@
     // 1. 查找 React 根节点
     const root = document.querySelector('#root') || document.querySelector('[data-reactroot]');
     results.reactRoot = !!root;
-    console.log('1. React 根节点:', results.reactRoot ? '✅ 找到' : '❌ 未找到');
 
     if (!root) return results;
 
     // 2. 查找 Fiber keys
     results.fiberKeys = Object.keys(root).filter(k => k.startsWith('__react'));
-    console.log('2. Fiber Keys:', results.fiberKeys);
 
     // 3. 遍历元素查找 Store
     const elements = document.querySelectorAll('*');
     const maxCheck = Math.min(elements.length, 1000);
-    console.log(`3. 检查前 ${maxCheck} 个元素...`);
 
     for (let i = 0; i < maxCheck; i++) {
       const el = elements[i];
@@ -473,17 +432,13 @@
                 location: loc.name, 
                 store: storeName
               });
-              console.log(`✅ 元素${i} - ${loc.name} - 找到 ${storeName}`);
             }
           }
         }
       }
     }
 
-    console.log('4. 诊断结果总结:', results);
     return results;
   };
 
-  console.log('✅ [BaseHook] 通用框架加载完成');
-  console.log('💡 [BaseHook] 使用 window.__initRealtimeHook(config) 初始化');
 })();

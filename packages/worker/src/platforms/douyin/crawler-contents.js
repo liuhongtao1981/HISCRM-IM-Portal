@@ -380,7 +380,7 @@ async function extractWorksFromPage(page, account) {
         }
 
       } catch (e) {
-        console.debug('Error extracting work from element:', e.message);
+        // Error ignored
       }
     });
 
@@ -395,7 +395,6 @@ async function extractWorksFromPage(page, account) {
       }
     });
 
-    console.debug(`Extracted ${deduped.length} contents from page`);
     return deduped;
 
     /**

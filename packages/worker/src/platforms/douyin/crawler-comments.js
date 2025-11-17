@@ -736,10 +736,6 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
       );
 
       // 匹配视频信息
-      // 🔍 DEBUG: 输出匹配过程
-      logger.info(`\n🔍 Matching video for item_id: ${itemId.substring(0, 30)}...`);
-      logger.info(`   Total count from API: ${totalCount}`);
-
       // 方案 1: 通过 videoIndexToItemId 映射查找（最可靠）
       let videoInfo = null;
       const videoIndex = Object.keys(videoIndexToItemId).find(

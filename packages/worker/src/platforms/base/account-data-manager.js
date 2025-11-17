@@ -23,11 +23,6 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 
 class AccountDataManager {
   constructor(accountId, platform, dataPusher) {
-    console.log('[AccountDataManager] 🏗️ 构造函数被调用');
-    console.log('[AccountDataManager] accountId:', accountId);
-    console.log('[AccountDataManager] platform:', platform);
-    console.log('[AccountDataManager] dataPusher 存在:', !!dataPusher);
-
     this.accountId = accountId;
     this.platform = platform;
     this.dataPusher = dataPusher;  // 数据推送器（与 Master 通信）
@@ -500,21 +495,16 @@ class AccountDataManager {
    * 同时推送完整数据到 Master
    */
   startDataSnapshot(interval = 30000) {
-    console.log('[startDataSnapshot] 🚀 启动数据快照定时器，间隔:', interval, 'ms');
-
     if (this.snapshotTimer) {
       clearInterval(this.snapshotTimer);
-      console.log('[startDataSnapshot] 清除旧的定时器');
     }
 
     this.snapshotTimer = setInterval(() => {
-      console.log('[startDataSnapshot] ⏰ 定时器触发 at', new Date().toISOString());
       this.logDataSnapshot();
       // ✨ 新增：同步数据到 Master
       this.syncToMaster();
     }, interval);
 
-    console.log('[startDataSnapshot] ✅ 定时器已设置，Timer ID:', this.snapshotTimer);
     this.logger.info(`Data snapshot started (interval: ${interval}ms)`);
   }
 
@@ -556,33 +546,18 @@ class AccountDataManager {
    * 推送完整数据快照到 Master 的内存存储
    */
   async syncToMaster() {
-    console.log('[syncToMaster] 🔔 被调用 at', new Date().toISOString());
-    console.log('[syncToMaster] dataPusher 存在:', !!this.dataPusher);
-    console.log('[syncToMaster] autoSync 配置:', this.pushConfig.autoSync);
-
     if (!this.dataPusher) {
-      console.log('[syncToMaster] ❌ DataPusher 不可用，跳过同步');
       this.logger.warn('DataPusher not available, skip sync');
       return;
     }
 
     if (!this.pushConfig.autoSync) {
-      console.log('[syncToMaster] ❌ 自动同步已禁用，跳过同步');
       this.logger.debug('Auto sync disabled, skip sync');
       return;
     }
 
     try {
       const snapshot = this.toSyncFormat();
-      console.log('[syncToMaster] 快照数据:', {
-        comments: snapshot.comments?.length || 0,
-        contents: snapshot.contents?.length || 0,
-        conversations: snapshot.conversations?.length || 0,
-        messages: snapshot.messages?.length || 0,
-        notifications: snapshot.notifications?.length || 0,
-      });
-
-      console.log('[syncToMaster] 📤 开始调用 pushDataSync...');
 
       // 使用 dataPusher 推送完整快照
       await this.dataPusher.pushDataSync({
@@ -597,8 +572,6 @@ class AccountDataManager {
 
       this.stats.lastPushTime = Date.now();
       this.stats.totalPushed++;
-
-      console.log('[syncToMaster] ✅ 推送完成，totalPushed:', this.stats.totalPushed);
 
       this.logger.info(`✅ Data synced to Master`, {
         comments: snapshot.comments?.length || 0,

@@ -70,26 +70,21 @@ class DouyinRealtimeMonitor {
       return;
     }
 
-    console.log(`🚀 [RealtimeMonitor] Starting for account ${this.account.id}`);
     logger.info(`Starting realtime monitor for account ${this.account.id}`);
 
     try {
       // 1. Inject Hook script
-      console.log(`📝 [RealtimeMonitor] Step 1: Installing hooks...`);
       await this.installHooks();
 
       // 2. Expose Node.js function to browser
-      console.log(`📝 [RealtimeMonitor] Step 2: Exposing handlers...`);
       await this.exposeHandlers();
 
       // 3. Setup page navigation listener
-      console.log(`📝 [RealtimeMonitor] Step 3: Setting up navigation listener...`);
       this.setupNavigationListener();
 
       this.isRunning = true;
       this.stats.startTime = Date.now();
 
-      console.log(`✅ [RealtimeMonitor] Started successfully for account ${this.account.id}`);
       logger.info(`RealtimeMonitor started for account ${this.account.id}`);
     } catch (error) {
       logger.error(`Failed to start RealtimeMonitor for account ${this.account.id}:`, error);
@@ -123,58 +118,39 @@ class DouyinRealtimeMonitor {
    * Inject Hook script into browser page
    */
   async installHooks() {
-    console.log(`🔧 [RealtimeMonitor] Installing hooks for account ${this.account.id}...`);
     logger.info(`Installing realtime hooks for account ${this.account.id}...`);
 
     try {
       // 1. Wait for DOM content loaded
-      console.log(`⏳ [RealtimeMonitor] Waiting for DOM content loaded...`);
       await this.page.waitForLoadState('domcontentloaded', { timeout: 10000 });
-      console.log(`✅ [RealtimeMonitor] DOM content loaded`);
 
       // 2. **关键**: 等待 IM 入口按钮出现 (这是数据的锚点!)
-      console.log(`⏳ [RealtimeMonitor] Waiting for IM entry button [data-e2e="im-entry"]...`);
       try {
-        await this.page.waitForSelector('[data-e2e="im-entry"]', { 
+        await this.page.waitForSelector('[data-e2e="im-entry"]', {
           timeout: 15000,
-          state: 'attached' 
+          state: 'attached'
         });
-        console.log(`✅ [RealtimeMonitor] IM entry button found!`);
       } catch (error) {
-        console.log(`⚠️ [RealtimeMonitor] IM entry button not found, trying alternative selectors...`);
-        
         // 备用选择器
-        const found = await this.page.waitForSelector(
-          '[class*="im-entry"], [class*="message-entry"], #root', 
+        await this.page.waitForSelector(
+          '[class*="im-entry"], [class*="message-entry"], #root',
           { timeout: 5000, state: 'attached' }
         ).catch(() => null);
-        
-        if (found) {
-          console.log(`✅ [RealtimeMonitor] Alternative selector found`);
-        } else {
-          console.log(`⚠️ [RealtimeMonitor] No suitable anchor found, continuing anyway...`);
-        }
       }
 
       // 3. Additional wait for React to initialize Store
-      console.log(`⏳ [RealtimeMonitor] Waiting for React Store initialization...`);
       await this.page.waitForTimeout(2000);
-      console.log(`✅ [RealtimeMonitor] Wait completed`);
 
       // 4. Get Hook script paths (通用框架 + 平台配置)
       const baseHookPath = path.join(__dirname, '..', 'base', 'hooks', 'base-realtime-hook.js');
       const configPath = path.join(__dirname, 'hooks', 'douyin-realtime-config.js');
-      console.log(`🔧 [RealtimeMonitor] Base hook path: ${baseHookPath}`);
-      console.log(`🔧 [RealtimeMonitor] Config path: ${configPath}`);
 
       // 5. Inject scripts into page (先注入通用框架,再注入平台配置)
       await this.page.addScriptTag({ path: baseHookPath });
-      console.log(`🔧 [RealtimeMonitor] Base hook injected`);
-      
+
       await this.page.waitForTimeout(500); // 等待框架初始化
-      
+
       await this.page.addScriptTag({ path: configPath });
-      console.log(`🔧 [RealtimeMonitor] Platform config injected`);
 
       // 6. Wait for script execution (配置脚本会自动初始化)
       await this.page.waitForTimeout(1000);
@@ -184,14 +160,10 @@ class DouyinRealtimeMonitor {
         return typeof window.__checkRealtimeHooks === 'function';
       });
 
-      console.log(`🔧 [RealtimeMonitor] Hook verification result: ${installed}`);
-
       if (installed) {
         this.hooksInstalled = true;
-        console.log(`✅ [RealtimeMonitor] Hooks installed successfully (will auto-retry if Store not found)`);
         logger.info(`Realtime hooks installed for account ${this.account.id}`);
       } else {
-        console.log(`❌ [RealtimeMonitor] Hook verification FAILED`);
         logger.warn(`Realtime hooks verification failed for account ${this.account.id}`);
       }
     } catch (error) {
@@ -256,31 +228,23 @@ class DouyinRealtimeMonitor {
    * @param {Object} data - { type: 'message'|'comment', data: Object, timestamp: number }
    */
   async handleRealtimeData(data) {
-    console.log(`📨 [RealtimeMonitor] Received data from browser:`, JSON.stringify(data).substring(0, 200));
-    
     if (!this.isRunning) {
-      console.log(`⚠️ [RealtimeMonitor] Not running, ignoring data`);
       logger.debug(`RealtimeMonitor not running, ignoring data for account ${this.account.id}`);
       return;
     }
 
     try {
       const { type, data: rawData, timestamp } = data;
-      console.log(`📨 [RealtimeMonitor] Data type: ${type}, timestamp: ${timestamp}`);
 
       // Handle by type
       if (type === 'message') {
-        console.log(`💬 [RealtimeMonitor] Processing message...`);
         await this.handleRealtimeMessage(rawData, timestamp);
       } else if (type === 'comment') {
-        console.log(`💭 [RealtimeMonitor] Processing comment...`);
         await this.handleRealtimeComment(rawData, timestamp);
       } else {
-        console.log(`❌ [RealtimeMonitor] Unknown data type: ${type}`);
         logger.warn(`Unknown realtime data type: ${type}`);
       }
     } catch (error) {
-      console.error(`❌ [RealtimeMonitor] Error handling data:`, error);
       logger.error(`Error handling realtime data for account ${this.account.id}:`, error);
       this.stats.errors++;
     }
@@ -293,14 +257,11 @@ class DouyinRealtimeMonitor {
    */
   async handleRealtimeMessage(rawMsg, timestamp) {
     this.stats.messagesReceived++;
-    console.log(`💬 [RealtimeMonitor] Message received (total: ${this.stats.messagesReceived})`);
 
     // 1. Deduplication check
     const messageId = rawMsg.platform_message_id || rawMsg.message_id || rawMsg.serverId || rawMsg.id;
-    console.log(`💬 [RealtimeMonitor] Message ID: ${messageId}`);
-    
+
     if (!messageId) {
-      console.log(`⚠️ [RealtimeMonitor] Message has no ID, skipping`);
       logger.warn('Message has no ID, skipping');
       return;
     }
@@ -314,11 +275,6 @@ class DouyinRealtimeMonitor {
     // 2. Process conversation and user info if provided
     if (rawMsg.conversation_info && rawMsg.user_info) {
       try {
-        console.log(`✅ [Realtime] 检测到会话和用户信息:`, {
-          conversationId: rawMsg.conversation_info.conversationId,
-          nickname: rawMsg.user_info.nickname,
-          userId: rawMsg.user_info.userId
-        });
         logger.info(`[Realtime] Processing conversation and user info for message ${messageId.substring(0, 12)}...`);
         
         // Prepare conversation data in platform format for upsertConversation
@@ -355,22 +311,11 @@ class DouyinRealtimeMonitor {
         // Use DataManager's upsertConversation method
         // This will automatically mark it as dirty for sync to Master
         const conversation = this.dataManager.upsertConversation(conversationData, DataSource.REALTIME);
-        console.log(`✅ [Realtime] 会话已插入/更新:`, {
-          id: conversation.id,
-          userName: conversation.userName,
-          unreadCount: conversation.unreadCount
-        });
         logger.info(`✅ [Realtime] Conversation upserted: ${conversation.id} (${conversation.userName})`);
         
       } catch (error) {
-        console.error(`❌ [Realtime] 会话处理失败:`, error);
         logger.error(`Failed to process conversation info for message ${messageId}:`, error);
       }
-    } else {
-      console.log(`⚠️ [Realtime] 消息缺少会话或用户信息:`, {
-        has_conversation_info: !!rawMsg.conversation_info,
-        has_user_info: !!rawMsg.user_info
-      });
     }
 
     // 3. Use DataManager to process message
@@ -384,18 +329,11 @@ class DouyinRealtimeMonitor {
       if (upserted && upserted.length > 0) {
         this.processedIds.add(messageId);
         this.stats.messagesProcessed++;
-        console.log(`✅ [Realtime] 消息已处理:`, {
-          messageId: messageId.substring(0, 12) + '...',
-          content: rawMsg.content?.substring(0, 20),
-          sender: rawMsg.sender_name
-        });
         logger.info(`✅ [Realtime] Message processed successfully: ${messageId.substring(0, 12)}...`);
       } else {
-        console.log(`⚠️ [Realtime] 消息未处理 (可能重复):`, messageId);
         logger.warn(`⚠️ [Realtime] Message not processed (possibly duplicate): ${messageId}`);
       }
     } catch (error) {
-      console.error(`❌ [Realtime] 消息处理失败:`, error);
       logger.error(`Failed to process realtime message ${messageId}:`, error);
       this.stats.errors++;
     }

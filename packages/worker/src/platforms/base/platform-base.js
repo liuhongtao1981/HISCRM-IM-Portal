@@ -106,7 +106,6 @@ class PlatformBase {
     }
 
     // 自动创建 DataManager
-    console.log(`[DEBUG] Auto-creating DataManager for account ${accountId}...`);
     logger.info(`Auto-creating DataManager for account ${accountId}`);
 
     try {

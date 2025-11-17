@@ -67,9 +67,6 @@ class AccountStatusReporter {
       },
       timestamp: Date.now(),
     });
-
-    // ⭐ 调试日志：打印更新的状态（包括 login_status）
-    logger.info(`✏️ updateAccountStatus called for ${accountId}:`, JSON.stringify(status, null, 2));
   }
 
   /**
@@ -92,9 +89,6 @@ class AccountStatusReporter {
         account_id: item.account_id,
         status: item.status,
       }));
-
-      // ⭐ 调试日志：打印即将发送到 Master 的数据
-      logger.info(`📤 准备发送到 Master 的账户状态:`, JSON.stringify(payload, null, 2));
 
       const message = createMessage(WORKER_ACCOUNT_STATUS, {
         worker_id: this.workerId,

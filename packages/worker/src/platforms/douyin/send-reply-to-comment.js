@@ -544,8 +544,6 @@ async function findTopLevelWorkInput(page) {
  */
 async function clickGlobalSendButton(page) {
     try {
-        logger.info('🔍 开始查找全局发送按钮...');
-
         // 优先查找平台特定按钮
         const sendButton = await page.evaluateHandle(() => {
             const btns = Array.from(document.querySelectorAll('button.douyin-creator-interactive-button'));
@@ -584,24 +582,6 @@ async function clickGlobalSendButton(page) {
             return true;
         } else {
             logger.warn('❌ 未找到可用的全局发送按钮');
-
-            // 🔍 DEBUG: 查看页面上有哪些发送按钮
-            const debugInfo = await page.evaluate(() => {
-                const allButtons = Array.from(document.querySelectorAll('button'));
-                const sendButtons = allButtons.filter(b => {
-                    const text = (b.innerText || '').trim();
-                    return text === '发送' || text.includes('发送');
-                });
-
-                return sendButtons.map(b => ({
-                    text: b.innerText.trim(),
-                    disabled: b.disabled,
-                    ariaDisabled: b.getAttribute('aria-disabled'),
-                    className: b.className
-                }));
-            });
-
-            logger.warn('📋 页面上的发送按钮:', debugInfo);
             return false;
         }
     } catch (e) {

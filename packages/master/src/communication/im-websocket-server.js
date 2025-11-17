@@ -39,14 +39,6 @@ class IMWebSocketServer {
         this.io.on('connection', (socket) => {
             logger.info(`[IM WS] New client connected: ${socket.id}`);
 
-            // 🔍 调试: 监听所有事件
-            socket.onAny((eventName, ...args) => {
-                logger.info(`[IM WS] 📨 收到事件: ${eventName} from ${socket.id}`);
-                if (args.length > 0) {
-                    logger.info(`[IM WS] 📦 事件数据:`, JSON.stringify(args[0]).substring(0, 200));
-                }
-            });
-
             // 监控客户端注册
             socket.on('monitor:register', (data) => {
                 logger.info(`[IM WS] 🔔 收到注册请求: ${socket.id}`);
@@ -220,19 +212,7 @@ class IMWebSocketServer {
             const { channelId, topicId, content, replyToId, replyToContent, messageCategory, fromName, fromId, authorAvatar: clientAuthorAvatar } = data;
             logger.info(`[IM WS] Monitor reply:`, { channelId, topicId, content, messageCategory, fromName, fromId, clientAuthorAvatar });
 
-            // 🔍 DEBUG: 打印完整的接收数据
-            logger.warn(`[DEBUG] handleMonitorReply 完整接收数据:`);
-            logger.warn(`  channelId: ${data.channelId}`);
-            logger.warn(`  topicId: ${data.topicId}`);
-            logger.warn(`  content: ${data.content}`);
-            logger.warn(`  replyToId: ${data.replyToId}`);
-            logger.warn(`  replyToContent: ${data.replyToContent}`);
-            logger.warn(`  messageCategory: ${data.messageCategory}`);
-            logger.warn(`  fromName: ${data.fromName}`);
-            logger.warn(`  fromId: ${data.fromId}`);
-            logger.warn(`  所有字段: ${Object.keys(data).join(', ')}`);
-
-            // 🔍 智能判断消息类型：如果 messageCategory 未定义，通过数据推断
+            // 智能判断消息类型：如果 messageCategory 未定义，通过数据推断
             let finalMessageCategory = messageCategory;
             if (!messageCategory || messageCategory === 'undefined') {
                 // 通过 DataStore 查找 topicId 是否为私信会话
@@ -242,17 +222,15 @@ class IMWebSocketServer {
                         Array.from(accountData.data.conversations.values()) : accountData.data.conversations;
                     const isPrivateConversation = conversationsList.some(conv => conv.conversationId === topicId);
                     finalMessageCategory = isPrivateConversation ? 'private' : 'comment';
-                    logger.warn(`[DEBUG] messageCategory 未定义，通过数据推断为: "${finalMessageCategory}" (topicId: ${topicId})`);
                 } else {
                     finalMessageCategory = 'comment'; // 默认为评论
-                    logger.warn(`[DEBUG] messageCategory 未定义且无法推断，默认为: "comment"`);
                 }
             }
 
             // 根据消息分类确定消息类型和目标类型
             const messageType = finalMessageCategory === 'private' ? 'text' : 'comment';
 
-            // 🔍 区分作品评论和评论回复
+            // 区分作品评论和评论回复
             // - 如果是私信 → direct_message
             // - 如果是评论 + replyToId存在 → comment (回复某条评论)
             // - 如果是评论 + replyToId为空 → work (给作品发一级评论)
@@ -263,18 +241,6 @@ class IMWebSocketServer {
                 targetType = 'comment';  // 回复某条评论
             } else {
                 targetType = 'work';  // 给作品发一级评论
-            }
-
-            // 🔍 DEBUG: 打印判断结果
-            logger.warn(`[DEBUG] messageCategory: "${messageCategory}" -> finalMessageCategory: "${finalMessageCategory}" -> messageType: "${messageType}", targetType: "${targetType}"`);
-            logger.warn(`[DEBUG] replyToId: ${replyToId} (${replyToId ? '回复评论' : '回复作品'})`);
-
-            if (finalMessageCategory === 'private') {
-                logger.warn(`[DEBUG] 这是私信回复，应该调用 replyToDirectMessage`);
-            } else if (targetType === 'comment') {
-                logger.warn(`[DEBUG] 这是评论回复（二级回复），应该调用 replyToComment with commentId: ${replyToId}`);
-            } else {
-                logger.warn(`[DEBUG] 这是作品评论（一级评论），应该调用 replyToComment with commentId: null`);
             }
 
             // 创建回复消息ID（用于客户端展示和结果追踪）
@@ -503,9 +469,6 @@ class IMWebSocketServer {
                             logger.error(`[IM WS] Failed to update reply status to executing: ${statusError.message}`);
                         }
                     }
-
-                    // 🔍 DEBUG: 打印发送给 Worker 的完整任务数据
-                    logger.warn(`[DEBUG] 发送给 Worker 的完整 replyTask:`, JSON.stringify(replyTask, null, 2));
 
                     // 发送给 Worker
                     workerSocket.emit('master:reply:request', replyTask);
@@ -739,15 +702,6 @@ class IMWebSocketServer {
             // 查找最新消息
             const lastMessage = this.findLastMessage(dataObj);
 
-            // 🔍 DEBUG: 打印 lastMessage 的内容
-            if (lastMessage) {
-                logger.info(`[DEBUG] lastMessage 对象:`);
-                logger.info(`  content: ${lastMessage.content}`);
-                logger.info(`  timestamp: ${lastMessage.timestamp}`);
-                logger.info(`  typeof timestamp: ${typeof lastMessage.timestamp}`);
-                logger.info(`  转换为日期: ${new Date(lastMessage.timestamp).toLocaleString('zh-CN')}`);
-            }
-
             const channel = {
                 id: accountId,
                 name: accountName,  // ✅ 使用数据库中的平台昵称
@@ -762,26 +716,6 @@ class IMWebSocketServer {
                 isPinned: false,
                 enabled: true
             };
-
-            // 🔍 DEBUG: 打印 channel 对象
-            logger.info(`[DEBUG] Channel 对象:`);
-            logger.info(`  id: ${channel.id}`);
-            logger.info(`  name: ${channel.name}`);  // ✅ DEBUG: 打印账户名称
-            logger.info(`  avatar: ${channel.avatar?.substring(0, 60)}...`);
-            logger.info(`  userInfo: ${channel.userInfo ? '存在' : '不存在'}`);
-            if (channel.userInfo) {
-                try {
-                    const parsed = JSON.parse(channel.userInfo);
-                    logger.info(`  userInfo.nickname: ${parsed.nickname}`);
-                    logger.info(`  userInfo.douyin_id: ${parsed.douyin_id || parsed.platformUserId}`);
-                } catch (e) {
-                    logger.error(`  ❌ userInfo 解析失败: ${e.message}`);
-                }
-            }
-            logger.info(`  platform: ${channel.platform}`);
-            logger.info(`  lastMessageTime: ${channel.lastMessageTime}`);
-            logger.info(`  typeof lastMessageTime: ${typeof channel.lastMessageTime}`);
-            logger.info(`  转换为日期: ${new Date(channel.lastMessageTime).toLocaleString('zh-CN')}`);
 
             channels.push(channel);
         }
@@ -822,7 +756,6 @@ class IMWebSocketServer {
                         parseInt(hour),
                         parseInt(minute)
                     );
-                    logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
                     return date.getTime();  // 返回毫秒级时间戳
                 }
 
@@ -832,7 +765,6 @@ class IMWebSocketServer {
                     timestamp = numericTimestamp;
                 } else {
                     // 无法解析，返回当前时间
-                    logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
                     return Date.now();
                 }
             }
@@ -848,18 +780,9 @@ class IMWebSocketServer {
 
         const accountData = this.dataStore.accounts.get(channelId);
 
-        // 详细的调试日志
-        logger.info(`[DEBUG] getTopicsFromDataStore called for channel: ${channelId}`);
-        logger.info(`[DEBUG] accountData exists: ${!!accountData}`);
-
         if (!accountData) {
-            logger.warn(`[DEBUG] No accountData found for channel: ${channelId}`);
             return [];
         }
-
-        // 输出 accountData 的所有字段名
-        const fields = Object.keys(accountData);
-        logger.info(`[DEBUG] accountData fields: ${fields.join(', ')}`);
 
         // DataStore 数据结构是 {accountId, platform, lastUpdate, data}
         // 实际数据在 data 字段中
@@ -871,37 +794,16 @@ class IMWebSocketServer {
         const commentsSize = dataObj.comments instanceof Map ? dataObj.comments.size : (dataObj.comments?.length || 0);
         const messagesSize = dataObj.messages instanceof Map ? dataObj.messages.size : (dataObj.messages?.length || 0);
 
-        logger.info(`[DEBUG] dataObj.contents exists: ${!!dataObj.contents}, size: ${contentsSize}`);
-        logger.info(`[DEBUG] dataObj.conversations exists: ${!!dataObj.conversations}, size: ${conversationsSize}`);
-        logger.info(`[DEBUG] dataObj.comments exists: ${!!dataObj.comments}, size: ${commentsSize}`);
-        logger.info(`[DEBUG] dataObj.messages exists: ${!!dataObj.messages}, size: ${messagesSize}`);
-
         const topics = [];
 
         // 从作品创建主题
         if (contentsSize > 0) {
-            logger.info(`[DEBUG] Processing ${contentsSize} contents`);
             const contentsList = dataObj.contents instanceof Map ? Array.from(dataObj.contents.values()) : dataObj.contents;
             const commentsList = dataObj.comments instanceof Map ? Array.from(dataObj.comments.values()) : (dataObj.comments || []);
-
-            // 调试：输出所有评论的 contentId
-            const commentContentIds = commentsList.map(c => c.contentId);
-            logger.warn(`[DEBUG] 评论的 contentId 列表: ${JSON.stringify(commentContentIds)}`);
-
-            // 调试：输出所有作品的 contentId
-            const contentIds = contentsList.map(c => c.contentId);
-            logger.warn(`[DEBUG] 作品的 contentId 列表: ${JSON.stringify(contentIds)}`);
-
-            let topicsWithComments = 0;
 
             for (const content of contentsList) {
                 // 计算该作品的评论数（使用 camelCase: contentId）
                 const contentComments = commentsList.filter(c => c.contentId === content.contentId);
-
-                if (contentComments.length > 0) {
-                    topicsWithComments++;
-                    logger.warn(`[DEBUG] 作品 "${content.title}" (contentId: ${content.contentId}) 有 ${contentComments.length} 条评论`);
-                }
 
                 // ✅ 修复: 计算该作品的最新评论时间（从评论列表中获取，而不是 lastCrawlTime）
                 let actualLastCommentTime = content.lastCrawlTime;
@@ -940,41 +842,15 @@ class IMWebSocketServer {
                     isPrivate: false  // ✅ 标记为评论主题（非私信）
                 };
 
-                // 🔍 DEBUG: 打印前3个作品的时间戳原始值和转换结果
-                if (topics.length < 3) {
-                    logger.info(`[DEBUG] 作品 #${topics.length + 1} 时间戳:`);
-                    logger.info(`  content.publishTime (原始): ${content.publishTime}`);
-                    logger.info(`  content.lastCrawlTime (原始): ${content.lastCrawlTime}`);
-                    logger.info(`  topic.createdTime (归一化后): ${topic.createdTime} → ${new Date(topic.createdTime).toLocaleString('zh-CN')}`);
-                    logger.info(`  topic.lastMessageTime (归一化后): ${topic.lastMessageTime} → ${new Date(topic.lastMessageTime).toLocaleString('zh-CN')}`);
-                }
-
                 topics.push(topic);
             }
-            logger.info(`[DEBUG] Created ${topics.length} topics from contents`);
-            logger.warn(`[DEBUG] 其中有评论的主题数: ${topicsWithComments}`);
-        } else {
-            logger.warn(`[DEBUG] No contents found or contents is empty`);
         }
 
         // 从会话创建主题
         if (conversationsSize > 0) {
-            logger.info(`[DEBUG] Processing ${conversationsSize} conversations`);
             const beforeCount = topics.length;
             const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : dataObj.conversations;
             const messagesList = dataObj.messages instanceof Map ? Array.from(dataObj.messages.values()) : (dataObj.messages || []);
-
-            // 🔍 打印第一个 conversation 对象的完整结构
-            if (conversationsList.length > 0) {
-                const sampleConv = conversationsList[0];
-                logger.info(`[DEBUG] 第一个 conversation 对象:`);
-                logger.info(`  conversationId: ${sampleConv.conversationId}`);
-                logger.info(`  userName: ${sampleConv.userName}`);
-                logger.info(`  createdAt: ${sampleConv.createdAt} (${sampleConv.createdAt ? new Date(sampleConv.createdAt).toLocaleString('zh-CN') : 'N/A'})`);
-                logger.info(`  updatedAt: ${sampleConv.updatedAt} (${sampleConv.updatedAt ? new Date(sampleConv.updatedAt).toLocaleString('zh-CN') : 'N/A'})`);
-                logger.info(`  lastMessageTime: ${sampleConv.lastMessageTime} (${sampleConv.lastMessageTime ? new Date(sampleConv.lastMessageTime).toLocaleString('zh-CN') : 'N/A'})`);
-                logger.info(`  所有字段: ${Object.keys(sampleConv).join(', ')}`);
-            }
 
             for (const conversation of conversationsList) {
                 // 计算该会话的消息数（使用 camelCase: conversationId）
@@ -1006,20 +882,7 @@ class IMWebSocketServer {
                 const latestMessage = sortedMessages[0];
                 const actualLastMessageTime = latestMessage ? (latestMessage.createdAt || latestMessage.timestamp) : conversation.lastMessageTime;
 
-                // 🔍 调试: 打印消息对象的所有字段
-                if (latestMessage && topics.length < 3) {
-                    logger.info(`[DEBUG] latestMessage 对象字段:`, Object.keys(latestMessage));
-                    logger.info(`[DEBUG] latestMessage 详细信息:`, {
-                        content: latestMessage.content,
-                        fromName: latestMessage.fromName,
-                        senderName: latestMessage.senderName,
-                        authorName: latestMessage.authorName,
-                        userName: latestMessage.userName,
-                        direction: latestMessage.direction
-                    });
-                }
-
-                // ✅ 只推送有消息的会话
+                // 只推送有消息的会话
                 const topic = {
                     id: conversation.conversationId,
                     channelId: channelId,
@@ -1036,38 +899,8 @@ class IMWebSocketServer {
                     isPrivate: true  // ✅ 新增: 标记为私信主题
                 };
 
-                // 🔍 调试: 打印前3个会话的头像数据
-                if (topics.length < 3) {
-                    logger.debug(`[IM-WS] Conversation topic avatar debug:`, {
-                        conversationId: conversation.conversationId,
-                        userName: conversation.userName,
-                        platform_user_avatar: conversation.platform_user_avatar,
-                        userAvatar: conversation.userAvatar,
-                        finalAvatar: topic.avatar
-                    });
-                }
-
                 topics.push(topic);
-
-                // 🔍 调试日志：打印未读消息计算结果
-                if (unreadMessages.length > 0) {
-                    logger.info(`[UNREAD] 会话 "${conversation.userName}" 有 ${unreadMessages.length} 条未读消息 (总消息数: ${conversationMessages.length})`);
-                }
             }
-
-            // 🔍 打印第一个 topic 对象
-            if (topics.length > beforeCount) {
-                const sampleTopic = topics[beforeCount];
-                logger.info(`[DEBUG] 第一个 topic 对象:`);
-                logger.info(`  id: ${sampleTopic.id}`);
-                logger.info(`  title: ${sampleTopic.title}`);
-                logger.info(`  createdTime: ${sampleTopic.createdTime} (${new Date(sampleTopic.createdTime).toLocaleString('zh-CN')})`);
-                logger.info(`  lastMessageTime: ${sampleTopic.lastMessageTime} (${new Date(sampleTopic.lastMessageTime).toLocaleString('zh-CN')})`);
-            }
-
-            logger.info(`[DEBUG] Created ${topics.length - beforeCount} topics from conversations`);
-        } else {
-            logger.warn(`[DEBUG] No conversations found or conversations is empty`);
         }
 
         // ✅ 问题2修复: 排序逻辑 - 优先显示有未读消息的会话，然后按最后消息时间排序
@@ -1079,8 +912,6 @@ class IMWebSocketServer {
             // 2. 未读数相同，按最后消息时间排序（新的在前）
             return b.lastMessageTime - a.lastMessageTime;
         });
-
-        logger.info(`[DEBUG] Total topics created: ${topics.length}`);
 
         return topics;
     }
@@ -1116,7 +947,6 @@ class IMWebSocketServer {
                         parseInt(hour),
                         parseInt(minute)
                     );
-                    logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
                     return date.getTime();  // 返回毫秒级时间戳
                 }
 
@@ -1126,7 +956,6 @@ class IMWebSocketServer {
                     timestamp = numericTimestamp;
                 } else {
                     // 无法解析，返回当前时间
-                    logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
                     return Date.now();
                 }
             }
@@ -1156,11 +985,6 @@ class IMWebSocketServer {
                     const parentId = comment.parentCommentId;
                     // 将 "0", 0, null, undefined, "" 都转换为 null
                     const replyToId = (!parentId || parentId === '0' || parentId === 0) ? null : parentId;
-
-                    // DEBUG: 输出转换结果
-                    if (comment.commentId === '7566864433692459826') {
-                        logger.info(`[DEBUG] parentId="${parentId}", type=${typeof parentId}, replyToId=${replyToId}`);
-                    }
 
                     messages.push({
                         id: comment.commentId,
@@ -1341,7 +1165,6 @@ class IMWebSocketServer {
                         parseInt(hour),
                         parseInt(minute)
                     );
-                    logger.debug(`[DEBUG] 解析中文日期字符串: ${timestamp} → ${date.getTime()}`);
                     return date.getTime();  // 返回毫秒级时间戳
                 }
 
@@ -1351,7 +1174,6 @@ class IMWebSocketServer {
                     timestamp = numericTimestamp;
                 } else {
                     // 无法解析，返回当前时间
-                    logger.warn(`[DEBUG] 无法解析时间戳字符串: ${timestamp}`);
                     return Date.now();
                 }
             }
