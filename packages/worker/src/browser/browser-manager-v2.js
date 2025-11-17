@@ -9,6 +9,7 @@ const path = require('path');
 const { EventEmitter } = require('events');
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const { TabManager } = require('./tab-manager');
+const { getOptimizedConfig } = require('../config/browser-memory-optimization');
 
 const logger = createLogger('browser-manager-v2');
 
@@ -22,6 +23,8 @@ class BrowserManagerV2 extends EventEmitter {
       dataDir: config.dataDir || './data/browser',
       slowMo: config.slowMo || 0,
       devtools: config.devtools || false,
+      // 内存优化预设：'MAXIMUM_SAVINGS' | 'BALANCED' | 'MINIMAL'
+      memoryPreset: config.memoryPreset || 'BALANCED',
       ...config,
     };
 
@@ -293,6 +296,10 @@ class BrowserManagerV2 extends EventEmitter {
         fs.mkdirSync(userDataDir, { recursive: true });
       }
 
+      // 🚀 获取内存优化配置
+      const memoryOptimization = getOptimizedConfig(this.config.memoryPreset);
+      logger.info(`Using memory preset: ${this.config.memoryPreset} (estimated: ${memoryOptimization.estimatedMemory})`);
+
       // 配置启动参数
       const launchOptions = {
         headless: this.config.headless,
@@ -307,12 +314,10 @@ class BrowserManagerV2 extends EventEmitter {
         colorScheme: 'light',
         deviceScaleFactor: fingerprint.screen.pixelRatio,
 
-        // 安全和反检测参数
+        // 🚀 合并内存优化参数和基础参数
         args: [
-          '--no-sandbox',
-          '--disable-setuid-sandbox',
-          '--disable-dev-shm-usage',
-          '--disable-blink-features=AutomationControlled',
+          // 内存优化参数（来自 browser-memory-optimization.js）
+          ...memoryOptimization.args,
 
           // 根据指纹配置设置窗口大小
           `--window-size=${fingerprint.viewport.width},${fingerprint.viewport.height}`,
@@ -324,7 +329,10 @@ class BrowserManagerV2 extends EventEmitter {
           options.disableWebRTC ? '--disable-webrtc' : '',
         ].filter(Boolean),
 
-        // 其他选项
+        // 🚀 应用上下文优化选项
+        ...memoryOptimization.contextOptions,
+
+        // 其他选项（可覆盖优化选项）
         bypassCSP: options.bypassCSP || false,
         ignoreHTTPSErrors: options.ignoreHTTPSErrors || true,
       };

@@ -127,10 +127,16 @@ async function start() {
     // 2. 初始化浏览器管理器（在注册前初始化）
     // 如果Debug模式启用，使用Debug配置的headless设置；否则使用环境变量
     const headless = debugConfig.enabled ? debugConfig.browser.headless : (process.env.HEADLESS !== 'false');
+
+    // 🚀 读取内存优化预设配置
+    const memoryPreset = process.env.BROWSER_MEMORY_PRESET || 'BALANCED';
+    logger.info(`🚀 Browser memory optimization: ${memoryPreset}`);
+
     browserManager = getBrowserManager(WORKER_ID, {
       headless: headless,
       dataDir: `./data/browser/${WORKER_ID}`,  // Worker 专属目录,实现数据隔离
       devtools: debugConfig.enabled ? debugConfig.browser.devtools : false,
+      memoryPreset: memoryPreset,  // 内存优化预设
     });
     // 不立即启动浏览器，等到需要时再启动
     logger.info('✓ Browser manager initialized');
