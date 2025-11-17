@@ -163,6 +163,21 @@ class DataSyncReceiver {
             }
 
             logger.info(`📤 Broadcasted ${hints.length} new message hints for ${accountId}`);
+
+            // ✅ 广播更新后的 channels（更新左侧账户列表的最后消息）
+            const updatedChannels = this.imWebSocketServer.getChannelsFromDataStore();
+            this.imWebSocketServer.broadcastToMonitors('monitor:channels', {
+              channels: updatedChannels
+            });
+            logger.info(`📤 Broadcasted updated channels (${updatedChannels.length} channels)`);
+
+            // ✅ 广播更新后的 topics（更新会话列表的最后消息）
+            const updatedTopics = this.imWebSocketServer.getTopicsFromDataStore(accountId);
+            this.imWebSocketServer.broadcastToMonitors('monitor:topics', {
+              channelId: accountId,
+              topics: updatedTopics
+            });
+            logger.info(`📤 Broadcasted updated topics for ${accountId} (${updatedTopics.length} topics)`);
           } else {
             logger.info(`[DataSync] 没有需要推送的新消息 for ${accountId}`);
           }
