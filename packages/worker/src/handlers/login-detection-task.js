@@ -1,11 +1,12 @@
 ﻿/**
  * LoginDetectionTask - 独立的登录检测任务
- * 
+ *
  * 功能：
  * 1. 定期检测账户登录状态（使用默认Tab）
  * 2. 登录成功时：启动爬虫任务，同步状态给Master
  * 3. 登录失败时：停止爬虫任务，清理相关Tab
  * 4. 与爬虫任务完全分离，独立运行
+ * 5. 健康检查：监控实时监控任务状态，自动恢复已关闭的 Tab
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
@@ -204,6 +205,11 @@ class LoginDetectionTask {
       }
     }
 
+    // ⭐ 健康检查：只在已登录状态下检查实时监控
+    if (this.currentLoginStatus === 'logged_in') {
+      await this.checkRealtimeMonitorHealth();
+    }
+
     // 调度下次检测
     this.scheduleNext();
   }
@@ -339,6 +345,59 @@ class LoginDetectionTask {
 
     } catch (error) {
       logger.error(`Failed to cleanup task tabs for account ${this.account.id}:`, error);
+    }
+  }
+
+  /**
+   * 检查实时监控健康状态
+   * 如果实时监控不存在或 Tab 已关闭，尝试恢复
+   */
+  async checkRealtimeMonitorHealth() {
+    try {
+      const platformInstance = this.platformManager.getPlatform(this.account.platform);
+      if (!platformInstance || typeof platformInstance.startRealtimeMonitor !== 'function') {
+        // 平台不支持实时监控，跳过
+        return;
+      }
+
+      const monitor = platformInstance.realtimeMonitors?.get(this.account.id);
+
+      // 情况1：实时监控不存在（但应该存在）
+      if (!monitor) {
+        logger.warn(`实时监控不存在，尝试恢复 (账户: ${this.account.id})`);
+        try {
+          await platformInstance.startRealtimeMonitor(this.account);
+          logger.info(`✅ 实时监控已自动恢复 (账户: ${this.account.id})`);
+        } catch (error) {
+          logger.error(`实时监控恢复失败 (账户: ${this.account.id}): ${error.message}`);
+        }
+        return;
+      }
+
+      // 情况2：实时监控存在，但 page 已关闭
+      if (monitor.page) {
+        try {
+          if (monitor.page.isClosed()) {
+            logger.warn(`实时监控 Tab 已关闭，尝试恢复 (账户: ${this.account.id})`);
+            platformInstance.realtimeMonitors.delete(this.account.id);
+            await platformInstance.startRealtimeMonitor(this.account);
+            logger.info(`✅ 实时监控已自动恢复 (账户: ${this.account.id})`);
+          }
+        } catch (error) {
+          // page.isClosed() 可能抛出错误（浏览器已断开）
+          logger.warn(`实时监控 Tab 不可访问，尝试恢复 (账户: ${this.account.id}): ${error.message}`);
+          platformInstance.realtimeMonitors.delete(this.account.id);
+          try {
+            await platformInstance.startRealtimeMonitor(this.account);
+            logger.info(`✅ 实时监控已自动恢复 (账户: ${this.account.id})`);
+          } catch (recoveryError) {
+            logger.error(`实时监控恢复失败 (账户: ${this.account.id}): ${recoveryError.message}`);
+          }
+        }
+      }
+
+    } catch (error) {
+      logger.error(`实时监控健康检查失败 (账户: ${this.account.id}):`, error);
     }
   }
 
