@@ -11,8 +11,10 @@
     "build:electron": "tsx electron-builder.ts",
     "preview": "vite preview",
     "electron": "npm run build:electron && electron .",
-    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run build:electron && electron .\"",
-    "electron:build": "npm run build && npm run build:electron && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable"
+    "electron:dev": "concurrently \"npm run dev\" \"wait-on http://localhost:5173 && npm run build:electron && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "npm run build && npm run build:electron && cross-env CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --win portable",
+    "verify": "node verify-build.js",
+    "prebuild": "node verify-build.js || exit 0"
   },
   "dependencies": {
     "@reduxjs/toolkit": "^2.0.1",

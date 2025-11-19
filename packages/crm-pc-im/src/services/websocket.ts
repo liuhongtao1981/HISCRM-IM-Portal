@@ -5,8 +5,15 @@
 import { io, Socket } from 'socket.io-client'
 import { WS_EVENTS } from '@shared/constants'
 import type { Message } from '@shared/types'
-// @ts-ignore - config.json 在构建时会被复制到输出目录
-import config from '../../config.json'
+
+// 尝试导入 config.json，如果失败则使用默认值
+let config: any = { websocket: { url: 'http://localhost:3000' } }
+try {
+  // @ts-ignore - config.json 在构建时会被复制到输出目录
+  config = require('../../config.json')
+} catch (err) {
+  console.warn('[WebSocket] 无法加载 config.json，使用默认配置')
+}
 
 class WebSocketService {
   private socket: Socket | null = null
@@ -19,6 +26,14 @@ class WebSocketService {
         // 如果提供了 url 参数,则使用参数;否则使用配置文件或默认值
         const connectionUrl = url || this.url
         this.url = connectionUrl
+
+        console.log('[WebSocket] 配置信息:', {
+          connectionUrl,
+          config: config.websocket
+        })
+
+        // 连接到 Master 服务器的根命名空间 (IM WebSocket Server)
+        // 注意：不要使用 /client namespace，IM WebSocket Server 监听根命名空间
         this.socket = io(connectionUrl, {
           reconnection: config.websocket?.reconnection ?? true,
           reconnectionDelay: config.websocket?.reconnectionDelay ?? 1000,
@@ -28,18 +43,22 @@ class WebSocketService {
         })
 
         this.socket.on(WS_EVENTS.CONNECT, () => {
-          console.log('[WebSocket] 已连接到服务器')
+          console.log('[WebSocket] ✅ 已成功连接到服务器:', connectionUrl)
           this.isConnected = true
           resolve()
         })
 
+        this.socket.on('connect_error', (error) => {
+          console.error('[WebSocket] ❌ 连接错误:', error.message)
+        })
+
         this.socket.on(WS_EVENTS.ERROR, (error) => {
-          console.error('[WebSocket] 连接错误:', error)
+          console.error('[WebSocket] ❌ Socket 错误:', error)
           reject(error)
         })
 
-        this.socket.on(WS_EVENTS.DISCONNECT, () => {
-          console.log('[WebSocket] 连接已断开')
+        this.socket.on(WS_EVENTS.DISCONNECT, (reason) => {
+          console.log('[WebSocket] ⚠️  连接已断开, 原因:', reason)
           this.isConnected = false
         })
 
