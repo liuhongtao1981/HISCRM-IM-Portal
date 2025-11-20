@@ -1,0 +1,21 @@
+{
+  "websocket": {
+    "url": "http://your-master-server:3000",
+    "reconnection": true,
+    "reconnectionDelay": 1000,
+    "reconnectionDelayMax": 5000,
+    "reconnectionAttempts": 5
+  },
+  "app": {
+    "name": "CRM PC IM",
+    "version": "1.0.0",
+    "environment": "production"
+  },
+  "_comment": "使用说明：",
+  "_instructions": [
+    "1. 将 'url' 修改为生产环境的 Master 服务器地址",
+    "2. 例如：http://192.168.1.100:3000 或 https://master.example.com",
+    "3. 如果使用 HTTPS，确保证书有效",
+    "4. 修改后需要重新打包应用"
+  ]
+}
