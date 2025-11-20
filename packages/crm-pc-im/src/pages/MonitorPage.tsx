@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined } from '@ant-design/icons'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, EyeOutlined, LikeOutlined, ShareAltOutlined, StarOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -60,7 +60,7 @@ export default function MonitorPage() {
   const [searchText, setSearchText] = useState('') // 账户搜索
   const [replyContent, setReplyContent] = useState('')
   const [replyToMessage, setReplyToMessage] = useState<Message | null>(null)
-  const [activeTab, setActiveTab] = useState<'private' | 'comment'>('comment') // 当前活动标签页
+  const [activeTab, setActiveTab] = useState<'private' | 'comment' | 'works'>('comment') // 当前活动标签页
   const [showCommentList, setShowCommentList] = useState(true) // 评论Tab下是否显示列表(而不是对话)
   const [showPrivateList, setShowPrivateList] = useState(true) // 私信Tab下是否显示列表(而不是对话)
   const [isSending, setIsSending] = useState(false) // 是否正在发送消息
@@ -986,7 +986,7 @@ export default function MonitorPage() {
             {/* 标签页切换 */}
             <Tabs
               activeKey={activeTab}
-              onChange={(key) => setActiveTab(key as 'private' | 'comment')}
+              onChange={(key) => setActiveTab(key as 'private' | 'comment' | 'works')}
               style={{ padding: '0 20px', backgroundColor: '#f7f7f7' }}
               items={[
                 {
@@ -1016,6 +1016,19 @@ export default function MonitorPage() {
                           style={{ marginLeft: 8 }}
                         />
                       )}
+                    </span>
+                  ),
+                },
+                {
+                  key: 'works',
+                  label: (
+                    <span>
+                      <AppstoreOutlined />
+                      作品列表
+                      <Badge
+                        count={currentTopics.filter(t => !t.isPrivate).length}
+                        style={{ marginLeft: 8, backgroundColor: '#52c41a' }}
+                      />
                     </span>
                   ),
                 },
@@ -1178,6 +1191,182 @@ export default function MonitorPage() {
                 ) : (
                   <Empty
                     description="暂无私信"
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    style={{ marginTop: '100px' }}
+                  />
+                )}
+              </div>
+            ) : activeTab === 'works' ? (
+              /* 作品列表Tab - 显示用户的所有作品及统计数据 */
+              <div className="wechat-works-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+                {currentTopics.filter(t => !t.isPrivate).length > 0 ? (
+                  <List
+                    grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 3, xxl: 4 }}
+                    dataSource={currentTopics.filter(t => !t.isPrivate).sort((a, b) => b.createdTime - a.createdTime)}
+                    renderItem={(topic) => {
+                      const thumbnail = topic.thumbnail || topic.avatar
+                      return (
+                        <List.Item>
+                          <div
+                            style={{
+                              backgroundColor: '#fff',
+                              borderRadius: '12px',
+                              overflow: 'hidden',
+                              border: '1px solid #e8e8e8',
+                              transition: 'all 0.3s',
+                              cursor: 'pointer',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
+                            }}
+                            className="work-item-card"
+                            onMouseEnter={(e) => {
+                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)'
+                              e.currentTarget.style.transform = 'translateY(-2px)'
+                            }}
+                            onMouseLeave={(e) => {
+                              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
+                              e.currentTarget.style.transform = 'translateY(0)'
+                            }}
+                            onClick={() => {
+                              // 点击作品卡片，切换到评论Tab并查看该作品
+                              setActiveTab('comment')
+                              handleEnterTopicFromCommentList(topic.id)
+                            }}
+                          >
+                            {/* 缩略图 */}
+                            {thumbnail ? (
+                              <div style={{
+                                width: '100%',
+                                paddingTop: '56.25%',  // 16:9 比例
+                                position: 'relative',
+                                backgroundColor: '#f5f5f5'
+                              }}>
+                                <img
+                                  src={thumbnail}
+                                  alt={topic.title}
+                                  style={{
+                                    position: 'absolute',
+                                    top: 0,
+                                    left: 0,
+                                    width: '100%',
+                                    height: '100%',
+                                    objectFit: 'cover'
+                                  }}
+                                />
+                                {/* 未读标记 */}
+                                {topic.unreadCount > 0 && (
+                                  <Badge
+                                    count={topic.unreadCount}
+                                    style={{
+                                      position: 'absolute',
+                                      top: 8,
+                                      right: 8,
+                                    }}
+                                  />
+                                )}
+                              </div>
+                            ) : (
+                              <div style={{
+                                width: '100%',
+                                paddingTop: '56.25%',
+                                position: 'relative',
+                                backgroundColor: '#f5f5f5',
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                              }}>
+                                <AppstoreOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
+                              </div>
+                            )}
+
+                            {/* 作品信息 */}
+                            <div style={{ padding: '12px' }}>
+                              {/* 标题 */}
+                              <Text
+                                strong
+                                style={{
+                                  fontSize: 14,
+                                  display: '-webkit-box',
+                                  WebkitLineClamp: 2,
+                                  WebkitBoxOrient: 'vertical',
+                                  overflow: 'hidden',
+                                  lineHeight: '1.4',
+                                  marginBottom: 8
+                                }}
+                              >
+                                {topic.title}
+                              </Text>
+
+                              {/* 统计数据 */}
+                              <div style={{
+                                display: 'grid',
+                                gridTemplateColumns: 'repeat(2, 1fr)',
+                                gap: '8px',
+                                marginTop: 12,
+                                paddingTop: 12,
+                                borderTop: '1px solid #f0f0f0'
+                              }}>
+                                {/* 浏览数 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <EyeOutlined style={{ color: '#8c8c8c', fontSize: 14 }} />
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {topic.viewCount !== undefined ? topic.viewCount.toLocaleString() : '-'}
+                                  </Text>
+                                </div>
+
+                                {/* 点赞数 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <LikeOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {topic.likeCount !== undefined ? topic.likeCount.toLocaleString() : '-'}
+                                  </Text>
+                                </div>
+
+                                {/* 评论数 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <CommentOutlined style={{ color: '#1890ff', fontSize: 14 }} />
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {topic.commentCount !== undefined ? topic.commentCount.toLocaleString() : (topic.messageCount || 0)}
+                                  </Text>
+                                </div>
+
+                                {/* 分享数 */}
+                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                  <ShareAltOutlined style={{ color: '#52c41a', fontSize: 14 }} />
+                                  <Text type="secondary" style={{ fontSize: 12 }}>
+                                    {topic.shareCount !== undefined ? topic.shareCount.toLocaleString() : '-'}
+                                  </Text>
+                                </div>
+
+                                {/* 收藏数 */}
+                                {topic.collectCount !== undefined && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    <StarOutlined style={{ color: '#faad14', fontSize: 14 }} />
+                                    <Text type="secondary" style={{ fontSize: 12 }}>
+                                      {topic.collectCount.toLocaleString()}
+                                    </Text>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* 发布时间 */}
+                              <div style={{ marginTop: 8 }}>
+                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  {new Date(topic.createdTime).toLocaleDateString('zh-CN', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit'
+                                  })}
+                                </Text>
+                              </div>
+                            </div>
+                          </div>
+                        </List.Item>
+                      )
+                    }}
+                  />
+                ) : (
+                  <Empty
+                    description="暂无作品"
                     image={Empty.PRESENTED_IMAGE_SIMPLE}
                     style={{ marginTop: '100px' }}
                   />

@@ -25,17 +25,25 @@ export interface Topic {
   id: string           // 作品ID
   channelId: string    // 所属新媒体账户ID
   title: string        // 作品标题
-  avatar?: string      // ✅ 新增: 头像URL (私信会话使用对方用户头像)
+  avatar?: string      // ✅ 头像URL (私信会话使用对方用户头像，作品使用缩略图)
   description?: string // 作品描述
   createdTime: number  // 创建时间
   lastMessageTime?: number  // 最后消息时间
-  lastMessageContent?: string  // ✅ 新增: 最后一条消息的内容
-  lastMessageFromName?: string // ✅ 新增: 最后一条消息的发送者
+  lastMessageContent?: string  // ✅ 最后一条消息的内容
+  lastMessageFromName?: string // ✅ 最后一条消息的发送者
   messageCount: number // 消息总数
   unreadCount: number  // 未读消息数
   lastMessage?: string // 最后一条消息内容（已废弃，使用 lastMessageContent）
   isPinned: boolean    // 是否置顶
   isPrivate?: boolean  // 是否为私信主题
+
+  // ✅ 作品统计数据
+  viewCount?: number     // 浏览数
+  likeCount?: number     // 点赞数
+  commentCount?: number  // 评论数
+  shareCount?: number    // 分享数
+  collectCount?: number  // 收藏数
+  thumbnail?: string     // 缩略图URL（优先使用，如果没有则使用 avatar）
 }
 
 // 消息 (属于某个作品)

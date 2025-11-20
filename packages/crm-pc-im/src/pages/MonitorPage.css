@@ -548,3 +548,42 @@
   animation: spin 1s linear infinite;
   font-size: 12px;
 }
+
+/* ==================== 作品列表样式 ==================== */
+.wechat-works-list {
+  background: #f7f7f7;
+}
+
+.work-item-card {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.work-item-card:hover {
+  border-color: #1890ff !important;
+}
+
+/* 响应式布局优化 */
+@media (max-width: 768px) {
+  .wechat-works-list .ant-list-grid .ant-col {
+    max-width: 100%;
+    flex: 0 0 100%;
+  }
+}
+
+@media (min-width: 769px) and (max-width: 1024px) {
+  .wechat-works-list .ant-list-grid .ant-col {
+    max-width: 50%;
+    flex: 0 0 50%;
+  }
+}
+
+/* 统计数字动画 */
+.work-item-card .anticon {
+  transition: all 0.3s;
+}
+
+.work-item-card:hover .anticon {
+  transform: scale(1.1);
+}
