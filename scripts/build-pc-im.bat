@@ -33,15 +33,43 @@ if not exist "package.json" (
     exit /b 1
 )
 
-REM 检查 config.json
+REM 准备配置文件
 echo.
-echo 检查配置文件...
+echo 准备配置文件...
+
+REM 设置生产配置模板路径
+set PROD_CONFIG_TEMPLATE=..\..\scripts\config\crm-pc-im.config.production.json
+
+REM 检查 config.json 是否存在
 if not exist "config.json" (
-    echo [错误] config.json 不存在，请创建配置文件
-    pause
-    exit /b 1
+    echo [提示] config.json 不存在，正在从生产模板创建...
+
+    if exist "%PROD_CONFIG_TEMPLATE%" (
+        copy "%PROD_CONFIG_TEMPLATE%" config.json >nul
+        echo [✓] 已从生产模板创建 config.json
+        echo [提示] 请根据实际情况修改服务器地址
+    ) else (
+        echo [错误] 生产配置模板不存在: %PROD_CONFIG_TEMPLATE%
+        pause
+        exit /b 1
+    )
+) else (
+    echo [✓] 配置文件已存在
+
+    REM 询问是否使用生产模板覆盖
+    echo.
+    set /p USE_PROD_CONFIG="是否使用生产配置模板覆盖当前配置? (y/n): "
+    if /i "!USE_PROD_CONFIG!"=="y" (
+        if exist "%PROD_CONFIG_TEMPLATE%" (
+            copy "%PROD_CONFIG_TEMPLATE%" config.json >nul
+            echo [✓] 已应用生产配置模板
+        ) else (
+            echo [错误] 生产配置模板不存在: %PROD_CONFIG_TEMPLATE%
+            pause
+            exit /b 1
+        )
+    )
 )
-echo [✓] 配置文件存在
 
 REM 显示当前配置
 echo.
@@ -49,11 +77,29 @@ echo 当前配置:
 type config.json
 echo.
 
-REM 询问是否修改配置
-set /p MODIFY_CONFIG="是否需要修改配置? (y/n): "
-if /i "%MODIFY_CONFIG%"=="y" (
-    echo 请手动编辑 config.json 文件...
-    notepad config.json
+REM 询问是否修改服务器地址
+set /p MODIFY_SERVER="是否需要修改服务器地址? (y/n): "
+if /i "!MODIFY_SERVER!"=="y" (
+    echo.
+    echo 请输入服务器地址，例如:
+    echo   - http://192.168.1.100:3000
+    echo   - http://your-domain.com:3000
+    echo   - https://api.yourdomain.com
+    echo.
+    set /p SERVER_URL="服务器地址: "
+
+    REM 使用 PowerShell 修改 JSON 文件中的 url
+    powershell -Command "(Get-Content config.json -Raw) -replace '\"url\": \"[^\"]*\"', '\"url\": \"!SERVER_URL!\"' | Set-Content config.json -Encoding UTF8"
+
+    if !errorlevel! equ 0 (
+        echo [✓] 服务器地址已更新为: !SERVER_URL!
+        echo.
+        echo 更新后的配置:
+        type config.json
+    ) else (
+        echo [警告] 自动修改失败，请手动编辑 config.json
+        notepad config.json
+    )
 )
 
 REM 清理旧的构建产物

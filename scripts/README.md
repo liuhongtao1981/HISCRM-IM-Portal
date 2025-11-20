@@ -106,9 +106,41 @@ bash scripts/deploy-admin-web.sh
 
 在 Windows 开发机上打包 Electron 客户端：
 
-### 1. 配置生产环境 URL
+### 1. 运行打包脚本（自动配置）
 
-编辑 `packages/crm-pc-im/config.json`：
+**推荐方式**：直接运行打包脚本，它会自动处理配置
+
+```powershell
+# 方法 1: 双击运行
+scripts\build-pc-im.bat
+
+# 方法 2: 命令行运行
+cd E:\HISCRM-IM-main
+scripts\build-pc-im.bat
+```
+
+**脚本会自动完成以下步骤**：
+
+1. **自动使用生产配置模板**
+   - 如果 `packages/crm-pc-im/config.json` 不存在，自动从模板创建
+   - 模板路径：`scripts/config/crm-pc-im.config.production.json`
+
+2. **交互式配置服务器地址**
+   ```
+   是否使用生产配置模板覆盖当前配置? (y/n): y
+   是否需要修改服务器地址? (y/n): y
+   服务器地址: http://192.168.1.100:3000
+   [✓] 服务器地址已更新为: http://192.168.1.100:3000
+   ```
+
+3. **自动打包**
+   - 构建 Vite 项目
+   - 构建 Electron
+   - 生成便携版 exe 文件
+
+### 2. 手动配置（可选）
+
+如果需要手动配置，可以直接编辑 `packages/crm-pc-im/config.json`：
 
 ```json
 {
@@ -118,21 +150,10 @@ bash scripts/deploy-admin-web.sh
 }
 ```
 
-或使用模板：
+或手动复制模板：
 
 ```powershell
 copy scripts\config\crm-pc-im.config.production.json packages\crm-pc-im\config.json
-```
-
-然后编辑 `config.json` 修改 `url` 为你的生产服务器地址。
-
-### 2. 运行打包脚本
-
-双击运行 `scripts\build-pc-im.bat` 或在命令行中执行：
-
-```powershell
-cd E:\HISCRM-IM-main
-scripts\build-pc-im.bat
 ```
 
 ### 3. 分发客户端
@@ -142,6 +163,11 @@ scripts\build-pc-im.bat
 ```
 packages/crm-pc-im/release/CRM-PC-IM.exe
 ```
+
+**重要说明**：
+- ✅ **便携版应用**：用户无需安装，直接双击运行
+- ✅ **服务器地址打包在内**：打包后无法修改服务器地址
+- ⚠️ **不同环境需分别打包**：测试环境和生产环境需要分别打包不同的 exe
 
 将此文件分发给用户即可使用。
 
