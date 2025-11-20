@@ -79,7 +79,7 @@ class DouyinLoginHandler {
 
       this.loginSessions.set(accountId, session);
 
-      // 使用代理管理器创建页面（带降级策略）
+      // 创建登录页面
       let page;
       if (proxyConfig) {
         try {
@@ -97,6 +97,7 @@ class DouyinLoginHandler {
 
           // 创建页面
           page = await context.newPage();
+          session.loginContext = context;  // ✅ 保存登录context引用，用于后续清理
         } catch (proxyError) {
           logger.error('Failed to create context with proxy fallback:', proxyError);
 
@@ -105,15 +106,33 @@ class DouyinLoginHandler {
           page = await this.browserManager.newPage(accountId, {});
           session.proxyUsed = null;
           session.fallbackLevel = 'emergency_direct';
+          session.loginContext = null;  // 无独立context
         }
       } else {
         // 没有配置代理,直接创建页面
         page = await this.browserManager.newPage(accountId, {});
         session.proxyUsed = null;
         session.fallbackLevel = 'none';
+        session.loginContext = null;  // 无独立context
       }
 
       session.page = page;
+
+      // ✅ 将登录页面注册到 TabManager（非持久化）
+      try {
+        const { TabTag } = require('../../browser/tab-manager');
+        const { tabId, release } = await this.browserManager.tabManager.registerExistingPage(
+          accountId,
+          page,
+          TabTag.LOGIN,
+          false  // 非持久化，可以自动关闭
+        );
+        session.loginTabId = tabId;
+        session.releaseTab = release;
+        logger.info(`✅ Login page registered to TabManager: tabId=${tabId}`);
+      } catch (registerError) {
+        logger.warn(`Failed to register login page to TabManager (will use manual close): ${registerError.message}`);
+      }
 
       // 监听页面事件
       this.setupPageListeners(page, accountId);
@@ -783,10 +802,13 @@ class DouyinLoginHandler {
    */
   async handleLoginSuccess(accountId, sessionId) {
     try {
-      logger.info(`Login successful for account ${accountId}, session ${sessionId}`);
+      logger.info(`✅ Login successful for account ${accountId}, session ${sessionId}`);
 
       const session = this.loginSessions.get(accountId);
-      if (!session) return;
+      if (!session) {
+        logger.warn(`No session found for account ${accountId}`);
+        return;
+      }
 
       // 保存 storage state（包含 cookies 和 localStorage）
       await this.browserManager.saveStorageState(accountId);
@@ -801,8 +823,10 @@ class DouyinLoginHandler {
       // 更新会话状态
       session.status = 'success';
 
-      // 清理会话（但保留 context）
-      this.cleanupSession(accountId, false);
+      // ✅ 清理登录会话（TabManager 会自动关闭非持久登录页面，保留浏览器 context）
+      logger.info(`Cleaning up login session for account ${accountId}...`);
+      await this.cleanupSession(accountId, false);
+      logger.info(`✓ Login session cleaned up for account ${accountId}`);
 
     } catch (error) {
       logger.error('Error handling login success:', error);
@@ -887,12 +911,38 @@ class DouyinLoginHandler {
       // 🆕 停止实时二维码变化检测
       this.cleanupQRCodeChangeDetection(accountId);
 
-      // 关闭页面
-      if (session.page && !session.page.isClosed()) {
-        await session.page.close();
+      // ✅ 关闭登录Tab（和回复消息的方式一样）
+      if (session.loginTabId && !session.page.isClosed()) {
+        try {
+          logger.info(`Closing login tab ${session.loginTabId} for account ${accountId}`);
+          await this.browserManager.tabManager.closeTab(accountId, session.loginTabId);
+          logger.info(`✅ Login tab closed successfully`);
+        } catch (closeError) {
+          logger.warn(`Failed to close login tab: ${closeError.message}`);
+
+          // 降级方案：手动关闭页面
+          try {
+            logger.info(`Trying manual page close...`);
+            await session.page.close();
+            logger.info(`✓ Login page closed manually`);
+          } catch (manualCloseError) {
+            logger.warn(`Manual page close also failed: ${manualCloseError.message}`);
+          }
+        }
       }
 
-      // 关闭上下文（可选）
+      // ✅ 关闭独立的登录context（如果使用了代理）
+      if (session.loginContext) {
+        try {
+          logger.info(`Closing independent login context for account ${accountId}`);
+          await session.loginContext.close();
+          logger.info(`✓ Login context closed`);
+        } catch (contextCloseError) {
+          logger.warn(`Failed to close login context: ${contextCloseError.message}`);
+        }
+      }
+
+      // 关闭账户的persistent context（可选，一般不需要）
       if (closeContext) {
         await this.browserManager.closeContext(accountId, false);
       }

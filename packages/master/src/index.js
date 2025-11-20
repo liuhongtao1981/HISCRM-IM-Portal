@@ -655,8 +655,8 @@ async function start() {
     taskScheduler.start();
     logger.info('Task scheduler started');
 
-    // 10. 初始化账户分配器
-    accountAssigner = new AccountAssigner(db, workerRegistry, taskScheduler);
+    // 10. 初始化账户分配器（传入 DataStore 用于删除账号时清理内存）
+    accountAssigner = new AccountAssigner(db, workerRegistry, taskScheduler, dataStore);
     logger.info('Account assigner initialized');
 
     // 10.1 初始化账号状态更新器

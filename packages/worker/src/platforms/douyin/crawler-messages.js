@@ -1141,9 +1141,10 @@ async function extractMessagesFromVirtualList(page) {
           const messageType = props.type || props.msgType;
           const aweType = msgContent.aweType;
 
-          // 过滤系统消息: aweType 701 通常是"我们已互相关注"等系统提示
-          // 只保留 aweType 700 (普通文本消息) 或没有 aweType 的消息
-          if (aweType && aweType === 701) {
+          // 过滤系统消息: aweType >= 700 的都是系统消息（700=通知关注、701=互相关注、714=系统提示等）
+          // 只保留 aweType < 700 或没有 aweType 的消息（正常聊天消息）
+          if (aweType && aweType >= 700) {
+            logger.debug(`[过滤系统消息] aweType=${aweType}, content="${textContent.substring(0, 50)}"`);
             return;
           }
 

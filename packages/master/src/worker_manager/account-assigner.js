@@ -8,10 +8,11 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('account-assigner');
 
 class AccountAssigner {
-  constructor(db, workerRegistry, taskScheduler) {
+  constructor(db, workerRegistry, taskScheduler, dataStore = null) {
     this.db = db;
     this.workerRegistry = workerRegistry;
     this.taskScheduler = taskScheduler;
+    this.dataStore = dataStore;  // 添加 DataStore 支持
   }
 
   /**
@@ -176,12 +177,21 @@ class AccountAssigner {
 
       if (!account || !account.assigned_worker_id) {
         logger.warn(`Account ${accountId} has no assigned worker, skipping revoke`);
+
+        // ✅ 即使没有分配 Worker，也需要清除 DataStore 中的数据
+        if (this.dataStore) {
+          const deleted = this.dataStore.deleteAccount(accountId);
+          if (deleted) {
+            logger.info(`✓ Cleared DataStore for account ${accountId} (no worker assigned)`);
+          }
+        }
+
         return true; // 没有分配Worker，算作成功
       }
 
       const workerId = account.assigned_worker_id;
 
-      // 撤销任务
+      // 撤销任务（通知 Worker 停止监控并关闭浏览器）
       this.taskScheduler.revokeTask(workerId, accountId);
 
       // 更新Worker的assigned_accounts计数
@@ -193,6 +203,18 @@ class AccountAssigner {
       this.db
         .prepare('UPDATE workers SET assigned_accounts = ? WHERE id = ?')
         .run(newCount, workerId);
+
+      // ✅ 清除 DataStore 中的账号数据
+      if (this.dataStore) {
+        const deleted = this.dataStore.deleteAccount(accountId);
+        if (deleted) {
+          logger.info(`✓ Cleared DataStore for account ${accountId}`);
+        } else {
+          logger.warn(`Account ${accountId} not found in DataStore (may not have been crawled yet)`);
+        }
+      } else {
+        logger.warn('DataStore not available, skipping memory cleanup');
+      }
 
       logger.info(`Tasks revoked for account ${accountId} from worker ${workerId}`);
 

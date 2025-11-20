@@ -17,7 +17,7 @@ const { crawlComments: crawlCommentsV2 } = require('./crawler-comments');
 const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
-const { onWorksListAPI, onWorkDetailAPI } = require('./crawler-contents');
+const { onWorksListAPI } = require('./crawler-contents');
 const { onCommentsListAPI, onCommentsListV2API, onDiscussionsListV2API, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
 const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
 
@@ -85,8 +85,8 @@ class DouyinPlatform extends PlatformBase {
         logger.info(`Registering API handlers for account ${accountId}`);
 
         // 作品相关 API
-        manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // 只匹配 /aweme/v1/creator/item/list
-        manager.register('**/aweme/v1/web/aweme/detail/**', onWorkDetailAPI);
+        manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // 只匹配 /aweme/v1/creator/item/list（只抓取自己的作品）
+        // ⚠️ 不使用 onWorkDetailAPI - 该 API 会在浏览 Feed 流时触发，抓取到其他人的作品
 
         // 评论相关 API（只使用V2 API）
         manager.register('**/aweme/v1/web/comment/list/select/**', onCommentsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/select/?aweme_id=7571732586456812800
@@ -196,28 +196,37 @@ class DouyinPlatform extends PlatformBase {
                     const loginMethod = await this.detectLoginMethod(loginPage);
                     logger.info(`Login method detected: ${loginMethod.type}`);
 
+                    let loginResult;
                     if (loginMethod.type === 'qrcode') {
                         // 显示二维码登录（在当前 loginPage 上）
-                        return await this.handleQRCodeLogin(loginPage, accountId, sessionId, {
+                        loginResult = await this.handleQRCodeLogin(loginPage, accountId, sessionId, {
                             qrSelector: loginMethod.selector,
                             expirySelector: loginMethod.expirySelector
                         });
                     } else if (loginMethod.type === 'sms') {
                         // 显示 SMS 登录（在当前 loginPage 上）
-                        return await this.handleSMSLogin(loginPage, accountId, sessionId, {
+                        loginResult = await this.handleSMSLogin(loginPage, accountId, sessionId, {
                             phoneInputSelector: loginMethod.phoneInputSelector,
                             codeInputSelector: loginMethod.codeInputSelector
                         });
                     } else {
                         throw new Error(`Unsupported login method: ${loginMethod.type}`);
                     }
+
+                    // ✅ 登录成功后释放登录窗口（非持久化窗口会自动关闭）
+                    logger.info('Releasing login window after successful login...');
+                    await release();
+                    logger.info('✅ Login window released (will be auto-closed)');
+
+                    return loginResult;
                 }
             } catch (error) {
-                // 确保登录页面被关闭 - 使用 TabManager
+                // 确保登录页面被关闭 - 使用 release()
                 try {
-                    await this.browserManager.tabManager.closeTab(accountId, tabId);
+                    logger.warn('Login failed, releasing login window...');
+                    await release();
                 } catch (e) {
-                    logger.warn('Failed to close login tab:', e.message);
+                    logger.warn('Failed to release login tab:', e.message);
                 }
                 throw error;
             }
@@ -264,6 +273,28 @@ class DouyinPlatform extends PlatformBase {
 
             // ⚠️ 不进行任何导航操作，直接检测当前页面
             // 调用者负责确保页面已在正确的 URL
+
+            // 🐛 调试：检查页面上是否有任何包含"抖音号"的元素
+            try {
+                const debugInfo = await page.evaluate(() => {
+                    const allDivs = Array.from(document.querySelectorAll('div'));
+                    const containerDivs = allDivs.filter(el =>
+                        el.className && el.className.includes('container')
+                    );
+                    const douyinDivs = Array.from(document.querySelectorAll('*')).filter(el =>
+                        el.textContent && el.textContent.includes('抖音号')
+                    );
+                    return {
+                        totalDivs: allDivs.length,
+                        containerDivs: containerDivs.map(el => el.className).slice(0, 10),
+                        hasDouyinText: douyinDivs.length > 0,
+                        douyinClasses: douyinDivs.map(el => `${el.tagName}.${el.className}`).slice(0, 5)
+                    };
+                });
+                logger.info(`[checkLoginStatus] 🐛 Debug info: ${JSON.stringify(debugInfo)}`);
+            } catch (debugError) {
+                logger.warn(`[checkLoginStatus] Debug failed: ${debugError.message}`);
+            }
 
             // ⭐ 优先检查：如果页面上有登录元素（二维码、登录按钮等），说明未登录
             const loginPageIndicators = [

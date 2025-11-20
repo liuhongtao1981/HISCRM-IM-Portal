@@ -823,6 +823,7 @@ class IMWebSocketServer {
                     channelId: channelId,
                     title: content.title || '无标题作品',
                     avatar: content.coverUrl || null,  // ✅ 新增: 作品封面图作为头像
+                    thumbnail: content.coverUrl || null,  // ✅ 新增: 缩略图（优先使用封面图）
                     description: content.description || '',
                     createdTime: normalizeTimestamp(content.publishTime),  // ✅ 归一化时间戳
                     lastMessageTime: normalizeTimestamp(actualLastCommentTime),  // ✅ 修复: 使用评论列表中的实际最新时间
@@ -839,7 +840,13 @@ class IMWebSocketServer {
                         return true;
                     }).length,
                     isPinned: false,
-                    isPrivate: false  // ✅ 标记为评论主题（非私信）
+                    isPrivate: false,  // ✅ 标记为评论主题（非私信）
+                    // ✅ 新增: 作品统计数据（从 DataStore 中获取）
+                    viewCount: content.viewCount || 0,      // 浏览数
+                    likeCount: content.likeCount || 0,      // 点赞数
+                    commentCount: content.commentCount || 0,  // 评论数（平台统计）
+                    shareCount: content.shareCount || 0,    // 分享数
+                    collectCount: content.collectCount || 0  // 收藏数
                 };
 
                 topics.push(topic);

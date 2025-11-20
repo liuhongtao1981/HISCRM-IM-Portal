@@ -127,11 +127,15 @@ async function onWorksListAPI(body, response) {
 
   // 检查 item_info_list
   if (!body || !body.item_info_list) {
+    logger.warn(`⚠️ [作品API] body 或 item_info_list 不存在`);
     return;
   }
 
+  logger.info(`📥 [作品API] 接收到 ${body.item_info_list.length} 个作品`);
+
   // URL 去重
   if (apiData.cache.has(url)) {
+    logger.debug(`🔄 [作品API] URL 已处理，跳过: ${url}`);
     return;
   }
 
@@ -141,16 +145,26 @@ async function onWorksListAPI(body, response) {
   const page = response.frame().page();
   const { accountId, dataManager } = page._accountContext || {};
 
+  logger.debug(`🔍 [作品API] accountId=${accountId}, dataManager=${!!dataManager}, count=${body.item_info_list.length}`);
+
   // 使用账号级别隔离的 DataManager
   if (dataManager && body.item_info_list.length > 0) {
     try {
+      logger.debug(`⚙️ [作品API] 开始处理 ${body.item_info_list.length} 个作品`);
       const contents = dataManager.batchUpsertContents(
         body.item_info_list,
         DataSource.API
       );
-      logger.info(`[API] [${accountId}] 作品列表: ${contents.length} 个`);
+      logger.info(`✅ [API] [${accountId}] 作品列表: ${contents.length} 个 (原始: ${body.item_info_list.length})`);
     } catch (error) {
-      logger.error(`[API] [${accountId}] 作品列表处理失败: ${error.message}`);
+      logger.error(`❌ [API] [${accountId}] 作品列表处理失败: ${error.message}`, error.stack);
+    }
+  } else {
+    if (!dataManager) {
+      logger.warn(`⚠️ [作品API] DataManager 不存在，无法处理作品`);
+    }
+    if (body.item_info_list.length === 0) {
+      logger.warn(`⚠️ [作品API] item_info_list 为空数组`);
     }
   }
 

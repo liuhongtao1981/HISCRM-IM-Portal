@@ -148,9 +148,104 @@ class LoginDetectionTask {
       });
 
       try {
-        // 直接在当前页面检测登录状态（不进行导航）
-        // PLACEHOLDER tab 应该保持在默认首页，避免干扰用户
+        // ✅ 每次检测前都跳转到创作中心首页，确保获取最新状态
+        // 获取创作中心URL
+        const creatorCenterUrl = this.platformInstance.config?.urls?.creatorCenter;
         const currentUrl = page.url();
+
+        if (creatorCenterUrl) {
+          // ✅ 检查是否在创作中心首页（精确匹配路径）
+          let isOnCreatorCenterHome = false;
+          try {
+            const currentUrlObj = new URL(currentUrl);
+            const targetUrlObj = new URL(creatorCenterUrl);
+
+            // 精确匹配：主机名 + 路径名（忽略查询参数）
+            isOnCreatorCenterHome =
+              currentUrlObj.hostname === targetUrlObj.hostname &&
+              currentUrlObj.pathname === targetUrlObj.pathname;
+
+            logger.debug(`URL check: current=${currentUrlObj.pathname}, target=${targetUrlObj.pathname}, match=${isOnCreatorCenterHome}`);
+          } catch (urlError) {
+            logger.warn(`URL parsing error: ${urlError.message}, fallback to simple string match`);
+            // 回退：精确匹配整个URL（忽略查询参数）
+            isOnCreatorCenterHome = currentUrl.split('?')[0] === creatorCenterUrl.split('?')[0];
+          }
+
+          if (isOnCreatorCenterHome) {
+            // 已经在创作中心首页，执行刷新
+            logger.debug(`Already on creator center home page, refreshing to get latest status`);
+            try {
+              await page.reload({
+                waitUntil: 'domcontentloaded',
+                timeout: 15000
+              });
+              logger.debug(`✓ Refreshed creator center page`);
+
+              // ⚠️ 等待 React 渲染完成（抖音是 SPA 应用）
+              // 方案A：等待用户信息容器或头像元素（主方案）
+              try {
+                await page.waitForSelector('div.container-vEyGlK, img.img-PeynF_', {
+                  timeout: 5000,
+                  state: 'visible'
+                });
+                logger.debug(`✓ User info elements loaded (React rendered)`);
+              } catch (waitError) {
+                logger.debug(`User info elements not found, trying fallback: ${waitError.message}`);
+                // 方案B：检查活动列表容器（备用方案）
+                try {
+                  await page.waitForSelector('div.list-xkLunx', {
+                    timeout: 3000,
+                    state: 'visible'
+                  });
+                  logger.debug(`✓ Activity list loaded (fallback method)`);
+                } catch (fallbackError) {
+                  logger.debug(`Fallback method also failed (may be not logged in): ${fallbackError.message}`);
+                }
+              }
+            } catch (reloadError) {
+              logger.warn(`Failed to reload page (will check current state): ${reloadError.message}`);
+            }
+          } else {
+            // 不在创作中心首页，导航过去
+            logger.debug(`Not on creator center home page (current: ${currentUrl}), navigating to: ${creatorCenterUrl}`);
+            try {
+              await page.goto(creatorCenterUrl, {
+                waitUntil: 'domcontentloaded',
+                timeout: 15000  // 15秒超时
+              });
+              logger.debug(`✓ Navigated to creator center (from: ${currentUrl})`);
+
+              // ⚠️ 等待 React 渲染完成（抖音是 SPA 应用）
+              // 方案A：等待用户信息容器或头像元素（主方案）
+              try {
+                await page.waitForSelector('div.container-vEyGlK, img.img-PeynF_', {
+                  timeout: 5000,
+                  state: 'visible'
+                });
+                logger.debug(`✓ User info elements loaded (React rendered)`);
+              } catch (waitError) {
+                logger.debug(`User info elements not found, trying fallback: ${waitError.message}`);
+                // 方案B：检查活动列表容器（备用方案）
+                try {
+                  await page.waitForSelector('div.list-xkLunx', {
+                    timeout: 3000,
+                    state: 'visible'
+                  });
+                  logger.debug(`✓ Activity list loaded (fallback method)`);
+                } catch (fallbackError) {
+                  logger.debug(`Fallback method also failed (may be not logged in): ${fallbackError.message}`);
+                }
+              }
+            } catch (navError) {
+              logger.warn(`Failed to navigate to creator center (will check current page): ${navError.message}`);
+              // 导航失败时仍然尝试在当前页面检测
+            }
+          }
+        } else {
+          logger.warn(`Creator center URL not configured for platform ${this.account.platform}`);
+        }
+
         // 调用平台的登录状态检测方法
         const loginStatus = await this.platformInstance.checkLoginStatus(page);
         const newStatus = loginStatus.isLoggedIn ? 'logged_in' : 'not_logged_in';

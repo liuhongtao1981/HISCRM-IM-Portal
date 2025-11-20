@@ -212,6 +212,10 @@ class AccountDataManager {
    * 添加或更新作品
    */
   upsertContent(contentData, source = DataSource.API) {
+    // 检查是否已存在（用于判断是否为新作品）
+    const tempId = this.generateContentId({ contentId: contentData.aweme_id || contentData.item_id_plain || contentData.item_id });
+    const isNew = !this.contents.items.has(tempId);
+
     const content = new Content();
     content.accountId = this.accountId;
     content.platform = this.platform;
@@ -225,7 +229,10 @@ class AccountDataManager {
 
     this.contents.set(id, content);
 
-    this.logger.debug(`Upserted content: ${id} (${content.title})`);
+    this.logger.debug(`Upserted content: ${id} (${content.title?.substring(0, 30) || 'no title'})`);
+
+    // ✨ 返回是否为新作品（供 batchUpsertContents 使用）
+    content._isNew = isNew;
 
     return content;
   }
@@ -235,15 +242,45 @@ class AccountDataManager {
    */
   batchUpsertContents(contentsData, source = DataSource.API) {
     const results = [];
-    for (const data of contentsData) {
+    let hasNewContent = false;
+    let errorCount = 0;
+
+    this.logger.debug(`📦 [批量处理] 收到 ${contentsData.length} 个作品数据`);
+
+    for (let i = 0; i < contentsData.length; i++) {
+      const data = contentsData[i];
       try {
+        this.logger.debug(`🔧 [批量处理] 处理第 ${i + 1}/${contentsData.length} 个作品`);
         const content = this.upsertContent(data, source);
         results.push(content);
+
+        // 检查是否有新作品
+        if (content._isNew) {
+          hasNewContent = true;
+        }
       } catch (error) {
-        this.logger.error(`Failed to upsert content:`, error);
+        errorCount++;
+        this.logger.error(`❌ [批量处理] 第 ${i + 1} 个作品处理失败:`, {
+          error: error.message,
+          stack: error.stack,
+          data: {
+            item_id: data.item_id,
+            item_id_plain: data.item_id_plain,
+            aweme_id: data.aweme_id,
+            title: data.title || data.desc
+          }
+        });
       }
     }
-    this.logger.info(`Batch upserted ${results.length} contents`);
+
+    this.logger.info(`✅ [批量处理] 完成: ${results.length}/${contentsData.length} 个成功, ${errorCount} 个失败 (${hasNewContent ? 'has new' : 'all existing'})`);
+
+    // ✨ 如果有新作品，立即同步到 Master
+    if (hasNewContent && this.pushConfig.autoSync) {
+      this.logger.info(`🔔 检测到新作品，触发立即推送到 Master`);
+      this.syncToMasterNow();
+    }
+
     return results;
   }
 

@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, EyeOutlined, LikeOutlined, ShareAltOutlined, StarOutlined } from '@ant-design/icons'
+import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select } from 'antd'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, EyeOutlined, LikeOutlined, ShareAltOutlined, StarOutlined, SortAscendingOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -65,6 +65,7 @@ export default function MonitorPage() {
   const [showPrivateList, setShowPrivateList] = useState(true) // 私信Tab下是否显示列表(而不是对话)
   const [isSending, setIsSending] = useState(false) // 是否正在发送消息
   const [sendingQueues, setSendingQueues] = useState<Record<string, any[]>>({}) // 发送队列 topicId -> SendingMessage[]
+  const [worksSortBy, setWorksSortBy] = useState<'createdTime' | 'viewCount' | 'likeCount' | 'commentCount' | 'shareCount' | 'collectCount'>('createdTime') // 作品列表排序字段
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -1199,10 +1200,34 @@ export default function MonitorPage() {
             ) : activeTab === 'works' ? (
               /* 作品列表Tab - 显示用户的所有作品及统计数据 */
               <div className="wechat-works-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+                {/* 排序选择器 */}
+                <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <SortAscendingOutlined style={{ fontSize: 16, color: '#8c8c8c' }} />
+                  <Text type="secondary">排序：</Text>
+                  <Select
+                    value={worksSortBy}
+                    onChange={(value) => setWorksSortBy(value)}
+                    style={{ width: 160 }}
+                    options={[
+                      { value: 'createdTime', label: '发布时间' },
+                      { value: 'viewCount', label: '浏览数' },
+                      { value: 'likeCount', label: '点赞数' },
+                      { value: 'commentCount', label: '评论数' },
+                      { value: 'shareCount', label: '分享数' },
+                      { value: 'collectCount', label: '收藏数' },
+                    ]}
+                  />
+                </div>
+
                 {currentTopics.filter(t => !t.isPrivate).length > 0 ? (
                   <List
                     grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 3, xxl: 4 }}
-                    dataSource={currentTopics.filter(t => !t.isPrivate).sort((a, b) => b.createdTime - a.createdTime)}
+                    dataSource={currentTopics.filter(t => !t.isPrivate).sort((a, b) => {
+                      // 根据选择的字段进行倒序排序
+                      const aValue = a[worksSortBy] ?? 0
+                      const bValue = b[worksSortBy] ?? 0
+                      return bValue - aValue
+                    })}
                     renderItem={(topic) => {
                       const thumbnail = topic.thumbnail || topic.avatar
                       return (
