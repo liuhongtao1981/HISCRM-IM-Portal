@@ -185,12 +185,12 @@ class DouyinDataManager extends AccountDataManager {
     if (!awemeId && secItemId) {
       // item_id 本身就是 Base64 编码的，不能直接用
       // 但我们可以尝试从其他字段获取
-      this.logger.warn(`⚠️  [mapContentData] 作品只有 sec_item_id，无 aweme_id: ${secItemId.substring(0, 40)}...`);
+      this.logger.warn(`⚠️  [mapContentData] 作品只有 sec_item_id，无 aweme_id: ${String(secItemId).substring(0, 40)}...`);
     }
 
     this.logger.debug(`📝 [mapContentData] ID 字段:`, {
       aweme_id: awemeId,
-      sec_item_id: secItemId ? secItemId.substring(0, 40) + '...' : null,
+      sec_item_id: secItemId ? String(secItemId).substring(0, 40) + '...' : null,
       share_url: douyinData.share_url
     });
 

@@ -260,12 +260,15 @@ class LoginDetectionTask {
 
         this.currentLoginStatus = newStatus;
 
-        // 更新账户状态报告器
+        // 更新账户状态报告器并立即上报（登录状态变化是关键事件）
         if (this.accountStatusReporter) {
           this.accountStatusReporter.updateAccountStatus(this.account.id, {
             login_status: newStatus,
             last_login_check: Math.floor(Date.now() / 1000)
           });
+          // ✨ 立即上报登录状态变化，不等待定时周期
+          await this.accountStatusReporter.reportStatuses();
+          logger.info(`✅ Login status change reported immediately: ${this.account.id} -> ${newStatus}`);
         }
 
         // 不关闭默认Tab（持久化）
@@ -340,12 +343,15 @@ class LoginDetectionTask {
           }
         }
 
-        // 3. 同步登录成功状态给Master
+        // 3. 同步登录成功状态给Master并立即上报
         if (this.accountStatusReporter) {
           this.accountStatusReporter.updateAccountStatus(this.account.id, {
             worker_status: 'online',
             login_status: 'logged_in'
           });
+          // ✨ 立即上报登录状态恢复，不等待定时周期
+          await this.accountStatusReporter.reportStatuses();
+          logger.info(`✅ Login status recovery reported immediately: ${this.account.id} -> logged_in`);
         }
 
         logger.info(`🚀 All tasks started for logged-in account ${this.account.id}`);

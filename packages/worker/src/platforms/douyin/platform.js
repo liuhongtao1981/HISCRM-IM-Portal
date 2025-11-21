@@ -90,7 +90,12 @@ class DouyinPlatform extends PlatformBase {
         // manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);
         // ⚠️ 不使用 onWorkDetailAPI - 该 API 会在浏览 Feed 流时触发，抓取到其他人的作品
 
-        // 评论相关 API（只使用V2 API）
+        // 评论相关 API（支持V1创作者中心API和V2 web API）
+        // ✨ V1 创作者中心 API（评论管理页面触发） 暂时 不使用  V2 信息更全面
+        //manager.register('**/aweme/v1/creator/comment/list{/,}?**', onCommentsListAPI);  //匹配 /aweme/v1/creator/comment/list/?cursor=0&count=10&item_id=...
+        //manager.register('**/aweme/v1/creator/comment/reply/list{/,}?**', onDiscussionsListAPI); //匹配 /aweme/v1/creator/comment/reply/list/?cursor=0&count=10&comment_id=...
+
+        // V2 web API（通知页面触发）
         manager.register('**/aweme/v1/web/comment/list/select/**', onCommentsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/select/?aweme_id=7571732586456812800
         manager.register('**/aweme/v1/web/comment/list/reply/**', onDiscussionsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/reply/?comment_id=7572250319850095397
 
