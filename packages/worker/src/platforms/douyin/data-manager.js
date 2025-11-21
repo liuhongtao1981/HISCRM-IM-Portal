@@ -165,8 +165,9 @@ class DouyinDataManager extends AccountDataManager {
    * API: /creator/item/list 返回 { item_info_list: [...] }
    */
   mapContentData(douyinData) {
-    // 优先使用 aweme_id，如果没有则从分享链接提取
-    let awemeId = douyinData.aweme_id || douyinData.item_id_plain;
+    // 优先使用 aweme_id，如果没有则尝试其他 ID 字段
+    // items API 使用 id，aweme_list API 使用 aweme_id
+    let awemeId = douyinData.aweme_id || douyinData.id || douyinData.item_id_plain;
     const secItemId = douyinData.sec_item_id || douyinData.item_id;
 
     // 如果没有 aweme_id，尝试从 share_url 提取
@@ -200,28 +201,32 @@ class DouyinDataManager extends AccountDataManager {
       // 基础信息
       contentId,
       type: this.mapContentType(douyinData),
-      title: douyinData.desc || douyinData.title || '',
-      description: douyinData.desc || '',
+      // items API 使用 description，aweme_list API 使用 desc
+      title: douyinData.desc || douyinData.description || douyinData.title || '',
+      description: douyinData.desc || douyinData.description || '',
       coverUrl: this.extractCoverUrl(douyinData),
-      url: douyinData.share_url || `https://www.douyin.com/video/${douyinData.aweme_id}`,
+      url: douyinData.share_url || `https://www.douyin.com/video/${awemeId}`,
 
       // 媒体信息
+      // items API 使用 video_info，aweme_list API 使用 video
       mediaUrls: this.extractMediaUrls(douyinData),
-      duration: douyinData.duration || douyinData.video?.duration || 0,
+      duration: douyinData.duration || douyinData.video_info?.duration || douyinData.video?.duration || 0,
       width: douyinData.video?.width || 0,
       height: douyinData.video?.height || 0,
 
       // 作者信息
-      authorId: String(douyinData.author_user_id || douyinData.anchor_user_id),
+      // items API 使用 user_id，aweme_list API 使用 author.uid
+      authorId: String(douyinData.user_id || douyinData.author_user_id || douyinData.author?.uid || douyinData.anchor_user_id),
       authorName: douyinData.author?.nickname || '',
       authorAvatar: this.extractAvatarUrl(douyinData.author?.avatar_thumb),
 
       // 统计数据
-      viewCount: this.extractCount(douyinData, 'play_count', 'view_count'),
-      likeCount: this.extractCount(douyinData, 'digg_count', 'like_count'),
+      // ✨ 支持多种数据源：metrics (items) / statistics (aweme_list) / 直接字段
+      viewCount: this.extractCount(douyinData, 'view_count', 'play_count'),
+      likeCount: this.extractCount(douyinData, 'like_count', 'digg_count'),
       commentCount: this.extractCount(douyinData, 'comment_count'),
       shareCount: this.extractCount(douyinData, 'share_count'),
-      collectCount: this.extractCount(douyinData, 'collect_count'),
+      collectCount: this.extractCount(douyinData, 'favorite_count', 'collect_count'),
 
       // 发布信息
       publishTime: this.parsePublishTime(douyinData.create_time || douyinData.publish_time),
@@ -385,11 +390,24 @@ class DouyinDataManager extends AccountDataManager {
 
   /**
    * 提取封面 URL
+   * 支持多种格式：items API (cover) / aweme_list API (Cover / video.cover)
    */
   extractCoverUrl(contentData) {
+    // 直接的封面 URL
     if (contentData.cover_image_url) return contentData.cover_image_url;
+
+    // items API: cover.url_list (小写)
+    if (contentData.cover?.url_list?.[0]) return contentData.cover.url_list[0];
+
+    // aweme_list API: Cover.url_list (大写)
+    if (contentData.Cover?.url_list?.[0]) return contentData.Cover.url_list[0];
+
+    // aweme_list API: video.cover.url_list
     if (contentData.video?.cover?.url_list?.[0]) return contentData.video.cover.url_list[0];
+
+    // aweme_list API: video.origin_cover.url_list
     if (contentData.video?.origin_cover?.url_list?.[0]) return contentData.video.origin_cover.url_list[0];
+
     return null;
   }
 
@@ -429,9 +447,21 @@ class DouyinDataManager extends AccountDataManager {
 
   /**
    * 提取统计数据
+   * 支持多种数据源：metrics (items API) > statistics (aweme_list API) > 直接字段
    */
   extractCount(data, ...keys) {
-    // 优先从 statistics 中提取
+    // 优先从 metrics 中提取（来自 items API）
+    if (data.metrics) {
+      for (const key of keys) {
+        if (data.metrics[key] !== undefined) {
+          // metrics 中的值可能是字符串，需要转换
+          const value = data.metrics[key];
+          return parseInt(value) || 0;
+        }
+      }
+    }
+
+    // 其次从 statistics 中提取（来自 aweme_list API）
     if (data.statistics) {
       for (const key of keys) {
         if (data.statistics[key] !== undefined) {
@@ -440,7 +470,7 @@ class DouyinDataManager extends AccountDataManager {
       }
     }
 
-    // 直接从数据中提取
+    // 最后直接从数据中提取
     for (const key of keys) {
       if (data[key] !== undefined) {
         return parseInt(data[key]) || 0;
