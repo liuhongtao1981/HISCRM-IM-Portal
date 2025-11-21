@@ -5,6 +5,7 @@ contextBridge.exposeInMainWorld('electron', {
   downloadFile: (fileUrl: string, fileName: string) =>
     ipcRenderer.invoke('download-file', { fileUrl, fileName }),
   openFile: (filePath: string) => ipcRenderer.invoke('open-file', filePath),
+  openExternal: (url: string) => ipcRenderer.invoke('open-external', url),
   setWebSocketUrl: (url: string) => ipcRenderer.invoke('set-websocket-url', url),
   getWebSocketUrl: () => ipcRenderer.invoke('get-websocket-url'),
   showWindow: () => ipcRenderer.invoke('show-window')
@@ -16,6 +17,7 @@ declare global {
       getDownloadPath: () => Promise<string>
       downloadFile: (fileUrl: string, fileName: string) => Promise<{ success: boolean; filePath?: string; error?: string }>
       openFile: (filePath: string) => Promise<{ success: boolean; error?: string }>
+      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
       setWebSocketUrl: (url: string) => Promise<{ success: boolean; error?: string }>
       getWebSocketUrl: () => Promise<string>
       showWindow: () => Promise<{ success: boolean }>

@@ -17,7 +17,7 @@ const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
 const { onWorksStatsAPI } = require('./crawler-contents');
-const { onCommentsListAPI, onCommentsListV2API, onDiscussionsListV2API, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
+const { onCommentsListV2API, onDiscussionsListV2API, onNoticeDetailAPI } = require('./crawler-comments');
 const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
 
 // 导入实时监控管理器
@@ -90,12 +90,7 @@ class DouyinPlatform extends PlatformBase {
         // manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);
         // ⚠️ 不使用 onWorkDetailAPI - 该 API 会在浏览 Feed 流时触发，抓取到其他人的作品
 
-        // 评论相关 API（支持V1创作者中心API和V2 web API）
-        // ✨ V1 创作者中心 API（评论管理页面触发） 暂时 不使用  V2 信息更全面
-        //manager.register('**/aweme/v1/creator/comment/list{/,}?**', onCommentsListAPI);  //匹配 /aweme/v1/creator/comment/list/?cursor=0&count=10&item_id=...
-        //manager.register('**/aweme/v1/creator/comment/reply/list{/,}?**', onDiscussionsListAPI); //匹配 /aweme/v1/creator/comment/reply/list/?cursor=0&count=10&comment_id=...
-
-        // V2 web API（通知页面触发）
+        // 评论相关 API（V2 web API - 通知页面触发）
         manager.register('**/aweme/v1/web/comment/list/select/**', onCommentsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/select/?aweme_id=7571732586456812800
         manager.register('**/aweme/v1/web/comment/list/reply/**', onDiscussionsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/reply/?comment_id=7572250319850095397
 
@@ -784,9 +779,65 @@ class DouyinPlatform extends PlatformBase {
                     waitUntil: 'networkidle',
                     timeout: 15000
                 });
-                logger.info(`✅ [crawlComments] 作品管理页面访问成功，等待 API 拦截处理`);
+                logger.info(`✅ [crawlComments] 作品管理页面访问成功，开始滚动加载所有作品`);
 
-                // 等待一小段时间让 API 拦截器处理数据
+                // 🔄 滚动到底部加载所有作品（分页触发）
+                let previousHeight = 0;
+                let currentHeight = await page.evaluate(() => document.body.scrollHeight);
+                let scrollAttempts = 0;
+                const maxScrollAttempts = 50; // 最多滚动 50 次（支持更多作品）
+                let noMoreDataFound = false;
+                let heightUnchangedCount = 0; // 记录高度连续未变化的次数
+
+                while (scrollAttempts < maxScrollAttempts && !noMoreDataFound) {
+                    previousHeight = currentHeight;
+
+                    // 滚动到底部
+                    await page.evaluate(() => {
+                        window.scrollTo(0, document.body.scrollHeight);
+                    });
+
+                    // 等待新内容加载
+                    await page.waitForTimeout(1500);
+
+                    // 检查是否有"没有更多"的提示
+                    noMoreDataFound = await page.evaluate(() => {
+                        const body = document.body.innerText;
+                        // 检查常见的"没有更多"提示文本
+                        return body.includes('没有更多') ||
+                               body.includes('已经到底了') ||
+                               body.includes('暂无更多') ||
+                               body.includes('没有更多作品') ||
+                               body.includes('到底了');
+                    });
+
+                    currentHeight = await page.evaluate(() => document.body.scrollHeight);
+                    scrollAttempts++;
+
+                    // 检查高度是否变化
+                    if (previousHeight === currentHeight) {
+                        heightUnchangedCount++;
+                        logger.debug(`[crawlComments] 滚动进度: ${scrollAttempts}/${maxScrollAttempts}, 高度未变化 (${heightUnchangedCount}/3)`);
+
+                        // 如果连续3次高度不变，认为已到底
+                        if (heightUnchangedCount >= 3) {
+                            logger.info(`[crawlComments] 检测到高度连续3次未变化，判断已到底`);
+                            break;
+                        }
+                    } else {
+                        heightUnchangedCount = 0; // 重置计数器
+                        logger.debug(`[crawlComments] 滚动进度: ${scrollAttempts}/${maxScrollAttempts}, 高度: ${currentHeight}px`);
+                    }
+
+                    if (noMoreDataFound) {
+                        logger.info(`[crawlComments] 检测到"没有更多"提示，停止滚动`);
+                        break;
+                    }
+                }
+
+                logger.info(`✅ [crawlComments] 滚动完成，共滚动 ${scrollAttempts} 次，最终高度: ${currentHeight}px${noMoreDataFound ? '（检测到"没有更多"提示）' : ''}`);
+
+                // 等待一小段时间让 API 拦截器处理所有数据
                 await page.waitForTimeout(2000);
 
                 // 数据已通过 onWorksStatsAPI 拦截器自动处理并同步到 DataManager

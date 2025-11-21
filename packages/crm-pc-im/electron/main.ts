@@ -84,6 +84,16 @@ ipcMain.handle('open-file', async (_event, filePath) => {
   }
 })
 
+ipcMain.handle('open-external', async (_event, url) => {
+  try {
+    const { shell } = require('electron')
+    await shell.openExternal(url)
+    return { success: true }
+  } catch (error: any) {
+    return { success: false, error: error.message }
+  }
+})
+
 ipcMain.handle('set-websocket-url', async (_event, url) => {
   try {
     // 保存 WebSocket 地址到本地存储

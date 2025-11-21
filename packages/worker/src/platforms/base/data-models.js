@@ -204,7 +204,7 @@ class Content extends BaseDataModel {
     this.likeCount = 0;                // 点赞数
     this.commentCount = 0;             // 评论数
     this.shareCount = 0;               // 分享数
-    this.collectCount = 0;             // 收藏数
+    this.favoriteCount = 0;             // 收藏数
 
     // 发布信息
     this.publishTime = null;           // 发布时间

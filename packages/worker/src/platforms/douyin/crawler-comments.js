@@ -53,7 +53,6 @@ function normalizeCommentData(comment, context = {}) {
 
     // ✅ 作品ID：V2自带aweme_id
     aweme_id: comment.aweme_id || context.aweme_id,
-    item_id: comment.aweme_id || context.aweme_id,
 
     // ✅ 父评论ID：从reply_id获取
     parent_comment_id: context.parent_comment_id || comment.reply_id || null,
@@ -109,7 +108,6 @@ function normalizeCommentData(comment, context = {}) {
 async function onCommentsListV2API(body, response) {
 
     const url = response.url();
-    const itemId = extractItemId(url);
     const awemeId = extractAwemeId(url);
     const cursor = extractCursor(url);
 
@@ -162,7 +160,7 @@ async function onCommentsListV2API(body, response) {
     apiData.comments.push({
         timestamp: Date.now(),
         url: url,
-        aweme_id: awemeId,
+        aweme_id: awemeId,  // ✅ 统一使用 aweme_id 作为作品 ID
         cursor: cursor,
         data: body,
     });
@@ -234,7 +232,8 @@ async function onDiscussionsListV2API(body, response) {
     apiData.discussions.push({
         timestamp: Date.now(),
         url: url,
-        aweme_id: awemeId,  // ✅ V2 API 使用 aweme_id 而不是 comment_id
+        comment_id: commentId,  // ✅ V2 API: 父评论 ID，用于分组
+        aweme_id: awemeId,      // ✅ V2 API 使用 aweme_id 而不是 comment_id
         cursor: cursor,
         data: body,
     });
@@ -536,9 +535,9 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
         await page.waitForTimeout(3000);
 
         // 建立映射
-        if (apiData.comments.length > i && apiData.comments[i].item_id) {
-          const itemId = apiData.comments[i].item_id;
-          videoIndexToItemId[video.index] = itemId;
+        if (apiData.comments.length > i && apiData.comments[i].aweme_id) {
+          const awemeId = apiData.comments[i].aweme_id;
+          videoIndexToItemId[video.index] = awemeId;
         }
 
         // 滚动加载所有评论
@@ -781,8 +780,7 @@ async function crawlComments(page, account, options = {}, dataManager = null) {
       allComments.push(...uniqueComments);
 
       videosWithComments.push({
-        aweme_id: itemId,  // 修正: 使用 aweme_id 而不是 item_id
-        item_id: itemId,   // 保留 item_id 作为兼容字段
+        aweme_id: itemId,  // ✅ 统一使用 aweme_id 作为作品 ID
         title: videoInfo.title,
         total_count: totalCount,
         actual_count: uniqueComments.length,
@@ -960,24 +958,24 @@ function extractCursor(url) {
 }
 
 /**
- * 按item_id分组API响应
+ * 按aweme_id分组API响应
  * @param {Array} responses - API响应数组
- * @returns {Object} 按item_id分组的响应
+ * @returns {Object} 按aweme_id分组的响应
  */
 function groupResponsesByItemId(responses) {
   const grouped = {};
   responses.forEach(resp => {
-    if (resp.item_id) {
-      if (!grouped[resp.item_id]) {
-        grouped[resp.item_id] = [];
+    if (resp.aweme_id) {
+      if (!grouped[resp.aweme_id]) {
+        grouped[resp.aweme_id] = [];
       }
-      grouped[resp.item_id].push(resp);
+      grouped[resp.aweme_id].push(resp);
     }
   });
 
   // 按cursor排序
-  for (const itemId in grouped) {
-    grouped[itemId].sort((a, b) => a.cursor - b.cursor);
+  for (const awemeId in grouped) {
+    grouped[awemeId].sort((a, b) => a.cursor - b.cursor);
   }
 
   return grouped;

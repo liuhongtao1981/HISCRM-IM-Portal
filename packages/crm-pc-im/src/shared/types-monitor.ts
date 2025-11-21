@@ -42,8 +42,35 @@ export interface Topic {
   likeCount?: number     // 点赞数
   commentCount?: number  // 评论数
   shareCount?: number    // 分享数
-  collectCount?: number  // 收藏数
+  favoriteCount?: number  // 收藏数
+  danmakuCount?: number  // 弹幕数
+  dislikeCount?: number  // 不喜欢数
+  downloadCount?: number // 下载数
+  subscribeCount?: number // 订阅数
+  unsubscribeCount?: number // 取消订阅数
+
+  // ✅ 作品统计比率（0-1之间的浮点数）
+  // 注意：API 中没有 view_rate 字段
+  likeRate?: number      // 点赞率
+  commentRate?: number   // 评论率
+  shareRate?: number     // 分享率
+  favoriteRate?: number  // 收藏率
+  dislikeRate?: number   // 不喜欢率
+  subscribeRate?: number // 订阅率
+  unsubscribeRate?: number // 取消订阅率
+
+  // ✅ 作品高级分析指标
+  avgViewProportion?: number    // 平均观看比例 (0-1)
+  avgViewSecond?: number        // 平均观看秒数
+  bounceRate2s?: number         // 2秒跳出率 (0-1)
+  completionRate?: number       // 完播率 (0-1)
+  completionRate5s?: number     // 5秒完播率 (0-1)
+  coverShow?: number            // 封面展示次数
+  fanViewProportion?: number    // 粉丝观看比例 (0-1)
+  homepageVisitCount?: number   // 主页访问数
+
   thumbnail?: string     // 缩略图URL（优先使用，如果没有则使用 avatar）
+  url?: string           // 作品URL（用于在浏览器中打开）
 }
 
 // 消息 (属于某个作品)

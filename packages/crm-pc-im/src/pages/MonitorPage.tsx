@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, EyeOutlined, LikeOutlined, ShareAltOutlined, StarOutlined, SortAscendingOutlined } from '@ant-design/icons'
+import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip } from 'antd'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -32,6 +32,7 @@ declare global {
   interface Window {
     electron?: {
       showWindow: () => void
+      openExternal: (url: string) => Promise<{ success: boolean; error?: string }>
     }
   }
 }
@@ -65,7 +66,7 @@ export default function MonitorPage() {
   const [showPrivateList, setShowPrivateList] = useState(true) // 私信Tab下是否显示列表(而不是对话)
   const [isSending, setIsSending] = useState(false) // 是否正在发送消息
   const [sendingQueues, setSendingQueues] = useState<Record<string, any[]>>({}) // 发送队列 topicId -> SendingMessage[]
-  const [worksSortBy, setWorksSortBy] = useState<'createdTime' | 'viewCount' | 'likeCount' | 'commentCount' | 'shareCount' | 'collectCount'>('createdTime') // 作品列表排序字段
+  const [worksSortBy, setWorksSortBy] = useState<'createdTime' | 'viewCount' | 'likeCount' | 'commentCount' | 'shareCount' | 'favoriteCount' | 'danmakuCount' | 'dislikeCount' | 'downloadCount' | 'subscribeCount' | 'unsubscribeCount' | 'likeRate' | 'commentRate' | 'shareRate' | 'favoriteRate' | 'dislikeRate' | 'subscribeRate' | 'unsubscribeRate' | 'completionRate' | 'completionRate5s' | 'avgViewSecond' | 'avgViewProportion' | 'bounceRate2s' | 'fanViewProportion' | 'homepageVisitCount' | 'coverShow'>('createdTime') // 作品列表排序字段
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -75,7 +76,7 @@ export default function MonitorPage() {
     const sendingMessages = sendingQueues[selectedTopicId] || []
     
     // 将发送队列消息转换为Message格式并添加特殊标记
-    const sendingAsMessages = sendingMessages.map(sendingMsg => ({
+    const sendingAsMessages: Message[] = sendingMessages.map(sendingMsg => ({
       id: sendingMsg.id,
       topicId: sendingMsg.topicId,
       channelId: sendingMsg.channelId,
@@ -83,16 +84,16 @@ export default function MonitorPage() {
       fromId: sendingMsg.fromId,
       authorAvatar: sendingMsg.authorAvatar,
       content: sendingMsg.content,
-      type: sendingMsg.messageCategory === 'private' ? 'text' : 'comment',
+      type: (sendingMsg.messageCategory === 'private' ? 'text' : 'comment') as Message['type'],
       messageCategory: sendingMsg.messageCategory,
-      direction: 'outbound',
+      direction: 'outbound' as 'outbound',
       timestamp: sendingMsg.timestamp,
       serverTimestamp: sendingMsg.timestamp,
       replyToId: sendingMsg.replyToId,
       replyToContent: sendingMsg.replyToContent,
-      status: 'sending',
+      status: 'sending' as 'sending',
       isSending: true  // 特殊标记
-    }))
+    } as Message))
     
     // 合并并按时间排序
     const combined = [...normalMessages, ...sendingAsMessages]
@@ -1212,16 +1213,35 @@ export default function MonitorPage() {
                       { value: 'createdTime', label: '发布时间' },
                       { value: 'viewCount', label: '浏览数' },
                       { value: 'likeCount', label: '点赞数' },
+                      { value: 'likeRate', label: '点赞率' },
                       { value: 'commentCount', label: '评论数' },
+                      { value: 'commentRate', label: '评论率' },
                       { value: 'shareCount', label: '分享数' },
-                      { value: 'collectCount', label: '收藏数' },
+                      { value: 'shareRate', label: '分享率' },
+                      { value: 'favoriteCount', label: '收藏数' },
+                      { value: 'favoriteRate', label: '收藏率' },
+                      { value: 'danmakuCount', label: '弹幕数' },
+                      { value: 'dislikeCount', label: '不喜欢数' },
+                      { value: 'downloadCount', label: '下载数' },
+                      { value: 'subscribeCount', label: '订阅数' },
+                      { value: 'unsubscribeCount', label: '取消订阅数' },
+                      { value: 'dislikeRate', label: '不喜欢率' },
+                      { value: 'subscribeRate', label: '订阅率' },
+                      { value: 'unsubscribeRate', label: '取消订阅率' },
+                      { value: 'completionRate', label: '完播率' },
+                      { value: 'completionRate5s', label: '5秒完播率' },
+                      { value: 'avgViewSecond', label: '平均观看时长' },
+                      { value: 'avgViewProportion', label: '平均观看比例' },
+                      { value: 'bounceRate2s', label: '2秒跳出率' },
+                      { value: 'fanViewProportion', label: '粉丝观看比例' },
+                      { value: 'homepageVisitCount', label: '主页访问数' },
+                      { value: 'coverShow', label: '封面展示次数' },
                     ]}
                   />
                 </div>
 
                 {currentTopics.filter(t => !t.isPrivate).length > 0 ? (
                   <List
-                    grid={{ gutter: 16, xs: 1, sm: 2, md: 2, lg: 3, xl: 3, xxl: 4 }}
                     dataSource={currentTopics.filter(t => !t.isPrivate).sort((a, b) => {
                       // 根据选择的字段进行倒序排序
                       const aValue = a[worksSortBy] ?? 0
@@ -1230,152 +1250,98 @@ export default function MonitorPage() {
                     })}
                     renderItem={(topic) => {
                       const thumbnail = topic.thumbnail || topic.avatar
+
                       return (
-                        <List.Item>
-                          <div
-                            style={{
-                              backgroundColor: '#fff',
-                              borderRadius: '12px',
-                              overflow: 'hidden',
-                              border: '1px solid #e8e8e8',
-                              transition: 'all 0.3s',
-                              cursor: 'pointer',
-                              boxShadow: '0 2px 8px rgba(0,0,0,0.06)',
-                            }}
-                            className="work-item-card"
-                            onMouseEnter={(e) => {
-                              e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.12)'
-                              e.currentTarget.style.transform = 'translateY(-2px)'
-                            }}
-                            onMouseLeave={(e) => {
-                              e.currentTarget.style.boxShadow = '0 2px 8px rgba(0,0,0,0.06)'
-                              e.currentTarget.style.transform = 'translateY(0)'
-                            }}
-                            onClick={() => {
-                              // 点击作品卡片，切换到评论Tab并查看该作品
-                              setActiveTab('comment')
-                              handleEnterTopicFromCommentList(topic.id)
-                            }}
-                          >
-                            {/* 缩略图 */}
-                            {thumbnail ? (
-                              <div style={{
-                                width: '100%',
-                                paddingTop: '56.25%',  // 16:9 比例
+                        <List.Item
+                          key={topic.id}
+                          style={{
+                            padding: '12px 16px',
+                            transition: 'background-color 0.2s',
+                            borderRadius: 4
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#fafafa'
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent'
+                          }}
+                        >
+                          <div style={{ display: 'flex', gap: 16, width: '100%', alignItems: 'flex-start' }}>
+                            {/* 左侧缩略图 - 点击打开URL */}
+                            <div
+                              style={{
+                                width: 120,
+                                height: 68,
+                                flexShrink: 0,
+                                borderRadius: 4,
+                                overflow: 'hidden',
+                                backgroundColor: '#f5f5f5',
                                 position: 'relative',
-                                backgroundColor: '#f5f5f5'
-                              }}>
+                                cursor: topic.url ? 'pointer' : 'default'
+                              }}
+                              onClick={async (e) => {
+                                e.stopPropagation();
+                                // 如果作品有URL,在浏览器中打开
+                                if (topic.url && window.electron?.openExternal) {
+                                  try {
+                                    await window.electron.openExternal(topic.url)
+                                  } catch (error) {
+                                    console.error('打开作品链接失败:', error)
+                                  }
+                                }
+                              }}
+                            >
+                              {thumbnail ? (
                                 <img
-                                  src={thumbnail}
                                   alt={topic.title}
+                                  src={thumbnail}
                                   style={{
-                                    position: 'absolute',
-                                    top: 0,
-                                    left: 0,
                                     width: '100%',
                                     height: '100%',
                                     objectFit: 'cover'
                                   }}
+                                  onError={(e) => {
+                                    e.currentTarget.style.display = 'none'
+                                  }}
                                 />
-                                {/* 未读标记 */}
-                                {topic.unreadCount > 0 && (
-                                  <Badge
-                                    count={topic.unreadCount}
-                                    style={{
-                                      position: 'absolute',
-                                      top: 8,
-                                      right: 8,
-                                    }}
-                                  />
-                                )}
-                              </div>
-                            ) : (
-                              <div style={{
-                                width: '100%',
-                                paddingTop: '56.25%',
-                                position: 'relative',
-                                backgroundColor: '#f5f5f5',
-                                display: 'flex',
-                                alignItems: 'center',
-                                justifyContent: 'center'
-                              }}>
-                                <AppstoreOutlined style={{ fontSize: 48, color: '#d9d9d9' }} />
-                              </div>
-                            )}
+                              ) : (
+                                <AppstoreOutlined style={{
+                                  position: 'absolute',
+                                  top: '50%',
+                                  left: '50%',
+                                  transform: 'translate(-50%, -50%)',
+                                  fontSize: 32,
+                                  color: '#d9d9d9'
+                                }} />
+                              )}
+                              {/* 未读标记 */}
+                              {topic.unreadCount > 0 && (
+                                <Badge
+                                  count={topic.unreadCount}
+                                  style={{
+                                    position: 'absolute',
+                                    top: 4,
+                                    right: 4,
+                                  }}
+                                />
+                              )}
+                            </div>
 
-                            {/* 作品信息 */}
-                            <div style={{ padding: '12px' }}>
-                              {/* 标题 */}
-                              <Text
-                                strong
-                                style={{
+                            {/* 右侧信息区域 */}
+                            <div style={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              {/* 第一行：标题和发布时间 */}
+                              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                                <Text strong style={{
                                   fontSize: 14,
-                                  display: '-webkit-box',
-                                  WebkitLineClamp: 2,
-                                  WebkitBoxOrient: 'vertical',
+                                  flex: 1,
                                   overflow: 'hidden',
-                                  lineHeight: '1.4',
-                                  marginBottom: 8
-                                }}
-                              >
-                                {topic.title}
-                              </Text>
-
-                              {/* 统计数据 */}
-                              <div style={{
-                                display: 'grid',
-                                gridTemplateColumns: 'repeat(2, 1fr)',
-                                gap: '8px',
-                                marginTop: 12,
-                                paddingTop: 12,
-                                borderTop: '1px solid #f0f0f0'
-                              }}>
-                                {/* 浏览数 */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <EyeOutlined style={{ color: '#8c8c8c', fontSize: 14 }} />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
-                                    {topic.viewCount !== undefined ? topic.viewCount.toLocaleString() : '-'}
-                                  </Text>
-                                </div>
-
-                                {/* 点赞数 */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <LikeOutlined style={{ color: '#ff4d4f', fontSize: 14 }} />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
-                                    {topic.likeCount !== undefined ? topic.likeCount.toLocaleString() : '-'}
-                                  </Text>
-                                </div>
-
-                                {/* 评论数 */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <CommentOutlined style={{ color: '#1890ff', fontSize: 14 }} />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
-                                    {topic.commentCount !== undefined ? topic.commentCount.toLocaleString() : (topic.messageCount || 0)}
-                                  </Text>
-                                </div>
-
-                                {/* 分享数 */}
-                                <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                  <ShareAltOutlined style={{ color: '#52c41a', fontSize: 14 }} />
-                                  <Text type="secondary" style={{ fontSize: 12 }}>
-                                    {topic.shareCount !== undefined ? topic.shareCount.toLocaleString() : '-'}
-                                  </Text>
-                                </div>
-
-                                {/* 收藏数 */}
-                                {topic.collectCount !== undefined && (
-                                  <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    <StarOutlined style={{ color: '#faad14', fontSize: 14 }} />
-                                    <Text type="secondary" style={{ fontSize: 12 }}>
-                                      {topic.collectCount.toLocaleString()}
-                                    </Text>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* 发布时间 */}
-                              <div style={{ marginTop: 8 }}>
-                                <Text type="secondary" style={{ fontSize: 11 }}>
+                                  textOverflow: 'ellipsis',
+                                  whiteSpace: 'nowrap',
+                                  marginRight: 12
+                                }}>
+                                  {topic.title}
+                                </Text>
+                                <Text type="secondary" style={{ fontSize: 12, flexShrink: 0 }}>
                                   {new Date(topic.createdTime).toLocaleDateString('zh-CN', {
                                     year: 'numeric',
                                     month: '2-digit',
@@ -1383,6 +1349,278 @@ export default function MonitorPage() {
                                   })}
                                 </Text>
                               </div>
+
+                              {/* 第二行：基础统计数量 */}
+                              <div style={{
+                                display: 'flex',
+                                flexWrap: 'wrap',
+                                gap: '8px 16px',
+                                fontSize: 12
+                              }}>
+                                {/* 浏览数 */}
+                                {topic.viewCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">浏览:</Text> <Text>{topic.viewCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 点赞数 */}
+                                {topic.likeCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">点赞:</Text> <Text>{topic.likeCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 评论数 */}
+                                {topic.commentCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">评论:</Text> <Text>{topic.commentCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 分享数 */}
+                                {topic.shareCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">分享:</Text> <Text>{topic.shareCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 收藏数 */}
+                                {topic.favoriteCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">收藏:</Text> <Text>{topic.favoriteCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 弹幕数 */}
+                                {topic.danmakuCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">弹幕:</Text> <Text>{topic.danmakuCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 下载数 */}
+                                {topic.downloadCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">下载:</Text> <Text>{topic.downloadCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+
+                                {/* 订阅数 */}
+                                {topic.subscribeCount !== undefined && (
+                                  <span>
+                                    <Text type="secondary">订阅:</Text> <Text>{topic.subscribeCount.toLocaleString()}</Text>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* 第三行：统计比率 */}
+                              {(topic.likeRate !== undefined || topic.commentRate !== undefined ||
+                                topic.shareRate !== undefined || topic.favoriteRate !== undefined ||
+                                topic.dislikeRate !== undefined || topic.subscribeRate !== undefined ||
+                                topic.unsubscribeRate !== undefined) && (
+                                <div style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: '8px 16px',
+                                  fontSize: 12
+                                }}>
+                                  {/* 点赞率 */}
+                                  {topic.likeRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">点赞率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的点赞次数">
+                                        <Text style={{ color: '#ff4d4f', cursor: 'help' }}>
+                                          {(topic.likeRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 评论率 */}
+                                  {topic.commentRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">评论率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的评论次数">
+                                        <Text style={{ color: '#52c41a', cursor: 'help' }}>
+                                          {(topic.commentRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 分享率 */}
+                                  {topic.shareRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">分享率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的分享次数">
+                                        <Text style={{ color: '#faad14', cursor: 'help' }}>
+                                          {(topic.shareRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 收藏率 */}
+                                  {topic.favoriteRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">收藏率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的收藏次数">
+                                        <Text style={{ color: '#722ed1', cursor: 'help' }}>
+                                          {(topic.favoriteRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 不喜欢率 */}
+                                  {topic.dislikeRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">不喜欢率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的不喜欢次数">
+                                        <Text style={{ color: '#8c8c8c', cursor: 'help' }}>
+                                          {(topic.dislikeRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 订阅率 */}
+                                  {topic.subscribeRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">订阅率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的订阅次数">
+                                        <Text style={{ color: '#1890ff', cursor: 'help' }}>
+                                          {(topic.subscribeRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 取消订阅率 */}
+                                  {topic.unsubscribeRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">取消订阅率:</Text>{' '}
+                                      <Tooltip title="每1000次曝光中的取消订阅次数">
+                                        <Text style={{ color: '#ff7875', cursor: 'help' }}>
+                                          {(topic.unsubscribeRate * 1000).toFixed(1)}‰
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+
+                              {/* 第四行：高级分析指标（如果有数据才显示）*/}
+                              {(topic.completionRate !== undefined || topic.avgViewSecond !== undefined ||
+                                topic.fanViewProportion !== undefined || topic.homepageVisitCount !== undefined ||
+                                topic.completionRate5s !== undefined || topic.avgViewProportion !== undefined ||
+                                topic.bounceRate2s !== undefined || topic.coverShow !== undefined) && (
+                                <div style={{
+                                  display: 'flex',
+                                  flexWrap: 'wrap',
+                                  gap: '8px 16px',
+                                  fontSize: 12,
+                                  paddingTop: 4,
+                                  borderTop: '1px dashed #f0f0f0'
+                                }}>
+                                  {/* 完播率 */}
+                                  {topic.completionRate !== undefined && (
+                                    <span>
+                                      <Text type="secondary">完播率:</Text>{' '}
+                                      <Tooltip title="观看完整视频的用户比例">
+                                        <Text style={{ color: '#52c41a', cursor: 'help' }}>
+                                          {(topic.completionRate * 100).toFixed(1)}%
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 5秒完播率 */}
+                                  {topic.completionRate5s !== undefined && (
+                                    <span>
+                                      <Text type="secondary">5秒完播:</Text>{' '}
+                                      <Tooltip title="观看超过5秒的用户比例">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {(topic.completionRate5s * 100).toFixed(1)}%
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 平均观看 */}
+                                  {topic.avgViewSecond !== undefined && (
+                                    <span>
+                                      <Text type="secondary">平均观看:</Text>{' '}
+                                      <Tooltip title="用户平均观看视频的时长">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {topic.avgViewSecond.toFixed(1)}秒
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 平均观看比例 */}
+                                  {topic.avgViewProportion !== undefined && (
+                                    <span>
+                                      <Text type="secondary">平均观看比例:</Text>{' '}
+                                      <Tooltip title="用户平均观看视频的比例">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {(topic.avgViewProportion * 100).toFixed(1)}%
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 2秒跳出率 */}
+                                  {topic.bounceRate2s !== undefined && (
+                                    <span>
+                                      <Text type="secondary">2秒跳出:</Text>{' '}
+                                      <Tooltip title="观看少于2秒就离开的用户比例">
+                                        <Text style={{ color: '#ff4d4f', cursor: 'help' }}>
+                                          {(topic.bounceRate2s * 100).toFixed(1)}%
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 粉丝观看比例 */}
+                                  {topic.fanViewProportion !== undefined && (
+                                    <span>
+                                      <Text type="secondary">粉丝占比:</Text>{' '}
+                                      <Tooltip title="观看者中粉丝的比例">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {(topic.fanViewProportion * 100).toFixed(1)}%
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 主页访问 */}
+                                  {topic.homepageVisitCount !== undefined && (
+                                    <span>
+                                      <Text type="secondary">主页访问:</Text>{' '}
+                                      <Tooltip title="通过此视频访问主页的次数">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {topic.homepageVisitCount.toLocaleString()}
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+
+                                  {/* 封面展示 */}
+                                  {topic.coverShow !== undefined && (
+                                    <span>
+                                      <Text type="secondary">封面展示:</Text>{' '}
+                                      <Tooltip title="视频封面被展示的次数">
+                                        <Text style={{ cursor: 'help' }}>
+                                          {topic.coverShow.toLocaleString()}
+                                        </Text>
+                                      </Tooltip>
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           </div>
                         </List.Item>

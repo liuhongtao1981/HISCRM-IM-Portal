@@ -841,12 +841,37 @@ class IMWebSocketServer {
                     }).length,
                     isPinned: false,
                     isPrivate: false,  // ✅ 标记为评论主题（非私信）
-                    // ✅ 新增: 作品统计数据（从 DataStore 中获取）
+                    // ✅ 作品统计数据（从 DataStore 中获取）
                     viewCount: content.viewCount || 0,      // 浏览数
                     likeCount: content.likeCount || 0,      // 点赞数
                     commentCount: content.commentCount || 0,  // 评论数（平台统计）
                     shareCount: content.shareCount || 0,    // 分享数
-                    collectCount: content.collectCount || 0  // 收藏数
+                    favoriteCount: content.favoriteCount || 0,  // 收藏数
+                    danmakuCount: content.danmakuCount || 0,  // 弹幕数
+                    dislikeCount: content.dislikeCount || 0,  // 不喜欢数
+                    downloadCount: content.downloadCount || 0,  // 下载数
+                    subscribeCount: content.subscribeCount || 0,  // 订阅数
+                    unsubscribeCount: content.unsubscribeCount || 0,  // 取消订阅数
+                    // ✅ 作品统计比率（0-1之间的浮点数）
+                    // 注意：API 中没有 view_rate 字段
+                    likeRate: content.likeRate || 0,        // 点赞率
+                    commentRate: content.commentRate || 0,  // 评论率
+                    shareRate: content.shareRate || 0,      // 分享率
+                    favoriteRate: content.favoriteRate || 0,  // 收藏率
+                    dislikeRate: content.dislikeRate || 0,  // 不喜欢率
+                    subscribeRate: content.subscribeRate || 0,  // 订阅率
+                    unsubscribeRate: content.unsubscribeRate || 0,  // 取消订阅率
+                    // ✅ 作品高级分析指标
+                    avgViewProportion: content.avgViewProportion || 0,  // 平均观看比例 (0-1)
+                    avgViewSecond: content.avgViewSecond || 0,  // 平均观看秒数
+                    bounceRate2s: content.bounceRate2s || 0,  // 2秒跳出率 (0-1)
+                    completionRate: content.completionRate || 0,  // 完播率 (0-1)
+                    completionRate5s: content.completionRate5s || 0,  // 5秒完播率 (0-1)
+                    coverShow: content.coverShow || 0,  // 封面展示次数
+                    fanViewProportion: content.fanViewProportion || 0,  // 粉丝观看比例 (0-1)
+                    homepageVisitCount: content.homepageVisitCount || 0,  // 主页访问数
+                    // ✅ 作品链接（用于在浏览器中打开）
+                    url: content.url || null
                 };
 
                 topics.push(topic);

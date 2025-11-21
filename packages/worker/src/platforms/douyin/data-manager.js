@@ -226,14 +226,32 @@ class DouyinDataManager extends AccountDataManager {
       likeCount: this.extractCount(douyinData, 'like_count', 'digg_count'),
       commentCount: this.extractCount(douyinData, 'comment_count'),
       shareCount: this.extractCount(douyinData, 'share_count'),
-      collectCount: this.extractCount(douyinData, 'favorite_count', 'collect_count'),
+      favoriteCount: this.extractCount(douyinData, 'favorite_count', 'collect_count'),
+      danmakuCount: this.extractCount(douyinData, 'danmaku_count'),
+      dislikeCount: this.extractCount(douyinData, 'dislike_count'),
+      downloadCount: this.extractCount(douyinData, 'download_count'),
+      subscribeCount: this.extractCount(douyinData, 'subscribe_count'),
+      unsubscribeCount: this.extractCount(douyinData, 'unsubscribe_count'),
 
-      // 统计比率（来自 items API 的 metrics 对象）
-      viewRate: this.extractRate(douyinData, 'view_rate'),
+      // 统计比率（来自 items API 的 metrics 对象，0-1之间的浮点数）
+      // 注意：API 中没有 view_rate 字段
       likeRate: this.extractRate(douyinData, 'like_rate'),
       commentRate: this.extractRate(douyinData, 'comment_rate'),
       shareRate: this.extractRate(douyinData, 'share_rate'),
       favoriteRate: this.extractRate(douyinData, 'favorite_rate'),
+      dislikeRate: this.extractRate(douyinData, 'dislike_rate'),
+      subscribeRate: this.extractRate(douyinData, 'subscribe_rate'),
+      unsubscribeRate: this.extractRate(douyinData, 'unsubscribe_rate'),
+
+      // 高级分析指标（来自 metrics 对象）
+      avgViewProportion: this.extractRate(douyinData, 'avg_view_proportion'),
+      avgViewSecond: this.extractRate(douyinData, 'avg_view_second'),
+      bounceRate2s: this.extractRate(douyinData, 'bounce_rate_2s'),
+      completionRate: this.extractRate(douyinData, 'completion_rate'),
+      completionRate5s: this.extractRate(douyinData, 'completion_rate_5s'),
+      coverShow: this.extractCount(douyinData, 'cover_show'),
+      fanViewProportion: this.extractRate(douyinData, 'fan_view_proportion'),
+      homepageVisitCount: this.extractCount(douyinData, 'homepage_visit_count'),
 
       // 发布信息
       publishTime: this.parsePublishTime(douyinData.create_time || douyinData.publish_time),
