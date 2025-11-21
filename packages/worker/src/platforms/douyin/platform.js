@@ -12,7 +12,7 @@ const { v4: uuidv4 } = require('uuid');
 const { TabTag } = require('../../browser/tab-manager');
 
 // 导入爬取函数
-const { crawlContents } = require('./crawler-contents');
+const { crawlContents, fetchWorksFromAPI } = require('./crawler-contents');
 const { crawlComments: crawlCommentsV2 } = require('./crawler-comments');
 const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
@@ -767,6 +767,25 @@ class DouyinPlatform extends PlatformBase {
                 // Note: crawl-contents.js 的 globalContext 已在 initialize() 时设置
             } else {
                 logger.warn(`⚠️  [crawlComments] DataManager 创建失败，使用旧数据收集逻辑`);
+            }
+
+            // 1.8. ✨ 在评论爬虫前执行作品统计（直接请求 API，信息更全）
+            logger.debug(`[crawlComments] Step 1.8: Fetching works statistics from API`);
+            try {
+                const worksResult = await fetchWorksFromAPI(page, account, dataManager);
+                logger.info(`✅ [crawlComments] 作品统计完成: ${worksResult.stats.totalWorks} 个作品`);
+
+                // 如果有 DataManager，数据已自动同步到 Master
+                // 无需手动发送
+                if (dataManager) {
+                    logger.debug(`[crawlComments] 作品数据已通过 DataManager 自动同步`);
+                }
+            } catch (worksError) {
+                logger.error(`⚠️  [crawlComments] 作品统计失败（不影响评论爬取）:`, {
+                    error: worksError.message,
+                    stack: worksError.stack
+                });
+                // 继续执行评论爬虫
             }
 
             // 2. 执行评论和讨论爬虫（新架构）

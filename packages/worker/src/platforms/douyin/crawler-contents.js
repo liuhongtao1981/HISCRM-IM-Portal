@@ -22,6 +22,124 @@ const globalContext = {
   accountId: null,    // 当前账户 ID
 };
 
+// ==================== 直接请求 API 获取作品统计 ====================
+
+/**
+ * 直接请求作品统计 API（绕过页面访问和API拦截）
+ * 优势：
+ * 1. 不需要访问页面和滚动加载
+ * 2. 一次性获取所有作品（count=9999）
+ * 3. 数据更完整（包含所有字段）
+ * 4. 更稳定可靠
+ *
+ * @param {Object} page - Playwright Page 实例（用于获取 cookies）
+ * @param {Object} account - 账户信息
+ * @param {Object} dataManager - DataManager 实例（可选）
+ * @returns {Promise<Object>} { contents, stats }
+ */
+async function fetchWorksFromAPI(page, account, dataManager = null) {
+  logger.info(`[作品统计API] 开始请求作品统计数据 (账号 ${account.id})`);
+
+  try {
+    // 构建 API URL
+    const apiUrl = 'https://creator.douyin.com/janus/douyin/creator/pc/work_list?' +
+      'scene=star_atlas&device_platform=android&status=1&count=9999';
+
+    logger.debug(`[作品统计API] 请求 URL: ${apiUrl}`);
+
+    // 使用 page.evaluate 在浏览器上下文中发送请求（自动携带 cookies）
+    const response = await page.evaluate(async (url) => {
+      const res = await fetch(url, {
+        method: 'GET',
+        credentials: 'include', // 携带 cookies
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': navigator.userAgent
+        }
+      });
+
+      if (!res.ok) {
+        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
+      }
+
+      return await res.json();
+    }, apiUrl);
+
+    logger.debug(`[作品统计API] 响应状态码: ${response.status_code || response.StatusCode || 'unknown'}`);
+
+    // 检查响应格式
+    if (!response || !response.aweme_list) {
+      logger.warn(`[作品统计API] ⚠️ 响应格式错误: 缺少 aweme_list`);
+      return {
+        contents: [],
+        stats: {
+          totalWorks: 0,
+          source: 'api-direct',
+          error: 'Invalid response format'
+        }
+      };
+    }
+
+    const awemeList = response.aweme_list;
+    logger.info(`[作品统计API] ✅ 获取到 ${awemeList.length} 个作品`);
+
+    // 使用 DataManager 处理作品数据
+    let contents = [];
+    if (dataManager && awemeList.length > 0) {
+      try {
+        logger.debug(`[作品统计API] 使用 DataManager 处理 ${awemeList.length} 个作品`);
+        contents = dataManager.batchUpsertContents(
+          awemeList,
+          DataSource.API
+        );
+        logger.info(`[作品统计API] ✅ DataManager 处理完成: ${contents.length} 个作品`);
+      } catch (error) {
+        logger.error(`[作品统计API] ❌ DataManager 处理失败:`, {
+          error: error.message,
+          stack: error.stack
+        });
+        // 失败时使用原始数据
+        contents = awemeList;
+      }
+    } else {
+      logger.debug(`[作品统计API] 未使用 DataManager，返回原始数据`);
+      contents = awemeList;
+    }
+
+    // 统计信息
+    const stats = {
+      totalWorks: contents.length,
+      source: 'api-direct',
+      apiResponse: {
+        total: awemeList.length,
+        hasMore: response.has_more || false,
+        cursor: response.cursor || 0
+      },
+      crawlTime: Math.floor(Date.now() / 1000)
+    };
+
+    // 如果使用了 DataManager，添加其统计信息
+    if (dataManager) {
+      const dmStats = dataManager.getStats();
+      stats.dataManager = dmStats;
+    }
+
+    logger.info(`[作品统计API] 🎉 作品统计完成: ${stats.totalWorks} 个作品`);
+
+    return {
+      contents,
+      stats
+    };
+
+  } catch (error) {
+    logger.error(`[作品统计API] ❌ 请求失败:`, {
+      error: error.message,
+      stack: error.stack
+    });
+    throw error;
+  }
+}
+
 // 保留 apiData 用于向后兼容和调试
 const apiData = {
   worksList: [],      // 作品列表 API 响应
@@ -648,6 +766,9 @@ module.exports = {
 
   // 爬取函数
   crawlContents,
+
+  // ✨ 直接请求作品统计 API（推荐使用）
+  fetchWorksFromAPI,
 
   // 全局上下文（供 platform.js 初始化时访问，已废弃，保留向后兼容）
   globalContext,
