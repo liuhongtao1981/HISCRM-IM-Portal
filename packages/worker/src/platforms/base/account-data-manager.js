@@ -243,6 +243,7 @@ class AccountDataManager {
   batchUpsertContents(contentsData, source = DataSource.API) {
     const results = [];
     let hasNewContent = false;
+    let hasUpdatedContent = false;
     let errorCount = 0;
 
     this.logger.debug(`📦 [批量处理] 收到 ${contentsData.length} 个作品数据`);
@@ -254,9 +255,12 @@ class AccountDataManager {
         const content = this.upsertContent(data, source);
         results.push(content);
 
-        // 检查是否有新作品
+        // 检查是否有新作品或更新
         if (content._isNew) {
           hasNewContent = true;
+        } else {
+          // 已存在的作品也算作更新（统计数据可能变化）
+          hasUpdatedContent = true;
         }
       } catch (error) {
         errorCount++;
@@ -273,11 +277,15 @@ class AccountDataManager {
       }
     }
 
-    this.logger.info(`✅ [批量处理] 完成: ${results.length}/${contentsData.length} 个成功, ${errorCount} 个失败 (${hasNewContent ? 'has new' : 'all existing'})`);
+    const statusMsg = hasNewContent
+      ? (hasUpdatedContent ? 'has new + updated' : 'has new')
+      : (hasUpdatedContent ? 'all updated' : 'all existing');
+    this.logger.info(`✅ [批量处理] 完成: ${results.length}/${contentsData.length} 个成功, ${errorCount} 个失败 (${statusMsg})`);
 
-    // ✨ 如果有新作品，立即同步到 Master
-    if (hasNewContent && this.pushConfig.autoSync) {
-      this.logger.info(`🔔 检测到新作品，触发立即推送到 Master`);
+    // ✨ 如果有新作品或更新，立即同步到 Master（统计数据可能变化）
+    if ((hasNewContent || hasUpdatedContent) && this.pushConfig.autoSync) {
+      const reason = hasNewContent ? '新作品' : '作品更新（统计数据）';
+      this.logger.info(`🔔 检测到${reason}，触发立即推送到 Master`);
       this.syncToMasterNow();
     }
 
