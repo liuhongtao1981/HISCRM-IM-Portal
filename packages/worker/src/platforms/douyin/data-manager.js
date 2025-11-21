@@ -228,6 +228,13 @@ class DouyinDataManager extends AccountDataManager {
       shareCount: this.extractCount(douyinData, 'share_count'),
       collectCount: this.extractCount(douyinData, 'favorite_count', 'collect_count'),
 
+      // 统计比率（来自 items API 的 metrics 对象）
+      viewRate: this.extractRate(douyinData, 'view_rate'),
+      likeRate: this.extractRate(douyinData, 'like_rate'),
+      commentRate: this.extractRate(douyinData, 'comment_rate'),
+      shareRate: this.extractRate(douyinData, 'share_rate'),
+      favoriteRate: this.extractRate(douyinData, 'favorite_rate'),
+
       // 发布信息
       publishTime: this.parsePublishTime(douyinData.create_time || douyinData.publish_time),
       location: douyinData.poi_name || null,
@@ -474,6 +481,33 @@ class DouyinDataManager extends AccountDataManager {
     for (const key of keys) {
       if (data[key] !== undefined) {
         return parseInt(data[key]) || 0;
+      }
+    }
+
+    return 0;
+  }
+
+  /**
+   * 提取比率数据（如点赞率、评论率等）
+   * 主要来自 items API 的 metrics 对象
+   * @returns {number} 返回浮点数（0-1 之间）
+   */
+  extractRate(data, ...keys) {
+    // 优先从 metrics 中提取（来自 items API）
+    if (data.metrics) {
+      for (const key of keys) {
+        if (data.metrics[key] !== undefined) {
+          // metrics 中的值是字符串格式的浮点数
+          const value = data.metrics[key];
+          return parseFloat(value) || 0;
+        }
+      }
+    }
+
+    // 直接从数据中提取
+    for (const key of keys) {
+      if (data[key] !== undefined) {
+        return parseFloat(data[key]) || 0;
       }
     }
 
