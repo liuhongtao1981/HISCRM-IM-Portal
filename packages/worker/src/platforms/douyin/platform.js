@@ -12,12 +12,11 @@ const { v4: uuidv4 } = require('uuid');
 const { TabTag } = require('../../browser/tab-manager');
 
 // 导入爬取函数
-const { crawlContents, fetchWorksFromAPI } = require('./crawler-contents');
 const { crawlComments: crawlCommentsV2 } = require('./crawler-comments');
 const { crawlDirectMessagesV2 } = require('./crawler-messages');
 
 // 导入 API 回调函数
-const { onWorksListAPI } = require('./crawler-contents');
+const { onWorksStatsAPI } = require('./crawler-contents');
 const { onCommentsListAPI, onCommentsListV2API, onDiscussionsListV2API, onDiscussionsListAPI, onNoticeDetailAPI } = require('./crawler-comments');
 const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require('./crawler-messages');
 
@@ -85,7 +84,10 @@ class DouyinPlatform extends PlatformBase {
         logger.info(`Registering API handlers for account ${accountId}`);
 
         // 作品相关 API
-        manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);  // 只匹配 /aweme/v1/creator/item/list（只抓取自己的作品）
+        // ✨ 作品统计 API（推荐，数据最完整）
+        manager.register('**/janus/douyin/creator/pc/work_list{/,}?**', onWorksStatsAPI);
+        // 作品列表 API（备用，如果作品统计 API 正常工作则无需启用）
+        // manager.register('**/aweme/v1/creator/item/list{/,}?**', onWorksListAPI);
         // ⚠️ 不使用 onWorkDetailAPI - 该 API 会在浏览 Feed 流时触发，抓取到其他人的作品
 
         // 评论相关 API（只使用V2 API）
@@ -769,19 +771,23 @@ class DouyinPlatform extends PlatformBase {
                 logger.warn(`⚠️  [crawlComments] DataManager 创建失败，使用旧数据收集逻辑`);
             }
 
-            // 1.8. ✨ 在评论爬虫前执行作品统计（直接请求 API，信息更全）
-            logger.debug(`[crawlComments] Step 1.8: Fetching works statistics from API`);
+            // 1.8. ✨ 在评论爬虫前触发作品统计 API（通过访问页面触发拦截）
+            logger.debug(`[crawlComments] Step 1.8: Triggering works statistics API by visiting content manage page`);
             try {
-                const worksResult = await fetchWorksFromAPI(page, account, dataManager);
-                logger.info(`✅ [crawlComments] 作品统计完成: ${worksResult.stats.totalWorks} 个作品`);
+                // 访问作品管理页面，触发作品统计 API 拦截
+                await page.goto('https://creator.douyin.com/creator-micro/content/manage', {
+                    waitUntil: 'networkidle',
+                    timeout: 15000
+                });
+                logger.info(`✅ [crawlComments] 作品管理页面访问成功，等待 API 拦截处理`);
 
-                // 如果有 DataManager，数据已自动同步到 Master
-                // 无需手动发送
-                if (dataManager) {
-                    logger.debug(`[crawlComments] 作品数据已通过 DataManager 自动同步`);
-                }
+                // 等待一小段时间让 API 拦截器处理数据
+                await page.waitForTimeout(2000);
+
+                // 数据已通过 onWorksStatsAPI 拦截器自动处理并同步到 DataManager
+                logger.debug(`[crawlComments] 作品数据已通过 API 拦截器自动同步`);
             } catch (worksError) {
-                logger.error(`⚠️  [crawlComments] 作品统计失败（不影响评论爬取）:`, {
+                logger.error(`⚠️  [crawlComments] 作品统计页面访问失败（不影响评论爬取）:`, {
                     error: worksError.message,
                     stack: worksError.stack
                 });

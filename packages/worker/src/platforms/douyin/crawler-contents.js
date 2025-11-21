@@ -42,8 +42,7 @@ async function fetchWorksFromAPI(page, account, dataManager = null) {
 
   try {
     // 构建 API URL
-    const apiUrl = 'https://creator.douyin.com/janus/douyin/creator/pc/work_list?' +
-      'scene=star_atlas&device_platform=android&status=1&count=9999';
+    const apiUrl = 'https://creator.douyin.com/janus/douyin/creator/pc/work_list?scene=star_atlas&device_platform=android&status=1&count=9999';
 
     logger.debug(`[作品统计API] 请求 URL: ${apiUrl}`);
 
@@ -234,6 +233,63 @@ async function crawlContents(page, account, options = {}, dataManager = null) {
 }
 
 // ==================== API 回调函数（从 page 对象读取账号上下文）====================
+
+/**
+ * ✨ API 回调：作品统计 API（推荐使用）
+ * 由 platform.js 注册到 APIInterceptorManager
+ * API: /janus/douyin/creator/pc/work_list
+ * 返回格式: { aweme_list: [...], has_more, cursor, status_code }
+ * 优势：数据更完整，一次性获取所有作品
+ */
+async function onWorksStatsAPI(body, response) {
+  const url = response.url();
+
+  // 检查 aweme_list
+  if (!body || !body.aweme_list) {
+    logger.warn(`⚠️ [作品统计API] body 或 aweme_list 不存在`);
+    return;
+  }
+
+  logger.info(`📥 [作品统计API] 接收到 ${body.aweme_list.length} 个作品`);
+
+  // URL 去重
+  if (apiData.cache.has(url)) {
+    logger.debug(`🔄 [作品统计API] URL 已处理，跳过: ${url}`);
+    return;
+  }
+
+  apiData.cache.add(url);
+
+  // ✅ 从 page 对象读取账号上下文（账号级别隔离）
+  const page = response.frame().page();
+  const { accountId, dataManager } = page._accountContext || {};
+
+  logger.debug(`🔍 [作品统计API] accountId=${accountId}, dataManager=${!!dataManager}, count=${body.aweme_list.length}`);
+
+  // 使用账号级别隔离的 DataManager
+  if (dataManager && body.aweme_list.length > 0) {
+    try {
+      logger.debug(`⚙️ [作品统计API] 开始处理 ${body.aweme_list.length} 个作品`);
+      const contents = dataManager.batchUpsertContents(
+        body.aweme_list,
+        DataSource.API
+      );
+      logger.info(`✅ [API] [${accountId}] 作品统计: ${contents.length} 个 (原始: ${body.aweme_list.length})`);
+    } catch (error) {
+      logger.error(`❌ [API] [${accountId}] 作品统计处理失败: ${error.message}`, error.stack);
+    }
+  } else {
+    if (!dataManager) {
+      logger.warn(`⚠️ [作品统计API] DataManager 不存在，无法处理作品`);
+    }
+    if (body.aweme_list.length === 0) {
+      logger.warn(`⚠️ [作品统计API] aweme_list 为空数组`);
+    }
+  }
+
+  // 保留旧逻辑用于调试
+  apiData.worksList.push(body);
+}
 
 /**
  * API 回调：作品列表
@@ -761,13 +817,14 @@ function countWorksByType(contents) {
 
 module.exports = {
   // API 回调函数（从 page._accountContext 读取账号信息）
-  onWorksListAPI,
-  onWorkDetailAPI,
+  onWorksStatsAPI,    // ✨ 作品统计 API（推荐，数据最完整）
+  onWorksListAPI,     // 作品列表 API
+  onWorkDetailAPI,    // 作品详情 API（已废弃）
 
   // 爬取函数
   crawlContents,
 
-  // ✨ 直接请求作品统计 API（推荐使用）
+  // ✨ 直接请求作品统计 API（已废弃，改用 API 拦截）
   fetchWorksFromAPI,
 
   // 全局上下文（供 platform.js 初始化时访问，已废弃，保留向后兼容）
