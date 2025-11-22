@@ -20,7 +20,10 @@
     "cors": "^2.8.5",
     "helmet": "^7.1.0",
     "dotenv": "^16.3.1",
-    "socks-proxy-agent": "^8.0.5"
+    "socks-proxy-agent": "^8.0.5",
+    "https-proxy-agent": "^7.0.2",
+    "fs-extra": "^11.1.1",
+    "axios": "^1.6.2"
   },
   "devDependencies": {
     "nodemon": "^3.0.2",
