@@ -7,17 +7,20 @@ import { WS_EVENTS } from '@shared/constants'
 import type { Message } from '@shared/types'
 
 // 尝试导入 config.json，如果失败则使用默认值
-let config: any = { websocket: { url: 'http://localhost:3000' } }
+// ⚠️  生产环境默认值：如果 config.json 加载失败，使用此地址
+const DEFAULT_WS_URL = 'http://192.168.120.48:3000'
+
+let config: any = { websocket: { url: DEFAULT_WS_URL } }
 try {
   // @ts-ignore - config.json 在构建时会被复制到输出目录
   config = require('../../config.json')
 } catch (err) {
-  console.warn('[WebSocket] 无法加载 config.json，使用默认配置')
+  console.warn('[WebSocket] 无法加载 config.json，使用默认配置:', DEFAULT_WS_URL)
 }
 
 class WebSocketService {
   private socket: Socket | null = null
-  private url: string = config.websocket?.url || 'http://localhost:3000'
+  private url: string = config.websocket?.url || DEFAULT_WS_URL
   private isConnected: boolean = false
 
   connect(url?: string): Promise<void> {
