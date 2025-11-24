@@ -147,14 +147,14 @@ async function findConversationIndexInDataSource(page, targetId) {
 }
 
 /**
- * 滚动虚拟列表到指定索引位置 (Phase 11: 多容器验证)
+ * 滚动虚拟列表到指定索引位置 (Phase 11: 多容器验证 + 动态高度计算)
  *
  * @param {Page} page - Playwright 页面对象
  * @param {number} targetIndex - 目标索引
- * @param {number} itemHeight - 每个列表项的高度(默认 105px)
+ * @param {number} itemHeight - 每个列表项的高度(可选，如果不提供则动态计算)
  * @returns {Promise<boolean>} 滚动是否成功
  */
-async function scrollVirtualListToIndex(page, targetIndex, itemHeight = 105) {
+async function scrollVirtualListToIndex(page, targetIndex, itemHeight = null) {
     try {
         logger.debug(`[智能滚动] 滚动到索引位置: ${targetIndex}`);
 
@@ -166,8 +166,20 @@ async function scrollVirtualListToIndex(page, targetIndex, itemHeight = 105) {
                 return { success: false, error: 'No container found' };
             }
 
+            // 如果没有提供高度，动态计算
+            let itemHeight = height;
+            if (!itemHeight || itemHeight <= 0) {
+                const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
+                if (items.length > 0) {
+                    const rect = items[0].getBoundingClientRect();
+                    itemHeight = rect.height;
+                } else {
+                    itemHeight = 105;  // 备用默认值
+                }
+            }
+
             // 计算目标滚动位置 (向上偏移确保目标项在可视区域中间)
-            const targetScrollTop = Math.max(0, index * height - 200);
+            const targetScrollTop = Math.max(0, index * itemHeight - 200);
 
             // 尝试滚动每个容器，找到能滚动的那个
             for (let i = 0; i < containers.length; i++) {
@@ -287,47 +299,130 @@ async function findMessageItemInVirtualList(page, targetSecUid) {
         logger.info(`[查找会话] ✅ DOM文本匹配: [${finalIndex}] ${matchedUserName}`);
 
     } else {
-        // 路径B: 用户名为空 - 使用数学定位
-        logger.info(`[查找会话] 用户名为空，使用数学定位`);
+        // 路径B: 用户名为空 - 使用最后消息内容匹配（从原始result中获取）
+        logger.info(`[查找会话] 用户名为空，使用最后消息内容匹配`);
 
-        const ITEM_HEIGHT = 105;
-        const OFFSET = 200;
-        const targetScrollTop = Math.max(0, targetIndex * ITEM_HEIGHT - OFFSET);
-        const firstVisibleIndex = Math.floor(targetScrollTop / ITEM_HEIGHT);
-        const relativeIndex = targetIndex - firstVisibleIndex;
+        // 从原始result中获取最后消息内容
+        const lastMessageText = await page.evaluate((searchId) => {
+            const container = document.querySelector('.ReactVirtualized__Grid__innerScrollContainer');
+            if (!container) return null;
 
-        logger.info(`[查找会话] 数学定位计算: 目标索引=${targetIndex}, 首个可见索引=${firstVisibleIndex}, 相对索引=${relativeIndex}`);
+            const fiberKey = Object.keys(container).find(key => key.startsWith('__reactFiber'));
+            if (!fiberKey) return null;
 
-        // 提取可见项信息用于验证
-        const visibleItems = await page.evaluate(() => {
+            let fiber = container[fiberKey];
+            let dataSource = null;
+            let depth = 0;
+
+            while (fiber && depth < 30) {
+                if (fiber.memoizedProps) {
+                    const props = fiber.memoizedProps;
+                    const possibleKeys = ['data', 'list', 'items', 'conversations', 'dataSource'];
+                    for (const key of possibleKeys) {
+                        if (Array.isArray(props[key]) && props[key].length > 0) {
+                            const firstItem = props[key][0];
+                            if (firstItem && (firstItem.firstPageParticipant || firstItem.participants || firstItem.id)) {
+                                dataSource = props[key];
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (dataSource) break;
+                fiber = fiber.return;
+                depth++;
+            }
+
+            if (!dataSource) return null;
+
+            for (let i = 0; i < dataSource.length; i++) {
+                const item = dataSource[i];
+                const participants = item.firstPageParticipant?.participants || item.participants || [];
+                for (const participant of participants) {
+                    if (participant.sec_uid === searchId) {
+                        return item.content?.text || '';
+                    }
+                }
+            }
+            return null;
+        }, targetSecUid);
+
+        logger.info(`[查找会话] 最后消息: "${lastMessageText}"`);
+
+        // 在DOM中匹配最后消息内容
+        const domSearchResult = await page.evaluate((msgText) => {
             const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
-            const result = [];
+            const visibleItems = [];
+            let targetIndex = -1;
+
             for (let i = 0; i < items.length; i++) {
                 const text = items[i].textContent || '';
                 const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                result.push({ index: i, firstLine: lines[0] || '' });
-            }
-            return result;
-        });
+                const firstLine = lines[0] || '';
 
-        logger.debug(`[查找会话] 可见会话 (${visibleItems.length}个):`,
-            visibleItems.map((item, idx) =>
-                `${idx === relativeIndex ? '🎯' : '  '} [${item.index}] ${item.firstLine}`
+                // 匹配最后消息内容
+                const containsMessage = msgText && text.includes(msgText);
+
+                visibleItems.push({ index: i, firstLine, containsMessage });
+                if (containsMessage && targetIndex === -1) {
+                    targetIndex = i;
+                }
+            }
+
+            return { targetIndex, visibleItems };
+        }, lastMessageText);
+
+        logger.debug(`[查找会话] 可见会话 (${domSearchResult.visibleItems.length}个):`,
+            domSearchResult.visibleItems.map(item =>
+                `${item.containsMessage ? '🎯' : '  '} [${item.index}] ${item.firstLine}`
             ).join('\n')
         );
 
-        if (relativeIndex < 0 || relativeIndex >= visibleItems.length) {
-            throw new Error(`数学定位计算的相对索引 ${relativeIndex} 超出范围 [0, ${visibleItems.length})`);
+        if (domSearchResult.targetIndex === -1) {
+            throw new Error(`DOM中未找到包含消息"${lastMessageText}"的会话`);
         }
 
-        finalIndex = relativeIndex;
-        matchedUserName = visibleItems[relativeIndex].firstLine;
-        logger.info(`[查找会话] ✅ 数学定位: [${relativeIndex}] ${matchedUserName}`);
+        finalIndex = domSearchResult.targetIndex;
+        matchedUserName = domSearchResult.visibleItems[finalIndex].firstLine;
+        logger.info(`[查找会话] ✅ 消息内容匹配: [${finalIndex}] ${matchedUserName}`);
     }
 
-    // 步骤4: 使用 Playwright Locator API 点击
+    // 步骤4: 从DOM中提取完整的用户名（用于后续验证）
+    const extractedUserName = await page.evaluate((idx) => {
+        const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
+        if (idx < 0 || idx >= items.length) return null;
+
+        const targetItem = items[idx];
+
+        // 尝试从会话列表项中提取用户名
+        const nameElement = targetItem.querySelector('[class*="item-header-name"]');
+        if (nameElement) {
+            const name = nameElement.textContent.trim();
+            if (name && name.length >= 2 && name.length < 50) {
+                return name;
+            }
+        }
+
+        // 备选：从第一行文本提取
+        const text = targetItem.textContent || '';
+        const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+        if (lines.length > 0) {
+            const firstLine = lines[0];
+            // 去掉日期和其他后缀
+            const cleanName = firstLine.replace(/\d{2}-\d{2}.*$/, '').trim();
+            if (cleanName.length >= 2 && cleanName.length < 50) {
+                return cleanName;
+            }
+        }
+
+        return null;
+    }, finalIndex);
+
+    logger.info(`[查找会话] 从DOM提取的用户名: "${extractedUserName}"`);
+
+    // 步骤5: 使用 Playwright Locator API 返回点击目标和用户名
     const items = await page.locator('.ReactVirtualized__Grid__innerScrollContainer > div').all();
-    return items[finalIndex];
+    return { locator: items[finalIndex], userName: extractedUserName };
 }
 
 
@@ -482,15 +577,13 @@ async function sendReplyToDirectMessage(page, options) {
             throw new Error(`导航失败: ${navError.message}`);
         }
 
-        // 3. Phase 11: 智能滚动 + DOM文本匹配定位会话 (从 Fiber 自动提取用户名)
-        const searchResult = await findConversationIndexInDataSource(page, target_id);
-        if (!searchResult) {
-            throw new Error(`未找到目标会话 (sec_uid: ${target_id})`);
-        }
-        const expectedUserName = searchResult.userName;
-        logger.info(`[私信回复] 期望用户名: "${expectedUserName}"`);
+        // 3. Phase 11: 智能滚动 + DOM文本匹配定位会话
+        // 🔒 Phase 12优化：从DOM提取用户名用于验证
+        const findResult = await findMessageItemInVirtualList(page, target_id);
+        const targetMessageItem = findResult.locator;
+        const expectedUserName = findResult.userName;  // 从DOM中提取的用户名
 
-        const targetMessageItem = await findMessageItemInVirtualList(page, target_id);
+        logger.info(`[私信回复] 期望用户名（从DOM提取）: "${expectedUserName}"`);
 
         // 4. 点击会话项打开对话
         await targetMessageItem.click();
@@ -498,32 +591,43 @@ async function sendReplyToDirectMessage(page, options) {
 
         // 🔒 Phase 12: 验证当前打开的会话是否正确 (防止发送给错误的人)
         const currentUserName = await page.evaluate(() => {
-            // 尝试多种选择器提取对话窗口顶部的用户名
+            // 尝试多种选择器提取对话窗口顶部的用户名（右侧区域，不是左侧会话列表）
             const selectors = [
-                '.semi-navigation-header .semi-typography',  // 导航栏标题
+                '[class*="box-header-name"]',  // 对话窗口顶部用户名 ⭐ 主要选择器
+                '.box-header-name',
                 '[class*="conversation-header"] [class*="title"]',
                 '[class*="chat-header"] [class*="name"]',
-                '.conversation-info .user-name',
                 'header [class*="name"]'
             ];
 
+            // 策略1：使用选择器查找，并确保在右侧区域（x > 400）
             for (const selector of selectors) {
-                const element = document.querySelector(selector);
-                if (element) {
-                    const text = element.textContent.trim();
-                    if (text && text.length > 0 && text.length < 50) {
-                        return text;
+                const elements = document.querySelectorAll(selector);
+                for (const element of elements) {
+                    const rect = element.getBoundingClientRect();
+                    // 确保在右侧区域（排除左侧会话列表）且在顶部
+                    if (rect.x > 400 && rect.y < 200) {
+                        const text = element.textContent.trim();
+                        if (text && text.length >= 2 && text.length < 50) {
+                            return text;
+                        }
                     }
                 }
             }
 
-            // 备选：从对话窗口提取
-            const conversationArea = document.querySelector('[class*="conversation"]');
-            if (conversationArea) {
-                const allText = conversationArea.textContent;
-                const lines = allText.split('\n').filter(l => l.trim().length > 0);
-                if (lines.length > 0) {
-                    return lines[0].trim();
+            // 策略2：查找右侧header区域的第一行文本
+            const rightHeaders = document.querySelectorAll('header, [role="banner"]');
+            for (const header of rightHeaders) {
+                const rect = header.getBoundingClientRect();
+                if (rect.x > 400 && rect.y < 200) {
+                    const text = header.textContent.trim();
+                    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    if (lines.length > 0) {
+                        const firstLine = lines[0];
+                        if (firstLine.length >= 2 && firstLine.length < 50) {
+                            return firstLine;
+                        }
+                    }
                 }
             }
 
@@ -537,15 +641,21 @@ async function sendReplyToDirectMessage(page, options) {
             throw new Error('无法获取当前会话的用户名，可能页面结构已变化');
         }
 
-        if (expectedUserName && currentUserName !== expectedUserName) {
+        if (!expectedUserName) {
+            // 如果无法从DOM提取期望用户名，则无法进行安全验证
+            logger.warn(`[私信回复] ⚠️  无法从DOM提取用户名，跳过验证（存在误发风险！）`);
+            logger.warn(`[私信回复] 当前打开的会话: "${currentUserName}"`);
+        } else if (currentUserName !== expectedUserName) {
+            // 用户名不匹配，拒绝发送
             logger.error(`[私信回复] ❌ 会话用户名不匹配！`, {
                 expected: expectedUserName,
                 actual: currentUserName
             });
             throw new Error(`会话用户名不匹配：期望"${expectedUserName}"，实际"${currentUserName}"，拒绝发送以防止误发`);
+        } else {
+            // 验证通过
+            logger.info(`[私信回复] ✅ 会话验证通过: "${currentUserName}"`);
         }
-
-        logger.info(`[私信回复] ✅ 会话验证通过: "${currentUserName}"`);
 
         // 5. 定位输入框
         const dmInput = await page.$('div[contenteditable="true"]');
