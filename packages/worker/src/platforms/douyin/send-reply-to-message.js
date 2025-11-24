@@ -483,11 +483,69 @@ async function sendReplyToDirectMessage(page, options) {
         }
 
         // 3. Phase 11: 智能滚动 + DOM文本匹配定位会话 (从 Fiber 自动提取用户名)
+        const searchResult = await findConversationIndexInDataSource(page, target_id);
+        if (!searchResult) {
+            throw new Error(`未找到目标会话 (sec_uid: ${target_id})`);
+        }
+        const expectedUserName = searchResult.userName;
+        logger.info(`[私信回复] 期望用户名: "${expectedUserName}"`);
+
         const targetMessageItem = await findMessageItemInVirtualList(page, target_id);
 
         // 4. 点击会话项打开对话
         await targetMessageItem.click();
         await page.waitForTimeout(1500);
+
+        // 🔒 Phase 12: 验证当前打开的会话是否正确 (防止发送给错误的人)
+        const currentUserName = await page.evaluate(() => {
+            // 尝试多种选择器提取对话窗口顶部的用户名
+            const selectors = [
+                '.semi-navigation-header .semi-typography',  // 导航栏标题
+                '[class*="conversation-header"] [class*="title"]',
+                '[class*="chat-header"] [class*="name"]',
+                '.conversation-info .user-name',
+                'header [class*="name"]'
+            ];
+
+            for (const selector of selectors) {
+                const element = document.querySelector(selector);
+                if (element) {
+                    const text = element.textContent.trim();
+                    if (text && text.length > 0 && text.length < 50) {
+                        return text;
+                    }
+                }
+            }
+
+            // 备选：从对话窗口提取
+            const conversationArea = document.querySelector('[class*="conversation"]');
+            if (conversationArea) {
+                const allText = conversationArea.textContent;
+                const lines = allText.split('\n').filter(l => l.trim().length > 0);
+                if (lines.length > 0) {
+                    return lines[0].trim();
+                }
+            }
+
+            return null;
+        });
+
+        logger.info(`[私信回复] 当前会话用户名: "${currentUserName}"`);
+
+        // ✅ 严格验证：当前用户名必须与期望用户名匹配
+        if (!currentUserName) {
+            throw new Error('无法获取当前会话的用户名，可能页面结构已变化');
+        }
+
+        if (expectedUserName && currentUserName !== expectedUserName) {
+            logger.error(`[私信回复] ❌ 会话用户名不匹配！`, {
+                expected: expectedUserName,
+                actual: currentUserName
+            });
+            throw new Error(`会话用户名不匹配：期望"${expectedUserName}"，实际"${currentUserName}"，拒绝发送以防止误发`);
+        }
+
+        logger.info(`[私信回复] ✅ 会话验证通过: "${currentUserName}"`);
 
         // 5. 定位输入框
         const dmInput = await page.$('div[contenteditable="true"]');
