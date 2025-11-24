@@ -33,17 +33,17 @@ class DouyinDataManager extends AccountDataManager {
       userProfile: douyinData.user || null,
 
       // 会话状态（API 不提供，使用默认值）
-      unreadCount: 0,
+      unreadCount: douyinData.unread_count || 0,
       isPinned: false,
       isMuted: false,
       isBlocked: false,
 
-      // 最后消息信息（API 不提供，后续从消息中更新）
-      lastMessageId: null,
-      lastMessageContent: '',
+      // 最后消息信息（从 last_message 或 realtime hook 提取）
+      lastMessageId: douyinData.last_message?.message_id || null,
+      lastMessageContent: douyinData.last_message?.content || '',
       lastMessageType: 'text',
-      lastMessageTime: Date.now(),
-      lastMessageSenderId: null,
+      lastMessageTime: douyinData.last_message?.created_time || Date.now(),
+      lastMessageSenderId: douyinData.last_message?.sender_id || null,
 
       // 时间戳
       createdAt: Date.now(),
