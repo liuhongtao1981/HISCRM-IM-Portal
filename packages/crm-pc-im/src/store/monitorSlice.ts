@@ -337,11 +337,14 @@ const monitorSlice = createSlice({
       state.selectedChannelId = channelId
       state.selectedTopicId = null // 清除选中的作品
 
-      // ✅ 清空该账户的 topics，避免显示旧数据导致未读数跳动
+      // ✅ 保留 topics 数据，避免切换账户时右侧闪烁为空
+      // 服务端会推送最新数据并覆盖旧数据
       const oldTopics = state.topics[channelId]
-      console.log(`   清空前 Topics: ${oldTopics ? oldTopics.length : 0} 个`)
-      state.topics[channelId] = []
-      console.log(`   ✅ 已清空 Topics，等待服务端推送新数据`)
+      if (oldTopics && oldTopics.length > 0) {
+        console.log(`   保留 ${oldTopics.length} 个作品（等待服务端推送最新数据）`)
+      } else {
+        console.log(`   该账户暂无本地数据，等待服务端推送`)
+      }
 
       // 清除该新媒体账户的未读计数
       if (channel) {
