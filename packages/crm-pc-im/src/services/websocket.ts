@@ -6,25 +6,47 @@ import { io, Socket } from 'socket.io-client'
 import { WS_EVENTS } from '@shared/constants'
 import type { Message } from '@shared/types'
 
-// 尝试导入 config.json，如果失败则使用默认值
-let config: any = { websocket: { url: 'http://localhost:3000' } }
-try {
-  // @ts-ignore - config.json 在构建时会被复制到输出目录
-  config = require('../../config.json')
-} catch (err) {
-  console.warn('[WebSocket] 无法加载 config.json，使用默认配置')
-}
-
 class WebSocketService {
   private socket: Socket | null = null
-  private url: string = config.websocket?.url || 'http://localhost:3000'
+  private url: string = 'http://localhost:3000' // 默认值，会被 config.json 覆盖
   private isConnected: boolean = false
+  private config: any = null
 
-  connect(url?: string): Promise<void> {
+  /**
+   * 加载配置文件
+   */
+  private async loadConfig(): Promise<any> {
+    if (this.config) {
+      return this.config
+    }
+
+    try {
+      // 动态加载 config.json（相对于 index.html 的路径）
+      const response = await fetch('./config.json')
+      if (response.ok) {
+        this.config = await response.json()
+        console.log('[WebSocket] 成功加载 config.json:', this.config)
+        return this.config
+      } else {
+        console.warn('[WebSocket] config.json 加载失败，HTTP状态:', response.status)
+      }
+    } catch (err) {
+      console.warn('[WebSocket] 无法加载 config.json，使用默认配置:', err)
+    }
+
+    // 返回默认配置
+    this.config = { websocket: { url: this.url } }
+    return this.config
+  }
+
+  async connect(url?: string): Promise<void> {
+    // 先加载配置文件
+    const config = await this.loadConfig()
+
     return new Promise((resolve, reject) => {
       try {
-        // 如果提供了 url 参数,则使用参数;否则使用配置文件或默认值
-        const connectionUrl = url || this.url
+        // 如果提供了 url 参数,则使用参数;否则使用配置文件中的 URL 或默认值
+        const connectionUrl = url || config.websocket?.url || this.url
         this.url = connectionUrl
 
         console.log('[WebSocket] 配置信息:', {
