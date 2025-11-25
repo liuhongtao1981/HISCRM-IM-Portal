@@ -532,6 +532,24 @@ async function start() {
     // 将 socketNamespaces 传递给 masterServer
     masterServer.workerNamespace = socketNamespaces.workerNamespace;
     masterServer.clientNamespace = socketNamespaces.clientNamespace;
+
+    // 添加账户重启完成处理器（在 socket namespaces 初始化后）
+    tempHandlers.onAccountRestarted = async (data, socket) => {
+      const { accountId, platform, success } = data;
+      logger.info(`[手动登录] Worker 账户 ${accountId} 重启${success ? '成功' : '失败'}`);
+
+      // 通知 IM 客户端账户状态已更新
+      const clientNamespace = socketNamespaces.clientNamespace;
+      if (clientNamespace) {
+        clientNamespace.emit('master:account-status-updated', {
+          accountId,
+          platform,
+          status: success ? 'active' : 'error',
+          timestamp: Date.now(),
+        });
+        logger.info(`[手动登录] 已通知 IM 客户端：账户 ${accountId} 状态已更新`);
+      }
+    };
     masterServer.adminNamespace = socketNamespaces.adminNamespace;
     workerNamespace = socketNamespaces.workerNamespace;
     clientNamespace = socketNamespaces.clientNamespace;
@@ -612,21 +630,167 @@ async function start() {
     };
 
     tempHandlers.onLoginSuccess = (data) => {
-      // 提取真实的账户ID (从 user_info.uid 或 user_info.douyin_id)
-      const realAccountId = data.user_info ? (data.user_info.uid || data.user_info.douyin_id) : null;
+      // 🔑 场景1：手动登录流程（有 session_id）
+      if (data.session_id) {
+        // 提取真实的账户ID (从 user_info.uid 或 user_info.douyin_id)
+        const realAccountId = data.user_info ? (data.user_info.uid || data.user_info.douyin_id) : null;
 
-      loginHandler.handleLoginSuccess(
-        data.session_id,
-        data.cookies,           // Cookie 数组
-        data.cookies_valid_until,
-        realAccountId,          // 真实账户ID
-        data.user_info,         // 用户信息
-        data.fingerprint        // 浏览器指纹
-      );
+        loginHandler.handleLoginSuccess(
+          data.session_id,
+          data.cookies,           // Cookie 数组
+          data.cookies_valid_until,
+          realAccountId,          // 真实账户ID
+          data.user_info,         // 用户信息
+          data.fingerprint        // 浏览器指纹
+        );
+      }
+      // 🔑 场景2：登录检测流程（只有 account_id 和 user_info，用于更新用户信息）
+      else if (data.account_id && data.user_info) {
+        logger.info(`[Login Detection] Received user info for account ${data.account_id}:`, {
+          nickname: data.user_info.platform_username,
+          platform_user_id: data.user_info.platform_user_id
+        });
+
+        try {
+          const now = Math.floor(Date.now() / 1000);
+
+          // 构建动态更新 SQL
+          const updateFields = ['updated_at = ?'];
+          const params = [now];
+
+          // 更新 platform_username（昵称）
+          if (data.user_info.platform_username) {
+            updateFields.push('platform_username = ?');
+            params.push(data.user_info.platform_username);
+            logger.info(`[Login Detection] Updating platform_username to: ${data.user_info.platform_username}`);
+          }
+
+          // 更新 avatar（头像）
+          if (data.user_info.avatar) {
+            updateFields.push('avatar = ?');
+            params.push(data.user_info.avatar);
+            logger.info(`[Login Detection] Updating avatar to: ${data.user_info.avatar}`);
+          }
+
+          // 更新 platform_user_id（抖音号/uid），仅在为空时更新
+          if (data.user_info.platform_user_id) {
+            const currentAccount = db.prepare('SELECT platform_user_id FROM accounts WHERE id = ?').get(data.account_id);
+            if (!currentAccount || !currentAccount.platform_user_id) {
+              updateFields.push('platform_user_id = ?');
+              params.push(data.user_info.platform_user_id);
+              logger.info(`[Login Detection] Updating platform_user_id to: ${data.user_info.platform_user_id}`);
+            }
+          }
+
+          // 更新 total_followers 和 total_following
+          if (data.user_info.total_followers !== undefined) {
+            updateFields.push('total_followers = ?');
+            params.push(data.user_info.total_followers);
+          }
+
+          if (data.user_info.total_following !== undefined) {
+            updateFields.push('total_following = ?');
+            params.push(data.user_info.total_following);
+          }
+
+          // 添加 WHERE 条件的 accountId
+          params.push(data.account_id);
+
+          const sql = `UPDATE accounts SET ${updateFields.join(', ')} WHERE id = ?`;
+          const result = db.prepare(sql).run(...params);
+
+          if (result.changes > 0) {
+            logger.info(`[Login Detection] ✅ User info updated successfully for account ${data.account_id}`);
+
+            // 推送账户状态变更到 IM 客户端（传递状态对象以触发推送）
+            accountStatusUpdater.pushAccountStatusToIM(data.account_id, {
+              total_followers: data.user_info.total_followers,
+              total_following: data.user_info.total_following
+            });
+          } else {
+            logger.warn(`[Login Detection] Account ${data.account_id} not found or not updated`);
+          }
+        } catch (error) {
+          logger.error(`[Login Detection] Failed to update user info for account ${data.account_id}:`, error);
+        }
+      } else {
+        logger.warn('[Login Detection] Invalid login success data: missing session_id or account_id');
+      }
     };
 
     tempHandlers.onLoginFailed = (data) => {
       loginHandler.handleLoginFailed(data.session_id, data.error_message, data.error_type);
+    };
+
+    tempHandlers.onManualLoginSuccess = async (data, socket, workerNamespace) => {
+      try {
+        const { accountId, platform, storageState, timestamp } = data;
+        logger.info(`[手动登录] 收到账户 ${accountId} 的登录数据（Cookies: ${storageState.cookies?.length || 0} 个）`);
+
+        // 1. 检查账户是否存在（从数据库）
+        const account = accountsDAO.findById(accountId);
+
+        if (!account) {
+          logger.error(`[手动登录] 账户 ${accountId} 不存在`);
+          socket.emit('client:manual-login-success:error', {
+            error: '账户不存在',
+            accountId
+          });
+          return;
+        }
+
+        // 2. 更新数据库中的 storage_state（直接数据库操作，因为 Worker 需要读取）
+        accountsDAO.update(accountId, {
+          storage_state: JSON.stringify(storageState),
+          last_login_time: timestamp || Date.now()
+        });
+
+        logger.info(`[手动登录] ✅ 账户 ${accountId} storage_state 已更新到数据库`);
+
+        // 3. 获取账户的 assigned_worker_id（使用前面获取的 account 对象）
+        const workerId = account.assigned_worker_id;
+
+        if (!workerId) {
+          logger.warn(`[手动登录] 账户 ${accountId} 未分配到 Worker，稍后会自动分配`);
+          socket.emit('client:manual-login-success:ack', {
+            accountId,
+            success: true,
+            message: '登录成功，等待 Worker 自动分配',
+            timestamp: Date.now()
+          });
+          return;
+        }
+
+        // 4. 通知对应的 Worker 重启账户（让其重新加载 storage_state）
+        logger.info(`[手动登录] 通知 Worker ${workerId} 重启账户 ${accountId}`);
+
+        // 使用协议定义的消息类型：master:update-account-storage
+        workerNamespace.to(`worker:${workerId}`).emit('master:update-account-storage', {
+          accountId,
+          platform,
+          storageState, // Worker 需要 storageState 来重新初始化浏览器
+          timestamp: Date.now()
+        });
+
+        logger.info(`[手动登录] ✅ 已通知 Worker ${workerId} 重启账户 ${accountId}`);
+
+        // 5. 发送确认给客户端
+        socket.emit('client:manual-login-success:ack', {
+          accountId,
+          success: true,
+          workerId,
+          timestamp: Date.now()
+        });
+
+        logger.info(`[手动登录] ✅ 手动登录流程完成：${accountId}`);
+
+      } catch (error) {
+        logger.error(`[手动登录] 处理失败:`, error);
+        socket.emit('client:manual-login-success:error', {
+          error: error.message,
+          accountId: data.accountId
+        });
+      }
     };
 
     tempHandlers.onLoginQRCodeRefreshed = (data) => {
@@ -662,6 +826,10 @@ async function start() {
     // 10.1 初始化账号状态更新器
     accountStatusUpdater = new AccountStatusUpdater(db);
     logger.info('Account status updater initialized');
+
+    // ⭐ 将 IM WebSocket Server 注入到 AccountStatusUpdater（用于推送状态变更）
+    accountStatusUpdater.setIMWebSocketServer(imWebSocketServer);
+    logger.info('AccountStatusUpdater connected to IM WebSocket Server for status broadcasting');
 
     // 10.1 初始化 Worker 生命周期管理器
     const WorkerConfigDAO = require('./database/worker-config-dao');

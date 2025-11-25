@@ -252,6 +252,11 @@ class LoginDetectionTask {
 
         logger.debug(`Login status check result: ${newStatus} (previous: ${this.currentLoginStatus})`);
 
+        // 🔑 如果检测到已登录且有用户信息，发送给 Master 保存
+        if (newStatus === 'logged_in' && loginStatus.userInfo) {
+          await this.sendUserInfoToMaster(loginStatus.userInfo);
+        }
+
         // 检测状态变化
         if (newStatus !== this.currentLoginStatus) {
           logger.info(`Login status changed: ${this.currentLoginStatus} → ${newStatus} for account ${this.account.id}`);
@@ -499,6 +504,48 @@ class LoginDetectionTask {
 
     } catch (error) {
       logger.error(`实时监控健康检查失败 (账户: ${this.account.id}):`, error);
+    }
+  }
+
+  /**
+   * 发送用户信息给 Master 保存
+   * @param {Object} userInfo - 用户信息 (nickname, avatar, uid/douyin_id, followers, following 等)
+   */
+  async sendUserInfoToMaster(userInfo) {
+    try {
+      // 获取 SocketClient 实例（通过 taskRunner）
+      const socketClient = this.taskRunner?.socketClient;
+      if (!socketClient || !socketClient.isConnected()) {
+        logger.warn(`Socket not connected, cannot send user info for account ${this.account.id}`);
+        return;
+      }
+
+      logger.info(`📤 Sending user info to Master for account ${this.account.id}:`, {
+        nickname: userInfo.nickname,
+        douyin_id: userInfo.douyin_id || userInfo.uid,
+        has_avatar: !!userInfo.avatar
+      });
+
+      // 构造 worker:login:success 消息（复用现有的登录成功处理流程）
+      // 注意：这里我们不需要 session_id，只需要 account_id 和 user_info
+      const payload = {
+        account_id: this.account.id,
+        user_info: {
+          platform_username: userInfo.nickname,
+          avatar: userInfo.avatar,
+          platform_user_id: userInfo.uid || userInfo.douyin_id,
+          total_followers: userInfo.followers || 0,
+          total_following: userInfo.following || 0,
+        },
+        timestamp: Date.now(),
+      };
+
+      // 发送消息（使用底层 socket 对象）
+      socketClient.socket.emit('worker:login:success', payload);
+      logger.info(`✅ User info sent to Master: ${userInfo.nickname} (${userInfo.douyin_id || userInfo.uid})`);
+
+    } catch (error) {
+      logger.error(`Failed to send user info to Master for account ${this.account.id}:`, error);
     }
   }
 
