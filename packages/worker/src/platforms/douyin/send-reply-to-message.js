@@ -349,42 +349,84 @@ async function findMessageItemInVirtualList(page, targetSecUid) {
 
         logger.info(`[查找会话] 最后消息: "${lastMessageText}"`);
 
-        // 在DOM中匹配最后消息内容
-        const domSearchResult = await page.evaluate((msgText) => {
-            const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
-            const visibleItems = [];
-            let targetIndex = -1;
+        // 检查消息内容是否为空
+        if (!lastMessageText || lastMessageText.trim() === '') {
+            // 路径C: 消息内容也为空 - 使用数学定位（基于Fiber索引）
+            logger.info(`[查找会话] 消息内容为空，回退到数学定位`);
 
-            for (let i = 0; i < items.length; i++) {
-                const text = items[i].textContent || '';
-                const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
-                const firstLine = lines[0] || '';
+            const mathResult = await page.evaluate(() => {
+                const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
+                const container = document.querySelector('.ReactVirtualized__Grid');
 
-                // 匹配最后消息内容
-                const containsMessage = msgText && text.includes(msgText);
-
-                visibleItems.push({ index: i, firstLine, containsMessage });
-                if (containsMessage && targetIndex === -1) {
-                    targetIndex = i;
+                if (!container || items.length === 0) {
+                    return { firstVisibleIndex: -1, items: [] };
                 }
+
+                // 返回所有可见项信息
+                const itemsInfo = Array.from(items).map((item, i) => {
+                    const text = item.textContent || '';
+                    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    return { domIndex: i, firstLine: lines[0] || '' };
+                });
+
+                return { firstVisibleIndex: 0, items: itemsInfo };
+            });
+
+            if (mathResult.firstVisibleIndex === -1) {
+                throw new Error('无法获取可见DOM信息');
             }
 
-            return { targetIndex, visibleItems };
-        }, lastMessageText);
+            // 计算相对索引
+            const relativeIndex = result.index - mathResult.firstVisibleIndex;
 
-        logger.debug(`[查找会话] 可见会话 (${domSearchResult.visibleItems.length}个):`,
-            domSearchResult.visibleItems.map(item =>
-                `${item.containsMessage ? '🎯' : '  '} [${item.index}] ${item.firstLine}`
-            ).join('\n')
-        );
+            logger.info(`[查找会话] 数学定位计算: 目标索引=${result.index}, 首个可见索引=${mathResult.firstVisibleIndex}, 相对索引=${relativeIndex}`);
 
-        if (domSearchResult.targetIndex === -1) {
-            throw new Error(`DOM中未找到包含消息"${lastMessageText}"的会话`);
+            if (relativeIndex < 0 || relativeIndex >= mathResult.items.length) {
+                throw new Error(`数学定位失败: 相对索引${relativeIndex}超出范围[0, ${mathResult.items.length})`);
+            }
+
+            finalIndex = relativeIndex;
+            matchedUserName = mathResult.items[relativeIndex].firstLine;
+            logger.info(`[查找会话] ✅ 数学定位: [${finalIndex}] ${matchedUserName}`);
+
+        } else {
+            // 消息内容不为空，继续使用消息内容匹配
+            const domSearchResult = await page.evaluate((msgText) => {
+                const items = document.querySelectorAll('.ReactVirtualized__Grid__innerScrollContainer > div');
+                const visibleItems = [];
+                let targetIndex = -1;
+
+                for (let i = 0; i < items.length; i++) {
+                    const text = items[i].textContent || '';
+                    const lines = text.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+                    const firstLine = lines[0] || '';
+
+                    // 匹配最后消息内容
+                    const containsMessage = msgText && text.includes(msgText);
+
+                    visibleItems.push({ index: i, firstLine, containsMessage });
+                    if (containsMessage && targetIndex === -1) {
+                        targetIndex = i;
+                    }
+                }
+
+                return { targetIndex, visibleItems };
+            }, lastMessageText);
+
+            logger.debug(`[查找会话] 可见会话 (${domSearchResult.visibleItems.length}个):`,
+                domSearchResult.visibleItems.map(item =>
+                    `${item.containsMessage ? '🎯' : '  '} [${item.index}] ${item.firstLine}`
+                ).join('\n')
+            );
+
+            if (domSearchResult.targetIndex === -1) {
+                throw new Error(`DOM中未找到包含消息"${lastMessageText}"的会话`);
+            }
+
+            finalIndex = domSearchResult.targetIndex;
+            matchedUserName = domSearchResult.visibleItems[finalIndex].firstLine;
+            logger.info(`[查找会话] ✅ 消息内容匹配: [${finalIndex}] ${matchedUserName}`);
         }
-
-        finalIndex = domSearchResult.targetIndex;
-        matchedUserName = domSearchResult.visibleItems[finalIndex].firstLine;
-        logger.info(`[查找会话] ✅ 消息内容匹配: [${finalIndex}] ${matchedUserName}`);
     }
 
     // 步骤4: 从DOM中提取完整的用户名（用于后续验证）
