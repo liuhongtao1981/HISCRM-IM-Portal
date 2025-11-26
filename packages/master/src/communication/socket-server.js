@@ -127,6 +127,22 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
       }
     });
 
+    // 监听 Worker 账户重启完成事件（手动登录后）
+    socket.on('worker:account-restarted', async (data) => {
+      logger.info(`Worker ${socket.id} account restarted:`, {
+        accountId: data.accountId,
+        platform: data.platform,
+        success: data.success,
+      });
+      if (handlers.onAccountRestarted) {
+        try {
+          await handlers.onAccountRestarted(data, socket);
+        } catch (error) {
+          logger.error('Failed to handle account restarted:', error);
+        }
+      }
+    });
+
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
       logger.info(`📥 Worker ${socket.id} sent MESSAGE event`);
@@ -289,6 +305,30 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
           notificationId: notification_id,
           error: error.message,
         });
+      }
+    });
+
+    // 处理手动登录成功事件（从 CRM PC IM 客户端接收）
+    socket.on('client:manual-login-success', async (data) => {
+      logger.info(`📱 Client ${socket.id} manual login success:`, {
+        accountId: data.accountId,
+        platform: data.platform,
+        storageStateSize: JSON.stringify(data.storageState || {}).length,
+        timestamp: data.timestamp,
+      });
+
+      if (handlers.onManualLoginSuccess) {
+        try {
+          await handlers.onManualLoginSuccess(data, socket, workerNamespace);
+        } catch (error) {
+          logger.error('Failed to handle manual login success:', error);
+          socket.emit('client:manual-login-success:error', {
+            error: error.message,
+            accountId: data.accountId,
+          });
+        }
+      } else {
+        logger.warn('No handler registered for onManualLoginSuccess');
       }
     });
 

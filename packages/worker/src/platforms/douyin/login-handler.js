@@ -79,11 +79,13 @@ class DouyinLoginHandler {
 
       this.loginSessions.set(accountId, session);
 
-      // 创建登录页面
+      // 创建登录页面（通过 TabManager 管理）
+      const { TabTag } = require('../../browser/tab-manager');
       let page;
+
       if (proxyConfig) {
         try {
-          // 使用降级策略创建上下文
+          // 使用降级策略创建上下文（代理场景需要独立 context）
           const { context, proxyUsed, fallbackLevel } = await this.proxyManager.createContextWithFallback(
             accountId,
             proxyConfig
@@ -95,44 +97,55 @@ class DouyinLoginHandler {
 
           logger.info(`Using ${fallbackLevel} proxy: ${proxyUsed || 'none'}`);
 
-          // 创建页面
+          // 在独立 context 中创建页面
           page = await context.newPage();
           session.loginContext = context;  // ✅ 保存登录context引用，用于后续清理
+
+          // 注册到 TabManager
+          const { tabId } = await this.browserManager.tabManager.registerExistingPage(
+            accountId,
+            page,
+            TabTag.LOGIN,
+            false  // 非持久化，登录完成后关闭
+          );
+          session.loginTabId = tabId;
+          logger.info(`✅ Login page (with proxy) registered to TabManager: tabId=${tabId}`);
+
         } catch (proxyError) {
           logger.error('Failed to create context with proxy fallback:', proxyError);
 
-          // 如果代理完全失败,尝试不使用代理
+          // 如果代理完全失败，使用 TabManager 获取 LOGIN Tab
           logger.warn('Attempting direct connection as last resort');
-          page = await this.browserManager.newPage(accountId, {});
+          const result = await this.browserManager.tabManager.getPageForTask(accountId, {
+            tag: TabTag.LOGIN,
+            persistent: false,
+            shareable: false,
+            forceNew: true  // 强制创建新 Tab
+          });
+          page = result.page;
+          session.loginTabId = result.tabId;
           session.proxyUsed = null;
           session.fallbackLevel = 'emergency_direct';
-          session.loginContext = null;  // 无独立context
+          session.loginContext = null;
+          logger.info(`✅ Login page (emergency) created via TabManager: tabId=${result.tabId}`);
         }
       } else {
-        // 没有配置代理,直接创建页面
-        page = await this.browserManager.newPage(accountId, {});
+        // 没有配置代理，通过 TabManager 获取 LOGIN Tab
+        const result = await this.browserManager.tabManager.getPageForTask(accountId, {
+          tag: TabTag.LOGIN,
+          persistent: false,
+          shareable: false,
+          forceNew: true  // 强制创建新 Tab（LOGIN 每次都是新的）
+        });
+        page = result.page;
+        session.loginTabId = result.tabId;
         session.proxyUsed = null;
         session.fallbackLevel = 'none';
-        session.loginContext = null;  // 无独立context
+        session.loginContext = null;
+        logger.info(`✅ Login page created via TabManager: tabId=${result.tabId}`);
       }
 
       session.page = page;
-
-      // ✅ 将登录页面注册到 TabManager（非持久化）
-      try {
-        const { TabTag } = require('../../browser/tab-manager');
-        const { tabId, release } = await this.browserManager.tabManager.registerExistingPage(
-          accountId,
-          page,
-          TabTag.LOGIN,
-          false  // 非持久化，可以自动关闭
-        );
-        session.loginTabId = tabId;
-        session.releaseTab = release;
-        logger.info(`✅ Login page registered to TabManager: tabId=${tabId}`);
-      } catch (registerError) {
-        logger.warn(`Failed to register login page to TabManager (will use manual close): ${registerError.message}`);
-      }
 
       // 监听页面事件
       this.setupPageListeners(page, accountId);
@@ -615,7 +628,8 @@ class DouyinLoginHandler {
         if (loginStatus.isLoggedIn) {
           // 登录成功
           clearInterval(pollInterval);
-          await this.handleLoginSuccess(accountId, sessionId);
+          // 传递用户信息给 handleLoginSuccess
+          await this.handleLoginSuccess(accountId, sessionId, loginStatus.userInfo);
           return;
         }
 
@@ -726,7 +740,7 @@ class DouyinLoginHandler {
   /**
    * 检查创作中心页面的用户信息元素
    * @param {Page} page - Playwright页面对象
-   * @returns {Promise<{isLoggedIn: boolean}>}
+   * @returns {Promise<{isLoggedIn: boolean, userInfo?: Object}>}
    */
   async _checkUserInfoElements(page) {
     try {
@@ -777,9 +791,12 @@ class DouyinLoginHandler {
               } catch (e) {
                 // 图片元素没有文本内容，跳过
               }
-              
+
               logger.info(`✅ Found ${name} element${text ? ` (${text})` : ''} on creator center, user is logged in`);
-              return { isLoggedIn: true };
+
+              // ✅ 提取完整的用户信息
+              const userInfo = await DouyinLoginHandler.extractUserInfo(page);
+              return { isLoggedIn: true, userInfo };
             }
           }
         } catch (error) {
@@ -800,7 +817,7 @@ class DouyinLoginHandler {
   /**
    * 处理登录成功
    */
-  async handleLoginSuccess(accountId, sessionId) {
+  async handleLoginSuccess(accountId, sessionId, userInfo) {
     try {
       logger.info(`✅ Login successful for account ${accountId}, session ${sessionId}`);
 
@@ -817,8 +834,8 @@ class DouyinLoginHandler {
       const cookies = await session.page.context().cookies();
       const cookiesValidUntil = this.calculateCookiesExpiry(cookies);
 
-      // 通知 Master 登录成功
-      this.notifyLoginSuccess(accountId, sessionId, cookies, cookiesValidUntil);
+      // 通知 Master 登录成功（包含用户信息）
+      this.notifyLoginSuccess(accountId, sessionId, cookies, cookiesValidUntil, userInfo);
 
       // 更新会话状态
       session.status = 'success';
@@ -857,14 +874,28 @@ class DouyinLoginHandler {
   /**
    * 通知 Master 登录成功
    */
-  notifyLoginSuccess(accountId, sessionId, cookies, cookiesValidUntil) {
+  notifyLoginSuccess(accountId, sessionId, cookies, cookiesValidUntil, userInfo) {
     try {
-      this.socketClient.emit('worker:login:success', {
+      const payload = {
         account_id: accountId,
         session_id: sessionId,
         cookies_valid_until: cookiesValidUntil,
         timestamp: Date.now(),
-      });
+      };
+
+      // 如果有用户信息，包含在通知中（统一使用 platform_user_id）
+      if (userInfo) {
+        payload.user_info = {
+          platform_username: userInfo.nickname,
+          avatar: userInfo.avatar,
+          platform_user_id: userInfo.platform_user_id,
+          total_followers: userInfo.followers || 0,
+          total_following: userInfo.following || 0,
+        };
+        logger.info(`Login success with user info: ${userInfo.nickname} (${userInfo.platform_user_id})`);
+      }
+
+      this.socketClient.emit('worker:login:success', payload);
 
       logger.info(`Login success notification sent for session ${sessionId}`);
 
@@ -911,7 +942,7 @@ class DouyinLoginHandler {
       // 🆕 停止实时二维码变化检测
       this.cleanupQRCodeChangeDetection(accountId);
 
-      // ✅ 关闭登录Tab（和回复消息的方式一样）
+      // ✅ 关闭登录Tab（LOGIN 是临时窗体，登录完成后关闭）
       if (session.loginTabId && !session.page.isClosed()) {
         try {
           logger.info(`Closing login tab ${session.loginTabId} for account ${accountId}`);
@@ -971,6 +1002,109 @@ class DouyinLoginHandler {
   getSessionStatus(accountId) {
     const session = this.loginSessions.get(accountId);
     return session ? session.status : null;
+  }
+
+  /**
+   * 从抖音创作中心页面提取用户信息（静态方法，供外部复用）
+   * @param {Page} page - Playwright 页面对象
+   * @returns {Promise<Object|null>} 用户信息对象，失败返回 null
+   */
+  static async extractUserInfo(page) {
+    try {
+      logger.debug('[extractUserInfo] Extracting user information from page...');
+
+      const userInfo = await page.evaluate(() => {
+        // 1. 提取抖音号（最可靠）- 从 HTML 结构: <div class="unique_id-EuH8eA">抖音号：1864722759</div>
+        const douyinIdElement = document.querySelector('[class*="unique_id"]');
+        let douyinId = null;
+        if (douyinIdElement) {
+          const text = douyinIdElement.textContent || '';
+          // 从 "抖音号：1864722759" 中提取
+          const match = text.match(/抖音号[：:]\s*(\S+)/);
+          if (match) {
+            douyinId = match[1].trim();
+          }
+        }
+
+        // 2. 提取用户昵称 - 从 HTML 结构: <div class="name-_lSSDc">苏苏</div>
+        const nicknameSelectors = [
+          '[class*="name-"]',          // name-_lSSDc (最精确)
+          '[class*="nickname"]',
+          '[class*="user-name"]',
+          '.username',
+        ];
+        let nickname = null;
+        for (const selector of nicknameSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.textContent) {
+            const text = element.textContent.trim();
+            // 排除"抖音号："等非昵称文本
+            if (text && !text.includes('抖音号') && !text.includes('关注') && !text.includes('粉丝')) {
+              nickname = text;
+              break;
+            }
+          }
+        }
+
+        // 3. 提取用户头像 - 从 HTML 结构: <div class="avatar-XoPjK6"><img class="img-PeynF_" src="...">
+        const avatarSelectors = [
+          '[class*="avatar"] img',     // avatar-XoPjK6
+          '.img-PeynF_',               // 抖音特定的图片class
+          '#header-avatar img',
+        ];
+        let avatar = null;
+        for (const selector of avatarSelectors) {
+          const element = document.querySelector(selector);
+          if (element && element.src) {
+            avatar = element.src;
+            break;
+          }
+        }
+
+        // 4. 提取粉丝数和关注数（可选）
+        let followers = null;
+        let following = null;
+
+        const fansElement = document.querySelector('#guide_home_fans [class*="number"]');
+        if (fansElement) {
+          followers = fansElement.textContent.trim();
+        }
+
+        const followingElement = document.querySelector('#guide_home_following [class*="number"]');
+        if (followingElement) {
+          following = followingElement.textContent.trim();
+        }
+
+        // 5. 提取个性签名（可选）
+        let signature = null;
+        const signatureElement = document.querySelector('[class*="signature"]');
+        if (signatureElement) {
+          signature = signatureElement.textContent.trim();
+        }
+
+        return {
+          avatar,
+          nickname,
+          platform_user_id: douyinId,  // 统一字段名：平台用户ID（抖音号/小红书号等）
+          followers,                    // 粉丝数
+          following,                    // 关注数
+          signature,                    // 个性签名
+        };
+      });
+
+      logger.info('[extractUserInfo] Extracted user info:', {
+        nickname: userInfo.nickname,
+        platform_user_id: userInfo.platform_user_id,
+        followers: userInfo.followers,
+        has_avatar: !!userInfo.avatar,
+      });
+
+      return userInfo;
+
+    } catch (error) {
+      logger.warn('[extractUserInfo] Failed to extract user info:', error);
+      return null;
+    }
   }
 }
 

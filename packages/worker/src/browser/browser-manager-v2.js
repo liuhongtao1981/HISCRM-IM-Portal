@@ -1048,6 +1048,37 @@ class BrowserManagerV2 extends EventEmitter {
   }
 
   /**
+   * 清理账户的浏览器用户数据目录
+   * 用于手动登录时重置浏览器状态
+   * @param {string} accountId - 账户ID
+   */
+  async cleanUserDataDir(accountId) {
+    try {
+      const userDataDir = path.join(this.config.dataDir, `browser_${accountId}`);
+
+      if (fs.existsSync(userDataDir)) {
+        logger.info(`Cleaning user data directory for account ${accountId}: ${userDataDir}`);
+
+        // 递归删除整个用户数据目录
+        fs.rmSync(userDataDir, { recursive: true, force: true });
+        logger.info(`✓ User data directory cleaned for account ${accountId}`);
+      } else {
+        logger.info(`User data directory does not exist for account ${accountId}, skip cleaning`);
+      }
+
+      // 清理存储状态路径记录
+      this.storageStatePaths.delete(accountId);
+
+      // 清理指纹配置（可选，根据需求决定是否保留）
+      // this.fingerprintConfigs.delete(accountId);
+
+    } catch (error) {
+      logger.error(`Failed to clean user data directory for account ${accountId}:`, error);
+      throw error;
+    }
+  }
+
+  /**
    * 关闭所有Browser实例
    */
   async closeAll() {

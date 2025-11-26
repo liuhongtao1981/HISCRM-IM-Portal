@@ -8,7 +8,7 @@ import type { Message } from '@shared/types'
 
 class WebSocketService {
   private socket: Socket | null = null
-  private url: string = 'http://localhost:3000' // 默认值，会被 config.json 覆盖
+  private url: string = 'http://127.0.0.1:3000' // 默认值（使用IPv4地址避免IPv6解析问题），会被 config.json 覆盖
   private isConnected: boolean = false
   private config: any = null
 

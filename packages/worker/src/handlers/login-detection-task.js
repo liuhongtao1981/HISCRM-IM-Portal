@@ -140,12 +140,23 @@ class LoginDetectionTask {
 
     try {
       // 获取默认Tab（PLACEHOLDER）进行登录检测
-      const { tabId, page, shouldClose } = await this.browserManager.tabManager.getPageForTask(this.account.id, {
-        tag: TabTag.PLACEHOLDER,  // 使用默认占位页
-        persistent: true,          // 保持打开
-        shareable: true,           // 可共享
-        forceNew: false            // 优先复用
+      // createIfNotExists: false - 如果不存在，说明 account-initializer 还没完成，跳过本次检测
+      const result = await this.browserManager.tabManager.getPageForTask(this.account.id, {
+        tag: TabTag.PLACEHOLDER,      // 使用默认占位页
+        persistent: true,              // 保持打开
+        shareable: true,               // 可共享
+        forceNew: false,               // 优先复用
+        createIfNotExists: false       // 不存在时不创建，返回 null
       });
+
+      if (!result) {
+        logger.debug(`PLACEHOLDER not found for account ${this.account.id}, waiting for account-initializer...`);
+        // ⚠️ 不能直接 return，需要继续调度下次检测
+        this.scheduleNext();
+        return;
+      }
+
+      const { tabId, page, shouldClose } = result;
 
       try {
         // ✅ 每次检测前都跳转到创作中心首页，确保获取最新状态
@@ -509,7 +520,8 @@ class LoginDetectionTask {
 
   /**
    * 发送用户信息给 Master 保存
-   * @param {Object} userInfo - 用户信息 (nickname, avatar, uid/douyin_id, followers, following 等)
+   * 直接发送原始格式的 userInfo，Master 端兼容原始格式和数据库格式
+   * @param {Object} userInfo - 用户信息 (nickname, avatar, platform_user_id, followers, following 等)
    */
   async sendUserInfoToMaster(userInfo) {
     try {
@@ -522,27 +534,19 @@ class LoginDetectionTask {
 
       logger.info(`📤 Sending user info to Master for account ${this.account.id}:`, {
         nickname: userInfo.nickname,
-        douyin_id: userInfo.douyin_id || userInfo.uid,
+        platform_user_id: userInfo.platform_user_id,
         has_avatar: !!userInfo.avatar
       });
 
-      // 构造 worker:login:success 消息（复用现有的登录成功处理流程）
-      // 注意：这里我们不需要 session_id，只需要 account_id 和 user_info
-      const payload = {
+      // 直接发送原始格式的 userInfo（Master 端已兼容原始格式）
+      // 无需 session_id，Master 会识别为登录检测场景
+      socketClient.socket.emit('worker:login:success', {
         account_id: this.account.id,
-        user_info: {
-          platform_username: userInfo.nickname,
-          avatar: userInfo.avatar,
-          platform_user_id: userInfo.uid || userInfo.douyin_id,
-          total_followers: userInfo.followers || 0,
-          total_following: userInfo.following || 0,
-        },
+        user_info: userInfo,  // 直接传递原始格式
         timestamp: Date.now(),
-      };
+      });
 
-      // 发送消息（使用底层 socket 对象）
-      socketClient.socket.emit('worker:login:success', payload);
-      logger.info(`✅ User info sent to Master: ${userInfo.nickname} (${userInfo.douyin_id || userInfo.uid})`);
+      logger.info(`✅ User info sent to Master: ${userInfo.nickname} (${userInfo.platform_user_id})`);
 
     } catch (error) {
       logger.error(`Failed to send user info to Master for account ${this.account.id}:`, error);

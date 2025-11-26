@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const { APIInterceptorManager } = require('./api-interceptor-manager');
 const { DataPusher } = require('./data-pusher');
+const { TabTag } = require('../../browser/tab-manager');
 
 const logger = createLogger('platform-base');
 
@@ -789,6 +790,9 @@ class PlatformBase {
         } else {
           logger.warn(`Context invalid for account ${accountId}, recreating...`);
           this.accountContexts.delete(accountId);
+          // ⭐ 清理旧的无效 Tab 记录（context 已失效，对应的 Tab 也无效了）
+          this.browserManager.tabManager.tabs.delete(accountId);
+          logger.info(`Cleared invalid tabs for account ${accountId}`);
         }
       }
 
@@ -819,6 +823,26 @@ class PlatformBase {
 
       this.accountContexts.set(accountId, context);
       logger.info(`Created browser context for account ${accountId}`);
+
+      // ⭐ 将新 context 的默认 Tab 注册为 PLACEHOLDER
+      // 如果已存在会自动复用，不会重复注册
+      try {
+        const pages = context.pages();
+        if (pages.length > 0) {
+          const defaultPage = pages[0];
+          const { isNew } = await this.browserManager.tabManager.registerExistingPage(
+            accountId,
+            defaultPage,
+            TabTag.PLACEHOLDER,
+            true  // persistent
+          );
+          if (isNew) {
+            logger.info(`✅ Registered default tab as PLACEHOLDER for account ${accountId}`);
+          }
+        }
+      } catch (regError) {
+        logger.warn(`Failed to register default tab as PLACEHOLDER: ${regError.message}`);
+      }
 
       return context;
     } catch (error) {

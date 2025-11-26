@@ -173,18 +173,34 @@ class LoginHandler {
         fingerprint ? JSON.stringify(fingerprint) : null,
       ];
 
-      // 🔑 从 userInfo 中提取 platform_user_id (抖音号/uid)，仅在为空时更新
-      if (userInfo && (userInfo.douyin_id || userInfo.uid)) {
-        const currentAccount = this.db.prepare('SELECT platform_user_id FROM accounts WHERE id = ?').get(session.account_id);
+      // 🔑 从 userInfo 中提取用户信息字段（统一使用 platform_user_id）
+      if (userInfo) {
+        const currentAccount = this.db.prepare('SELECT platform_user_id, platform_username, avatar FROM accounts WHERE id = ?').get(session.account_id);
 
-        // 只在当前 platform_user_id 为空时才更新，避免重复登录时的冲突
-        if (!currentAccount || !currentAccount.platform_user_id) {
-          updateSql += ', platform_user_id = ?';
-          const platformUserId = userInfo.douyin_id || userInfo.uid;
-          params.push(platformUserId);
-          logger.info(`Updated platform_user_id to: ${platformUserId}`);
-        } else {
-          logger.info(`platform_user_id already set to: ${currentAccount.platform_user_id}, skipping update`);
+        // 更新 platform_user_id，仅在为空时更新（兼容旧格式）
+        const platformUserId = userInfo.platform_user_id || userInfo.douyin_id || userInfo.uid;
+        if (platformUserId) {
+          if (!currentAccount || !currentAccount.platform_user_id) {
+            updateSql += ', platform_user_id = ?';
+            params.push(platformUserId);
+            logger.info(`Updated platform_user_id to: ${platformUserId}`);
+          } else {
+            logger.info(`platform_user_id already set to: ${currentAccount.platform_user_id}, skipping update`);
+          }
+        }
+
+        // 更新 platform_username（昵称）
+        if (userInfo.nickname) {
+          updateSql += ', platform_username = ?';
+          params.push(userInfo.nickname);
+          logger.info(`Updated platform_username to: ${userInfo.nickname}`);
+        }
+
+        // 更新 avatar（头像）
+        if (userInfo.avatar) {
+          updateSql += ', avatar = ?';
+          params.push(userInfo.avatar);
+          logger.info(`Updated avatar to: ${userInfo.avatar}`);
         }
       }
 

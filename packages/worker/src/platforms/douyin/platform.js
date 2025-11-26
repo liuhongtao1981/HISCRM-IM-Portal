@@ -27,6 +27,7 @@ const DouyinRealtimeMonitor = require('./realtime-monitor');
 const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comment');
 
 const { sendReplyToDirectMessage } = require('./send-reply-to-message');
+
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
 
@@ -619,106 +620,12 @@ class DouyinPlatform extends PlatformBase {
 
     /**
      * 提取抖音用户信息（覆盖基类方法）
+     * 复用 DouyinLoginHandler 的静态方法
      * @param {Page} page - Playwright 页面对象
      * @returns {Object} 用户信息
      */
     async extractUserInfo(page) {
-        try {
-            logger.debug('[extractUserInfo] Extracting user information from page...');
-
-            const userInfo = await page.evaluate(() => {
-                // 1. 提取抖音号（最可靠）- 从 HTML 结构: <div class="unique_id-EuH8eA">抖音号：1864722759</div>
-                const douyinIdElement = document.querySelector('[class*="unique_id"]');
-                let douyinId = null;
-                if (douyinIdElement) {
-                    const text = douyinIdElement.textContent || '';
-                    // 从 "抖音号：1864722759" 中提取数字
-                    const match = text.match(/抖音号[：:]\s*(\S+)/);
-                    if (match) {
-                        douyinId = match[1].trim();
-                    }
-                }
-
-                // 2. 提取用户昵称 - 从 HTML 结构: <div class="name-_lSSDc">苏苏</div>
-                const nicknameSelectors = [
-                    '[class*="name-"]',          // name-_lSSDc (最精确)
-                    '[class*="nickname"]',
-                    '[class*="user-name"]',
-                    '.username',
-                ];
-                let nickname = null;
-                for (const selector of nicknameSelectors) {
-                    const element = document.querySelector(selector);
-                    if (element && element.textContent) {
-                        const text = element.textContent.trim();
-                        // 排除"抖音号："等非昵称文本
-                        if (text && !text.includes('抖音号') && !text.includes('关注') && !text.includes('粉丝')) {
-                            nickname = text;
-                            break;
-                        }
-                    }
-                }
-
-                // 3. 提取用户头像 - 从 HTML 结构: <div class="avatar-XoPjK6"><img class="img-PeynF_" src="...">
-                const avatarSelectors = [
-                    '[class*="avatar"] img',     // avatar-XoPjK6
-                    '.img-PeynF_',               // 抖音特定的图片class
-                    '#header-avatar img',
-                ];
-                let avatar = null;
-                for (const selector of avatarSelectors) {
-                    const element = document.querySelector(selector);
-                    if (element && element.src) {
-                        avatar = element.src;
-                        break;
-                    }
-                }
-
-                // 4. 提取粉丝数和关注数（可选）
-                let followers = null;
-                let following = null;
-
-                const fansElement = document.querySelector('#guide_home_fans [class*="number"]');
-                if (fansElement) {
-                    followers = fansElement.textContent.trim();
-                }
-
-                const followingElement = document.querySelector('#guide_home_following [class*="number"]');
-                if (followingElement) {
-                    following = followingElement.textContent.trim();
-                }
-
-                // 5. 提取个性签名（可选）
-                let signature = null;
-                const signatureElement = document.querySelector('[class*="signature"]');
-                if (signatureElement) {
-                    signature = signatureElement.textContent.trim();
-                }
-
-                return {
-                    avatar,
-                    nickname,
-                    uid: douyinId,           // 使用抖音号作为 UID
-                    douyin_id: douyinId,     // 抖音号
-                    followers,               // 粉丝数
-                    following,               // 关注数
-                    signature,               // 个性签名
-                };
-            });
-
-            logger.info('[extractUserInfo] Extracted user info:', {
-                nickname: userInfo.nickname,
-                douyin_id: userInfo.douyin_id,
-                followers: userInfo.followers,
-                has_avatar: !!userInfo.avatar,
-            });
-
-            return userInfo;
-
-        } catch (error) {
-            logger.warn('Failed to extract user info:', error);
-            return null;
-        }
+        return DouyinLoginHandler.extractUserInfo(page);
     }
 
     /**

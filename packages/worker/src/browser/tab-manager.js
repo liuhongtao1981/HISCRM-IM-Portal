@@ -50,7 +50,8 @@ class TabManager {
    * @param {boolean} options.persistent - 是否持久窗口（false = 用完后关闭）
    * @param {boolean} options.shareable - 是否可以公用
    * @param {boolean} options.forceNew - 是否强制启用新窗口
-   * @returns {Promise<Object>} { tabId, page, shouldClose }
+   * @param {boolean} options.createIfNotExists - 如果不存在是否创建（默认 true）
+   * @returns {Promise<Object|null>} { tabId, page, shouldClose } 或 null（如果不存在且 createIfNotExists=false）
    */
   async getPageForTask(accountId, options = {}) {
     const {
@@ -58,6 +59,7 @@ class TabManager {
       persistent = false,
       shareable = false,
       forceNew = false,
+      createIfNotExists = true,  // 默认自动创建
     } = options;
 
     if (!tag) {
@@ -120,7 +122,13 @@ class TabManager {
       }
     }
 
-    // 3. 创建新窗口
+    // 3. 如果不允许创建，返回 null
+    if (!createIfNotExists) {
+      logger.debug(`🚫 Tab ${tag} not found for account ${accountId}, createIfNotExists=false`);
+      return null;
+    }
+
+    // 4. 创建新窗口
     const { tabId, page } = await this.createTab(accountId, tag, persistent);
 
     logger.info(`✨ Created new tab ${tabId} for ${tag}, persistent=${persistent}`);
@@ -186,15 +194,19 @@ class TabManager {
       this.tabs.set(accountId, new Map());
     }
 
+    const createdAt = Date.now();
     this.tabs.get(accountId).set(tabId, {
       tabId,
       page,
       tag,
       persistent,
-      createdAt: Date.now(),
+      createdAt,
       status: 'ACTIVE',  // 'ACTIVE' | 'RELEASED' | 'CLOSED'
       releasedAt: null,
     });
+
+    // 🔍 注入 Tab 信息到页面，方便调试
+    await this._injectTabInfo(page, { tabId, tag, persistent, createdAt, accountId, source: 'createTab' });
 
     logger.info(`✅ Registered tab ${tabId}: tag=${tag}, persistent=${persistent}`);
 
@@ -204,15 +216,25 @@ class TabManager {
   /**
    * 注册已存在的 Page 到 TabManager
    * 用于将浏览器启动时自动创建的默认 tab 注册到管理系统
-   * 
+   *
+   * ⭐ 行为：如果已存在相同 tag 的 Tab，返回已存在的 tabId（不会重复注册）
+   *
    * @param {string} accountId - 账户ID
    * @param {Page} page - Playwright Page 对象
    * @param {string} tag - Tab 标记
    * @param {boolean} persistent - 是否持久
-   * @returns {string} tabId
+   * @returns {Promise<{tabId: string, isNew: boolean}>} tabId 和是否新注册
    */
   async registerExistingPage(accountId, page, tag, persistent = true) {
+    // ⭐ 先检查是否已存在相同 tag 的 Tab
+    const existingTab = this.findTabByTag(accountId, tag);
+    if (existingTab) {
+      logger.debug(`♻️ Tab ${tag} already exists (${existingTab.tabId}) for account ${accountId}, reusing`);
+      return { tabId: existingTab.tabId, isNew: false };
+    }
+
     const tabId = `tab-${++this.tabIdCounter}`;
+    const createdAt = Date.now();
 
     // 注册 Tab
     if (!this.tabs.has(accountId)) {
@@ -224,14 +246,17 @@ class TabManager {
       page,
       tag,
       persistent,
-      createdAt: Date.now(),
+      createdAt,
       status: 'ACTIVE',
       releasedAt: null,
     });
 
+    // 🔍 注入 Tab 信息到页面，方便调试
+    await this._injectTabInfo(page, { tabId, tag, persistent, createdAt, accountId, source: 'registerExistingPage' });
+
     logger.info(`✅ Registered existing tab ${tabId}: tag=${tag}, persistent=${persistent}`);
 
-    return tabId;
+    return { tabId, isNew: true };
   }
 
   /**
@@ -486,6 +511,83 @@ class TabManager {
 
     this.tabs.delete(accountId);
     logger.info(`✅ Cleared all tabs for account ${accountId}`);
+  }
+
+  /**
+   * 🔍 注入 Tab 信息到页面的 window 对象
+   * 方便在浏览器控制台中调试查看 Tab 类型
+   *
+   * 使用 addInitScript 确保每次页面加载都会注入
+   *
+   * @param {Page} page - Playwright Page 对象
+   * @param {Object} info - Tab 信息
+   * @private
+   */
+  async _injectTabInfo(page, info) {
+    try {
+      // 使用 addInitScript 确保每次导航后都会重新注入
+      await page.addInitScript((tabInfo) => {
+        window._tabInfo = {
+          ...tabInfo,
+          injectedAt: new Date().toISOString()
+        };
+        // 在控制台打印提示
+        console.log('%c[TabManager] Tab Info', 'color: #4CAF50; font-weight: bold;',
+          `tag=${tabInfo.tag}, persistent=${tabInfo.persistent}, tabId=${tabInfo.tabId}, source=${tabInfo.source}`);
+      }, info);
+
+      // 同时立即注入到当前页面（如果页面已经加载）
+      await page.evaluate((tabInfo) => {
+        window._tabInfo = {
+          ...tabInfo,
+          injectedAt: new Date().toISOString()
+        };
+      }, info).catch(() => {}); // 忽略错误，页面可能还没准备好
+
+      logger.debug(`✅ Injected _tabInfo for ${info.tabId}`);
+    } catch (error) {
+      // 页面可能还没准备好或已关闭，忽略错误
+      logger.debug(`⚠️ Failed to inject _tabInfo: ${error.message}`);
+    }
+  }
+
+  /**
+   * 🔍 调试方法：打印所有 Tab 状态
+   * @param {string} accountId - 账户ID（可选，不传则打印所有账户）
+   */
+  debugPrintTabs(accountId = null) {
+    console.log('\n========== TAB MANAGER DEBUG ==========');
+    console.log(`Total accounts: ${this.tabs.size}`);
+
+    const accountsToShow = accountId ? [accountId] : Array.from(this.tabs.keys());
+
+    for (const accId of accountsToShow) {
+      const accountTabs = this.tabs.get(accId);
+      if (!accountTabs) {
+        console.log(`\n[Account: ${accId}] - No tabs registered`);
+        continue;
+      }
+
+      console.log(`\n[Account: ${accId}] - ${accountTabs.size} tabs:`);
+      console.log('─'.repeat(80));
+
+      let index = 1;
+      for (const [tabId, tabInfo] of accountTabs.entries()) {
+        const url = tabInfo.page?.url?.() || 'unknown';
+        const isClosed = tabInfo.page?.isClosed?.() ?? 'unknown';
+
+        console.log(`  ${index}. TabID: ${tabId}`);
+        console.log(`     Tag: ${tabInfo.tag}`);
+        console.log(`     Persistent: ${tabInfo.persistent}`);
+        console.log(`     Status: ${tabInfo.status}`);
+        console.log(`     URL: ${url.substring(0, 60)}${url.length > 60 ? '...' : ''}`);
+        console.log(`     Closed: ${isClosed}`);
+        console.log(`     Created: ${new Date(tabInfo.createdAt).toLocaleTimeString()}`);
+        console.log('');
+        index++;
+      }
+    }
+    console.log('========================================\n');
   }
 }
 

@@ -8,8 +8,17 @@ const { createLogger } = require('@hiscrm-im/shared/utils/logger');
 const logger = createLogger('account-status-updater');
 
 class AccountStatusUpdater {
-  constructor(db) {
+  constructor(db, imWebSocketServer = null) {
     this.db = db;
+    this.imWebSocketServer = imWebSocketServer;
+  }
+
+  /**
+   * 设置 IM WebSocket Server（用于推送状态变更）
+   */
+  setIMWebSocketServer(imWebSocketServer) {
+    this.imWebSocketServer = imWebSocketServer;
+    logger.info('✅ IM WebSocket Server injected into AccountStatusUpdater');
   }
 
   /**
@@ -119,6 +128,10 @@ class AccountStatusUpdater {
 
       if (result.changes > 0) {
         logger.debug(`Account ${accountId} status updated: ${JSON.stringify(status)}`);
+
+        // ⭐ 推送账户状态变更到 IM 客户端
+        this.pushAccountStatusToIM(accountId, status);
+
         return true;
       } else {
         logger.warn(`Account ${accountId} not found or not updated`);
@@ -150,6 +163,75 @@ class AccountStatusUpdater {
     logger.info(`Batch update completed: ${successCount} succeeded, ${failureCount} failed`);
 
     return { successCount, failureCount, total: accountStatuses.length };
+  }
+
+  /**
+   * 推送账户状态变更到 IM 客户端
+   * @param {string} accountId
+   * @param {object} status - 更新的状态数据
+   */
+  pushAccountStatusToIM(accountId, status) {
+    // 如果没有注入 IM WebSocket Server，跳过推送
+    if (!this.imWebSocketServer) {
+      return;
+    }
+
+    // 只有当登录状态或用户信息变更时才推送
+    const shouldPush = status.login_status !== undefined ||
+                       status.total_followers !== undefined ||
+                       status.total_following !== undefined;
+
+    if (!shouldPush) {
+      return;
+    }
+
+    try {
+      // 从数据库获取完整的账户信息（包括头像、昵称等）
+      const account = this.db.prepare(`
+        SELECT
+          id, platform, account_name, login_status, worker_status,
+          total_followers, total_following, total_comments, total_contents,
+          platform_username, avatar, platform_user_id,
+          last_crawl_time, updated_at
+        FROM accounts
+        WHERE id = ?
+      `).get(accountId);
+
+      if (!account) {
+        logger.warn(`[Status Push] Account ${accountId} not found in database`);
+        return;
+      }
+
+      // 构建推送数据（channel 更新格式）
+      const channelUpdate = {
+        id: account.id,
+        platform: account.platform,
+        accountName: account.account_name,
+        loginStatus: account.login_status,
+        workerStatus: account.worker_status,
+        // ⭐ 用户信息（包括头像和昵称）
+        platformUsername: account.platform_username,
+        platformUserId: account.platform_user_id,
+        avatar: account.avatar,
+        stats: {
+          followers: account.total_followers || 0,
+          following: account.total_following || 0,
+          comments: account.total_comments || 0,
+          contents: account.total_contents || 0,
+        },
+        lastUpdate: account.updated_at,
+      };
+
+      // 广播账户状态更新
+      this.imWebSocketServer.broadcastToMonitors('channel:status_update', {
+        channel: channelUpdate
+      });
+
+      logger.info(`[Status Push] ✅ 推送账户状态更新: ${accountId}, login_status=${account.login_status}, worker_status=${account.worker_status}`);
+
+    } catch (error) {
+      logger.error(`[Status Push] Failed to push account status for ${accountId}:`, error);
+    }
   }
 
   /**

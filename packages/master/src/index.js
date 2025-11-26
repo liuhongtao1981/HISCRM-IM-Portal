@@ -632,8 +632,10 @@ async function start() {
     tempHandlers.onLoginSuccess = (data) => {
       // 🔑 场景1：手动登录流程（有 session_id）
       if (data.session_id) {
-        // 提取真实的账户ID (从 user_info.uid 或 user_info.douyin_id)
-        const realAccountId = data.user_info ? (data.user_info.uid || data.user_info.douyin_id) : null;
+        // 提取真实的账户ID（统一使用 platform_user_id，兼容旧格式）
+        const realAccountId = data.user_info
+          ? (data.user_info.platform_user_id || data.user_info.douyin_id || data.user_info.uid)
+          : null;
 
         loginHandler.handleLoginSuccess(
           data.session_id,
@@ -645,10 +647,18 @@ async function start() {
         );
       }
       // 🔑 场景2：登录检测流程（只有 account_id 和 user_info，用于更新用户信息）
+      // 统一字段格式：nickname, platform_user_id, followers, following, avatar
       else if (data.account_id && data.user_info) {
+        // 提取字段（优先使用统一字段名，兼容旧格式）
+        const nickname = data.user_info.nickname || data.user_info.platform_username;
+        const platformUserId = data.user_info.platform_user_id || data.user_info.douyin_id || data.user_info.uid;
+        const followers = data.user_info.followers || data.user_info.total_followers;
+        const following = data.user_info.following || data.user_info.total_following;
+
         logger.info(`[Login Detection] Received user info for account ${data.account_id}:`, {
-          nickname: data.user_info.platform_username,
-          platform_user_id: data.user_info.platform_user_id
+          nickname: nickname,
+          platform_user_id: platformUserId,
+          has_avatar: !!data.user_info.avatar
         });
 
         try {
@@ -659,10 +669,10 @@ async function start() {
           const params = [now];
 
           // 更新 platform_username（昵称）
-          if (data.user_info.platform_username) {
+          if (nickname) {
             updateFields.push('platform_username = ?');
-            params.push(data.user_info.platform_username);
-            logger.info(`[Login Detection] Updating platform_username to: ${data.user_info.platform_username}`);
+            params.push(nickname);
+            logger.info(`[Login Detection] Updating platform_username to: ${nickname}`);
           }
 
           // 更新 avatar（头像）
@@ -673,24 +683,24 @@ async function start() {
           }
 
           // 更新 platform_user_id（抖音号/uid），仅在为空时更新
-          if (data.user_info.platform_user_id) {
+          if (platformUserId) {
             const currentAccount = db.prepare('SELECT platform_user_id FROM accounts WHERE id = ?').get(data.account_id);
             if (!currentAccount || !currentAccount.platform_user_id) {
               updateFields.push('platform_user_id = ?');
-              params.push(data.user_info.platform_user_id);
-              logger.info(`[Login Detection] Updating platform_user_id to: ${data.user_info.platform_user_id}`);
+              params.push(platformUserId);
+              logger.info(`[Login Detection] Updating platform_user_id to: ${platformUserId}`);
             }
           }
 
           // 更新 total_followers 和 total_following
-          if (data.user_info.total_followers !== undefined) {
+          if (followers !== undefined && followers !== null) {
             updateFields.push('total_followers = ?');
-            params.push(data.user_info.total_followers);
+            params.push(followers);
           }
 
-          if (data.user_info.total_following !== undefined) {
+          if (following !== undefined && following !== null) {
             updateFields.push('total_following = ?');
-            params.push(data.user_info.total_following);
+            params.push(following);
           }
 
           // 添加 WHERE 条件的 accountId
@@ -707,6 +717,12 @@ async function start() {
               total_followers: data.user_info.total_followers,
               total_following: data.user_info.total_following
             });
+
+            // ✅ 广播 channels 列表更新（确保 IM 客户端获取最新的头像和昵称）
+            if (imWebSocketServer) {
+              imWebSocketServer.onDataStoreUpdate(data.account_id);
+              logger.info(`[Login Detection] ✅ Broadcasted channels update for account ${data.account_id}`);
+            }
           } else {
             logger.warn(`[Login Detection] Account ${data.account_id} not found or not updated`);
           }

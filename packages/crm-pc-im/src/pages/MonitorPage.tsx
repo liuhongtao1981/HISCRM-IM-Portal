@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip } from 'antd'
+import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip, Modal } from 'antd'
 import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
@@ -21,7 +21,8 @@ import {
   setMessages,
   loadMoreChannels,
   updateChannelUnreadCount,
-  incrementTopicUnreadCount
+  incrementTopicUnreadCount,
+  upsertChannel
 } from '../store/monitorSlice'
 import websocketService from '../services/websocket'
 import type { ChannelMessage, Topic, Message, NewMessageHint } from '../shared/types-monitor'
@@ -104,6 +105,8 @@ export default function MonitorPage() {
   const messageListRef = useRef<HTMLDivElement>(null)
   // ✨ 新增：防抖定时器（用于合并短时间内的多条消息提示）
   const refreshTimers = useRef<Map<string, NodeJS.Timeout>>(new Map())
+  // ✨ 新增：账号列表自动刷新定时器
+  const refreshChannelsIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const selectedChannel = channels.find(ch => ch.id === selectedChannelId)
 
@@ -296,8 +299,28 @@ export default function MonitorPage() {
     ch.name.toLowerCase().includes(searchText.toLowerCase())
   )
 
-  // 显示所有账户（不限制数量）
-  const displayedChannels = filteredChannels
+  // 显示所有账户（带登录状态排序）
+  const displayedChannels = useMemo(() => {
+    return [...filteredChannels].sort((a, b) => {
+      // ✅ 直接使用服务器返回的 isLoggedIn 字段
+      const aIsLoggedIn = a.isLoggedIn ?? false
+      const bIsLoggedIn = b.isLoggedIn ?? false
+
+      // Layer 1: 登录的账户排在前面
+      if (aIsLoggedIn && !bIsLoggedIn) return -1
+      if (!aIsLoggedIn && bIsLoggedIn) return 1
+
+      // Layer 2: 登录的账户按最后消息时间倒序（最新消息在最上面）
+      if (aIsLoggedIn && bIsLoggedIn) {
+        const aTime = a.lastMessageTime || 0
+        const bTime = b.lastMessageTime || 0
+        return bTime - aTime
+      }
+
+      // Layer 3: 未登录的账户按名称排序
+      return a.name.localeCompare(b.name, 'zh-CN')
+    })
+  }, [filteredChannels])
 
   // ✨ 新增：处理新消息简易提示（带防抖机制）
   const handleNewMessageHint = React.useCallback((hint: NewMessageHint) => {
@@ -444,17 +467,47 @@ export default function MonitorPage() {
 
         // 监听新媒体账户列表
         websocketService.on('monitor:channels', (data: any) => {
-          console.log('[DEBUG] 接收到的原始 channels 数据:', JSON.stringify(data.channels.slice(0, 2), null, 2))
-          if (data.channels.length > 0) {
-            const firstChannel = data.channels[0]
-            console.log('[DEBUG] 第一个 channel 的 lastMessageTime:', firstChannel.lastMessageTime)
-            console.log('[DEBUG] 转换为日期:', new Date(firstChannel.lastMessageTime))
-            console.log('[DEBUG] typeof lastMessageTime:', typeof firstChannel.lastMessageTime)
-          }
           dispatch(setChannels(data.channels))
           data.channels.forEach((channel: any) => {
             websocketService.emit('monitor:request_topics', { channelId: channel.id })
           })
+        })
+
+        // 定时刷新账号列表（每30秒）
+        refreshChannelsIntervalRef.current = setInterval(() => {
+          console.log('[自动刷新] 请求账号列表更新')
+          websocketService.emit('monitor:sync', {})
+        }, 30000)
+
+        // 监听账号状态更新（从 Master 接收）
+        window.electron?.on('account-status-updated', (data: any) => {
+          console.log('[账号状态更新]', data)
+          // 刷新账号列表
+          websocketService.emit('monitor:sync', {})
+        })
+
+        // ✅ 监听 channel:status_update 事件（实时更新头像、昵称、登录状态等）
+        websocketService.on('channel:status_update', (data: any) => {
+          console.log('[WebSocket] 收到事件: channel:status_update', data)
+          if (data.channel) {
+            const ch = data.channel
+            // 计算登录状态：loginStatus === 'logged_in' && workerStatus === 'online'
+            const isLoggedIn = ch.loginStatus === 'logged_in' && ch.workerStatus === 'online'
+            // 转换为 Channel 格式并更新
+            dispatch(upsertChannel({
+              id: ch.id,
+              name: ch.platformUsername || ch.accountName || ch.id,
+              avatar: ch.avatar || '',
+              platform: ch.platform,
+              description: ch.platform || '',
+              enabled: true,
+              isPinned: false,
+              unreadCount: 0,
+              isFlashing: false,
+              isLoggedIn: isLoggedIn,  // ✅ 包含登录状态
+            }))
+            console.log(`[channel:status_update] ✅ 已更新账户: ${ch.platformUsername}, isLoggedIn: ${isLoggedIn}`)
+          }
         })
 
         // 监听作品列表
@@ -556,6 +609,13 @@ export default function MonitorPage() {
     return () => {
       websocketService.off('monitor:new_message_hint')
       websocketService.disconnect()
+      // 清理定时器
+      if (refreshChannelsIntervalRef.current) {
+        clearInterval(refreshChannelsIntervalRef.current)
+        refreshChannelsIntervalRef.current = null
+      }
+      // 移除 Electron 事件监听
+      window.electron?.removeAllListeners('account-status-updated')
     }
   }, [dispatch, handleNewMessageHint])
 
@@ -627,6 +687,35 @@ export default function MonitorPage() {
         }
       }
     }, 100)
+  }
+
+  // 处理账户点击（未登录账户弹出确认对话框）
+  const handleChannelClick = (channel: any) => {
+    // ✅ 直接使用服务器返回的 isLoggedIn 字段
+    const isLoggedIn = channel.isLoggedIn ?? false
+
+    if (isLoggedIn) {
+      // 已登录账户，直接选择
+      handleSelectChannel(channel.id)
+    } else {
+      // 未登录账户，弹出确认对话框
+      Modal.confirm({
+        title: '账户未登录',
+        content: `账户 "${channel.name}" 尚未登录，是否现在登录？`,
+        okText: '是的，登录',
+        cancelText: '取消',
+        onOk: () => {
+          console.log('[登录助手] 用户确认登录账户:', channel.id)
+          // 发送 IPC 消息到主进程启动手动登录
+          if (window.electron) {
+            window.electron.send('start-manual-login', {
+              accountId: channel.id,
+              platform: channel.platform || 'douyin'
+            })
+          }
+        }
+      })
+    }
   }
 
   // 选择作品
@@ -902,21 +991,39 @@ export default function MonitorPage() {
               // ✅ 优先使用 userInfo 中的字段，fallback 到 channel 字段
               const displayAvatar = userInfo?.avatar || channel.avatar
               const displayName = userInfo?.nickname || channel.name
-              // ✅ 通用平台账号ID字段（支持所有平台）
-              const platformUserId = userInfo?.platformUserId || userInfo?.douyin_id || null
+              // ✅ 统一使用 platform_user_id（兼容旧格式）
+              const platformUserId = userInfo?.platform_user_id || userInfo?.platformUserId || null
+
+              // ✅ 直接使用服务器返回的 isLoggedIn 字段
+              const isLoggedIn = channel.isLoggedIn ?? false
 
               return (
                 <div
                   key={channel.id}
-                  className={`wechat-account-item ${isSelected ? 'selected' : ''} ${channel.isFlashing ? 'flashing' : ''}`}
-                  onClick={() => handleSelectChannel(channel.id)}
+                  className={`wechat-account-item ${isSelected ? 'selected' : ''} ${channel.isFlashing ? 'flashing' : ''} ${!isLoggedIn ? 'not-logged-in' : ''}`}
+                  onClick={() => handleChannelClick(channel)}
                 >
                   <Badge count={channel.unreadCount} offset={[0, 10]}>
-                    <Avatar
-                      src={displayAvatar}
-                      icon={<UserOutlined />}
-                      size={48}
-                    />
+                    <div style={{ position: 'relative' }}>
+                      <Avatar
+                        src={displayAvatar}
+                        icon={<UserOutlined />}
+                        size={48}
+                        style={!isLoggedIn ? { filter: 'grayscale(100%)', opacity: 0.6 } : undefined}
+                      />
+                      {/* 状态点 */}
+                      <div style={{
+                        position: 'absolute',
+                        bottom: 2,
+                        right: 2,
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        backgroundColor: isLoggedIn ? '#52c41a' : '#d9d9d9',
+                        border: '2px solid #fff',
+                        boxShadow: '0 0 0 1px rgba(0,0,0,0.1)'
+                      }} />
+                    </div>
                   </Badge>
                   <div className="wechat-account-info">
                     <div className="wechat-account-header">

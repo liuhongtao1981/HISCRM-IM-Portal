@@ -8,7 +8,7 @@ export interface Channel {
   id: string           // 新媒体账户ID
   name: string         // 新媒体账户名称
   avatar: string       // 头像
-  userInfo?: string    // 用户详细信息 (JSON字符串: {nickname, douyin_id, avatar等})
+  userInfo?: string    // 用户详细信息 (JSON字符串: {nickname, platform_user_id, avatar等})
   description?: string // 描述
   platform?: string    // 平台标签 (如: 抖音、快手、小红书)
   enabled: boolean     // 是否启用

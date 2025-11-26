@@ -198,6 +198,104 @@ async function start() {
     });
     logger.info(`✓ Registered config update handler`);
 
+    // ⭐ 7.7 注册手动登录存储状态更新处理器
+    const { MASTER_UPDATE_ACCOUNT_STORAGE, WORKER_ACCOUNT_RESTARTED } = require('@hiscrm-im/shared/protocol/messages');
+    socketClient.onMessage(MASTER_UPDATE_ACCOUNT_STORAGE, async (data) => {
+      const { accountId, platform, storageState } = data;
+      logger.info(`📥 [手动登录] 收到账户 ${accountId} 的存储状态更新`);
+
+      try {
+        // 1. 关闭浏览器
+        try {
+          await browserManager.closeBrowser(accountId);
+          logger.info(`[手动登录] ✓ 已关闭账户 ${accountId} 的旧浏览器`);
+        } catch (error) {
+          logger.warn(`[手动登录] 关闭浏览器失败（可能已关闭）:`, error.message);
+        }
+
+        // 2. 清理浏览器用户数据目录（⭐ 关键步骤：确保新的 cookies 能正确写入）
+        try {
+          await browserManager.cleanUserDataDir(accountId);
+          logger.info(`[手动登录] ✓ 已清理账户 ${accountId} 的浏览器用户数据目录`);
+        } catch (error) {
+          logger.error(`[手动登录] 清理用户数据目录失败:`, error);
+          throw error; // 清理失败则中断流程
+        }
+
+        // 2.5 清理 TabManager 中的旧 tab 引用（⭐ 关键步骤：防止重用已关闭的页面）
+        try {
+          await browserManager.tabManager.clearAccountTabs(accountId);
+          logger.info(`[手动登录] ✓ 已清理账户 ${accountId} 的旧 tab 引用`);
+        } catch (error) {
+          logger.warn(`[手动登录] 清理 tab 引用失败（可忽略）:`, error.message);
+        }
+
+        // 3. 从已初始化集合中移除（否则 accountInitializer 会跳过）
+        if (accountInitializer.isInitialized(accountId)) {
+          accountInitializer.initializedAccounts.delete(accountId);
+          logger.info(`[手动登录] ✓ 已从已初始化集合中移除账户 ${accountId}`);
+        }
+
+        // 4. 使用新的存储状态初始化浏览器
+        const accountConfig = await reloadAccountConfig(accountId);
+        if (!accountConfig) {
+          throw new Error(`账户配置重新加载失败: ${accountId}`);
+        }
+
+        // ⭐ 将 storageState 转换为 credentials 格式（accountInitializer 需要）
+        if (!accountConfig.credentials) {
+          accountConfig.credentials = {};
+        }
+
+        // 设置 cookies（直接使用 storageState.cookies）
+        accountConfig.credentials.cookies = storageState.cookies || [];
+        logger.info(`[手动登录] 准备写入 ${accountConfig.credentials.cookies.length} 个 cookies 到新的浏览器用户数据目录`);
+
+        // 设置 localStorage（转换 origins 数组为对象）
+        if (storageState.origins && storageState.origins.length > 0) {
+          accountConfig.credentials.localStorage = {};
+          for (const origin of storageState.origins) {
+            if (origin.localStorage) {
+              for (const item of origin.localStorage) {
+                accountConfig.credentials.localStorage[item.name] = item.value;
+              }
+            }
+          }
+          logger.info(`[手动登录] 准备写入 ${Object.keys(accountConfig.credentials.localStorage).length} 个 localStorage 项到新的浏览器用户数据目录`);
+        }
+
+        // 5. 启动浏览器（accountInitializer 会创建新的用户数据目录并写入 cookies）
+        await accountInitializer.initializeAccount(accountConfig);
+        logger.info(`[手动登录] ✓ 账户 ${accountId} 浏览器已使用新存储状态重新初始化`);
+
+        // 6. 监控任务会由任务调度器自动启动，无需手动调用
+        logger.info(`[手动登录] 账户 ${accountId} 等待任务调度器分配监控任务`);
+
+        // 7. 发送重启完成通知给 Master
+        socketClient.sendMessage(createMessage(WORKER_ACCOUNT_RESTARTED, {
+          accountId,
+          platform,
+          success: true,
+          timestamp: Date.now(),
+        }));
+
+        logger.info(`[手动登录] ✅ 账户 ${accountId} 重启完成`);
+
+      } catch (error) {
+        logger.error(`[手动登录] 账户 ${accountId} 重启失败:`, error);
+
+        // 发送失败通知给 Master
+        socketClient.sendMessage(createMessage(WORKER_ACCOUNT_RESTARTED, {
+          accountId,
+          platform,
+          success: false,
+          error: error.message,
+          timestamp: Date.now(),
+        }));
+      }
+    });
+    logger.info(`✓ Registered manual login storage update handler`);
+
     // 8. 为所有分配的账号初始化浏览器环境
     logger.info(`Initializing browsers for ${assignedAccounts.length} accounts...`);
     const initResults = await accountInitializer.initializeAccounts(assignedAccounts);

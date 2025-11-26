@@ -691,7 +691,8 @@ class IMWebSocketServer {
             } else {
                 logger.warn('[IM WS] accountDAO is not initialized, using default values');
             }
-            const accountName = accountInfo?.account_name || accountId;
+            // ✅ 优先使用平台昵称 (platform_username)，否则使用账户名 (account_name)
+            const accountName = accountInfo?.platform_username || accountInfo?.account_name || accountId;
             const avatar = accountInfo?.avatar || `https://api.dicebear.com/7.x/avataaars/svg?seed=${accountId}`;
             const userInfo = accountInfo?.user_info || null;  // ✅ 获取用户信息字段
             const platform = accountData.platform || accountInfo?.platform || '';
@@ -701,6 +702,11 @@ class IMWebSocketServer {
 
             // 查找最新消息
             const lastMessage = this.findLastMessage(dataObj);
+
+            // ✅ 从 Worker 实时上报的登录状态判断（login_status字段）
+            const loginStatus = accountInfo?.login_status || 'not_logged_in';
+            const workerStatus = accountInfo?.worker_status || 'offline';
+            const isLoggedIn = loginStatus === 'logged_in' && workerStatus === 'online';
 
             const channel = {
                 id: accountId,
@@ -714,7 +720,11 @@ class IMWebSocketServer {
                 unreadCount: unreadCount,
                 messageCount: dataObj.messages?.length || 0,
                 isPinned: false,
-                enabled: true
+                enabled: true,
+                status: accountInfo?.status || 'not_logged_in',  // ✅ 原始状态字段（兼容）
+                login_status: loginStatus,   // ✅ Worker实时登录状态
+                worker_status: workerStatus, // ✅ Worker运行状态
+                isLoggedIn: isLoggedIn       // ✅ 综合判断：登录 AND Worker在线
             };
 
             channels.push(channel);

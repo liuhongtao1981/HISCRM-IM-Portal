@@ -248,22 +248,23 @@ class AccountInitializer {
         logger.info(`✓ Loaded creator center for account ${account.id}`);
 
         // ⭐ 将这个默认 tab 注册到 TabManager 作为 PLACEHOLDER
-        // 这样登录检测任务可以找到并复用它
-        await this.browserManager.tabManager.registerExistingPage(
+        // 如果已存在会自动复用，不会重复注册
+        const { isNew } = await this.browserManager.tabManager.registerExistingPage(
           account.id,
           defaultPage,
           TabTag.PLACEHOLDER,
           true  // persistent
         );
-
-        logger.info(`✓ Registered default tab as PLACEHOLDER for account ${account.id}`);
+        if (isNew) {
+          logger.info(`✓ Registered default tab as PLACEHOLDER for account ${account.id}`);
+        }
 
         // 保存页面到浏览器管理器的页面池（这样其他操作可以复用）
         this.browserManager.savePageForAccount(account.id, defaultPage);
 
       } catch (error) {
         logger.warn(`Failed to navigate to creator center for account ${account.id}: ${error.message}`);
-        // 即使导航失败，也注册这个 tab
+        // 即使导航失败，也注册这个 tab（如果已存在会自动复用）
         await this.browserManager.tabManager.registerExistingPage(
           account.id,
           defaultPage,

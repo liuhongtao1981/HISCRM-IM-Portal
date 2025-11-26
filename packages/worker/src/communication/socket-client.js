@@ -83,7 +83,7 @@ class SocketClient {
       });
 
       // 监听账户配置更新通知
-      const { MASTER_ACCOUNT_CONFIG_UPDATE } = require('@hiscrm-im/shared/protocol/messages');
+      const { MASTER_ACCOUNT_CONFIG_UPDATE, MASTER_UPDATE_ACCOUNT_STORAGE } = require('@hiscrm-im/shared/protocol/messages');
       this.socket.on(MASTER_ACCOUNT_CONFIG_UPDATE, (msg) => {
         logger.info('📥 Received account config update notification from Master', {
           accountId: msg.payload?.account_id,
@@ -97,6 +97,23 @@ class SocketClient {
           handler(msg);
         } else {
           logger.warn('No handler registered for MASTER_ACCOUNT_CONFIG_UPDATE');
+        }
+      });
+
+      // 监听手动登录存储状态更新（用于重启账户）
+      this.socket.on(MASTER_UPDATE_ACCOUNT_STORAGE, (data) => {
+        logger.info('📥 Received account storage update from Master (manual login)', {
+          accountId: data.accountId,
+          platform: data.platform,
+          storageStateSize: JSON.stringify(data.storageState || {}).length,
+        });
+
+        // 触发存储状态更新处理器（如果已注册）
+        const handler = this.messageHandlers.get(MASTER_UPDATE_ACCOUNT_STORAGE);
+        if (handler) {
+          handler(data);
+        } else {
+          logger.warn('No handler registered for MASTER_UPDATE_ACCOUNT_STORAGE');
         }
       });
 

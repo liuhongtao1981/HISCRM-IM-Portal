@@ -100,6 +100,7 @@ class Account {
     this.credentials = data.credentials; // 未加密的凭证对象
     this.status = data.status || 'active';
     this.login_status = data.login_status || 'not_logged_in';
+    this.worker_status = data.worker_status || 'offline'; // ✅ Worker运行状态
     this.monitor_interval = data.monitor_interval || 30;
     this.last_check_time = data.last_check_time || null;
     this.last_login_time = data.last_login_time || null;
@@ -111,6 +112,7 @@ class Account {
     this.fingerprint = data.fingerprint || null;
     this.platform_user_id = data.platform_user_id || null;
     this.platform_username = data.platform_username || null;
+    this.avatar = data.avatar || null;  // ✅ 新增：用户头像URL
   }
 
   /**
@@ -207,6 +209,7 @@ class Account {
       account_id: this.account_id,
       status: this.status,
       login_status: this.login_status,
+      worker_status: this.worker_status, // ✅ Worker运行状态
       monitor_interval: this.monitor_interval,
       last_check_time: this.last_check_time,
       last_login_time: this.last_login_time,
