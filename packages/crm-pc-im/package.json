@@ -54,10 +54,17 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*"
+      "dist-electron/**/*",
+      "node_modules/playwright/**/*",
+      "node_modules/playwright-core/**/*",
+      "node_modules/fs-extra/**/*",
+      "node_modules/socket.io-client/**/*",
+      "!node_modules/playwright/.local-browsers/**/*"
     ],
     "asarUnpack": [
-      "dist/**/*"
+      "dist/**/*",
+      "node_modules/playwright/**/*",
+      "node_modules/playwright-core/**/*"
     ],
     "win": {
       "target": [

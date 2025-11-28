@@ -17,7 +17,15 @@ build({
   bundle: true,
   platform: 'node',
   target: 'node18',
-  external: ['electron', 'fs', 'path'],
+  external: [
+    'electron',
+    'fs',
+    'path',
+    'playwright',
+    'playwright-core',
+    'fs-extra',
+    'socket.io-client'
+  ],
   outfile: `${outdir}/main.js`,
   format: 'cjs',
   sourcemap: true
