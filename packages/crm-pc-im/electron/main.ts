@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, session } from 'electron'
 import path from 'path'
 import fs from 'fs'
 import { io, Socket } from 'socket.io-client'
+import LoginAssistant from '../src/main/login-assistant.js'
 
 // 使用环境变量判断,避免在模块顶层访问 app.isPackaged
 const isDev = process.env.NODE_ENV === 'development'
@@ -225,7 +226,6 @@ async function initializeSocketClient() {
       console.log('[Main] ✅ 已成功连接到 Master 服务器, socket.id:', socketClient.id)
 
       // 初始化登录助手
-      const LoginAssistant = require(path.join(__dirname, '../src/main/login-assistant.js'))
       loginAssistant = new LoginAssistant(socketClient)
       console.log('[Main] ✅ 登录助手已初始化')
     })
