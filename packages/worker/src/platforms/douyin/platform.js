@@ -1721,6 +1721,8 @@ async replyToComment(accountId, options) {
             // 创建 API 爬虫配置
             const crawlerConfig = {
                 intervalMs: config.apiCrawlerInterval || 5 * 60 * 1000,
+                autoStart: config.apiCrawlerAutoStart ?? true,
+                stopOnError: false,  // 遇到错误不停止，继续执行
                 works: {
                     pageSize: config.apiCrawlerWorksPageSize || 50,
                     maxPages: config.apiCrawlerWorksMaxPages || 50,
