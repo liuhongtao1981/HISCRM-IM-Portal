@@ -29,11 +29,6 @@
     "qrCodeLifetime": 150000
   },
   "crawlers": {
-    "common": {
-      "intervalMin": 1,
-      "intervalMax": 10,
-      "description": "爬虫通用配置：最小和最大间隔时间（分钟）"
-    },
     "commentCrawler": {
       "enabled": true,
       "description": "评论爬虫 - 通过浏览器自动化抓取评论数据",
