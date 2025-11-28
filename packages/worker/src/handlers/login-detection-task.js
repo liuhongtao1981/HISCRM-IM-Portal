@@ -339,7 +339,7 @@ class LoginDetectionTask {
       if (newStatus === 'logged_in') {
         // 登录成功：启动所有常驻任务和爬虫任务
         logger.info(`✓ Account ${this.account.id} is now logged in - starting ALL tasks`);
-        
+
         // 1. 启动爬虫任务（MonitorTask）
         if (this.taskRunner && typeof this.taskRunner.startMonitoringTask === 'function') {
           await this.taskRunner.startMonitoringTask(this.account.id);
@@ -359,7 +359,20 @@ class LoginDetectionTask {
           }
         }
 
-        // 3. 同步登录成功状态给Master并立即上报
+        // 3. 启动 API 爬虫（DouyinAPICrawler）
+        if (this.platformManager) {
+          const platformInstance = this.platformManager.getPlatform(this.account.platform);
+          if (platformInstance && typeof platformInstance.startAPICrawler === 'function') {
+            try {
+              await platformInstance.startAPICrawler(this.account.id);
+              logger.info(`✓ API crawler started for account ${this.account.id}`);
+            } catch (error) {
+              logger.warn(`Failed to start API crawler: ${error.message}`);
+            }
+          }
+        }
+
+        // 4. 同步登录成功状态给Master并立即上报
         if (this.accountStatusReporter) {
           this.accountStatusReporter.updateAccountStatus(this.account.id, {
             worker_status: 'online',
@@ -375,7 +388,7 @@ class LoginDetectionTask {
       } else if (newStatus === 'not_logged_in') {
         // 登录失败：停止所有任务和清理Tab
         logger.info(`✗ Account ${this.account.id} is not logged in - stopping ALL tasks`);
-        
+
         // 1. 停止爬虫任务（MonitorTask）
         if (this.taskRunner && typeof this.taskRunner.stopMonitoringTask === 'function') {
           await this.taskRunner.stopMonitoringTask(this.account.id);
@@ -395,13 +408,26 @@ class LoginDetectionTask {
           }
         }
 
-        // 3. 清理与任务相关的Tab（保留默认Tab用于登录检测）
+        // 3. 停止 API 爬虫（DouyinAPICrawler）
+        if (this.platformManager) {
+          const platformInstance = this.platformManager.getPlatform(this.account.platform);
+          if (platformInstance && typeof platformInstance.stopAPICrawler === 'function') {
+            try {
+              await platformInstance.stopAPICrawler(this.account.id);
+              logger.info(`✓ API crawler stopped for account ${this.account.id}`);
+            } catch (error) {
+              logger.warn(`Failed to stop API crawler: ${error.message}`);
+            }
+          }
+        }
+
+        // 4. 清理与任务相关的Tab（保留默认Tab用于登录检测）
         await this.cleanupAllTaskTabs();
 
-        // 4. 同步登录失败状态给Master
+        // 5. 同步登录失败状态给Master
         if (this.accountStatusReporter) {
           this.accountStatusReporter.updateAccountStatus(this.account.id, {
-            worker_status: 'offline', 
+            worker_status: 'offline',
             login_status: 'not_logged_in'
           });
         }
@@ -437,7 +463,8 @@ class LoginDetectionTask {
         TabTag.SPIDER_DM,           // 私信爬虫
         TabTag.REALTIME_MONITOR,    // 实时监控（常驻任务）
         TabTag.REPLY_COMMENT,       // 评论回复
-        TabTag.REPLY_DM             // 私信回复
+        TabTag.REPLY_DM,            // 私信回复
+        'api_crawler'               // API 爬虫
       ];
 
       const closePromises = [];

@@ -390,40 +390,63 @@ class IMWebSocketServer {
                         }
                     }
 
-                    // ✅ 如果是评论回复,从DataStore中获取视频标题和父评论ID
-                    let videoTitle = null;
-                    let parentCommentId = null;
-                    // ✅ 修复: 作品评论和评论回复都需要查找视频标题
+                    // ✅ 从 DataStore 中获取视频和评论的原始对象
+                    // 🎯 架构设计：Master 只传递原始数据对象，Worker 负责解析平台特定字段
+                    let videoContent = null;   // 视频原始对象
+                    let targetComment = null;  // 目标评论原始对象
+
                     if ((targetType === 'comment' || targetType === 'work') && this.dataStore) {
                         try {
                             const accountData = this.dataStore.accounts.get(channelId);
+                            // ✅ 查找视频对象
                             if (accountData && accountData.data && accountData.data.contents) {
                                 const contentsList = accountData.data.contents instanceof Map ?
                                     Array.from(accountData.data.contents.values()) : accountData.data.contents;
-                                const videoContent = contentsList.find(c => c.contentId === topicId || c.id === topicId);
+                                videoContent = contentsList.find(c => c.contentId === topicId || c.id === topicId) || null;
                                 if (videoContent) {
-                                    videoTitle = videoContent.title || null;
-                                    logger.info(`[IM WS] Found video title for ${topicId}: "${videoTitle?.substring(0, 50)}..." (targetType: ${targetType})`);
+                                    logger.info(`[IM WS] Found video for ${topicId}: "${videoContent.title?.substring(0, 50)}..."`);
                                 } else {
                                     logger.warn(`[IM WS] ⚠️ Video not found for topicId: ${topicId}`);
                                 }
                             }
 
-                            // ✅ 如果replyToId存在(回复某条评论),从conversations中查找parent_comment_id
+                            // ✅ 查找目标评论对象
+                            // ⭐ 注意：DataStore 中评论的 ID 字段可能是 id、commentId 或 cid
                             if (replyToId && accountData && accountData.data && accountData.data.comments) {
                                 const commentsList = accountData.data.comments instanceof Map
                                     ? Array.from(accountData.data.comments.values())
                                     : accountData.data.comments;
-                                const targetComment = commentsList.find(c => c.id === replyToId);
-                                if (targetComment && targetComment.parent_comment_id) {
-                                    parentCommentId = targetComment.parent_comment_id;
-                                    logger.info(`[IM WS] Found parent comment ID for ${replyToId}: ${parentCommentId} (二级回复)`);
+                                // 同时检查 id、commentId 和 cid 字段
+                                targetComment = commentsList.find(c =>
+                                    c.id === replyToId ||
+                                    c.commentId === replyToId ||
+                                    c.cid === replyToId ||
+                                    String(c.id) === String(replyToId) ||
+                                    String(c.commentId) === String(replyToId) ||
+                                    String(c.cid) === String(replyToId)
+                                ) || null;
+                                if (targetComment) {
+                                    logger.info(`[IM WS] Found comment for ${replyToId}: "${targetComment.content?.substring(0, 30)}..."`, {
+                                        id: targetComment.id,
+                                        commentId: targetComment.commentId,
+                                        cid: targetComment.cid,
+                                        authorName: targetComment.authorName || targetComment.fromName
+                                    });
                                 } else {
-                                    logger.info(`[IM WS] No parent comment ID for ${replyToId} (一级评论回复)`);
+                                    // 打印 DataStore 中的评论 ID 样本，帮助调试
+                                    const sampleIds = commentsList.slice(0, 5).map(c => ({
+                                        id: c.id,
+                                        commentId: c.commentId,
+                                        cid: c.cid
+                                    }));
+                                    logger.warn(`[IM WS] ⚠️ Comment not found in DataStore for replyToId: ${replyToId}`, {
+                                        totalComments: commentsList.length,
+                                        sampleIds: JSON.stringify(sampleIds)
+                                    });
                                 }
                             }
                         } catch (err) {
-                            logger.warn(`[IM WS] Failed to get video title or parent comment: ${err.message}`);
+                            logger.warn(`[IM WS] Failed to get video/comment data: ${err.message}`);
                         }
                     }
 
@@ -449,14 +472,16 @@ class IMWebSocketServer {
                         submit_time: Date.now(),
 
                         // 执行上下文
+                        // 🎯 架构设计：Master 传递原始数据对象，Worker 负责解析平台特定字段
                         context: {
                             reply_to_content: replyToContent,
                             monitor_client_id: socket.id,
                             channel_name: accountInfo.account_name || channelId,
                             video_id: targetType === 'comment' ? topicId : null,
-                            video_title: videoTitle,  // ✅ 视频标题用于匹配
-                            parent_comment_id: parentCommentId,  // ✅ 新增: 父评论ID,用于定位二级回复
-                            user_id: targetType === 'direct_message' ? (replyToId || topicId) : null
+                            user_id: targetType === 'direct_message' ? (replyToId || topicId) : null,
+                            // ⭐ 传递原始数据对象，Worker 自行解析平台特定字段
+                            video_content: videoContent,      // 视频原始对象（包含 title, coverUrl 等）
+                            target_comment: targetComment,    // 目标评论原始对象（包含 content, authorName, sec_uid, level 等）
                         }
                     };
 

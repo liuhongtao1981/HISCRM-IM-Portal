@@ -376,6 +376,47 @@ class CacheManager {
       data.videos.set(videoId, { ...video, ...updates });
     }
   }
+
+  /**
+   * 根据 ID 获取评论完整数据
+   * @param {string} accountId - 账号ID
+   * @param {string} commentId - 评论ID
+   * @returns {Object|null} 评论对象或 null
+   */
+  getCommentById(accountId, commentId) {
+    if (!this.accountData || !this.accountData.has(accountId)) {
+      return null;
+    }
+    const data = this.accountData.get(accountId);
+    return data.comments.get(commentId) || null;
+  }
+
+  /**
+   * 获取账号的所有评论
+   * @param {string} accountId - 账号ID
+   * @returns {Array} 所有评论数组
+   */
+  getAllComments(accountId) {
+    if (!this.accountData || !this.accountData.has(accountId)) {
+      return [];
+    }
+    const data = this.accountData.get(accountId);
+    return Array.from(data.comments.values());
+  }
+
+  /**
+   * 根据 ID 获取私信完整数据
+   * @param {string} accountId - 账号ID
+   * @param {string} messageId - 私信ID
+   * @returns {Object|null} 私信对象或 null
+   */
+  getMessageById(accountId, messageId) {
+    if (!this.accountData || !this.accountData.has(accountId)) {
+      return null;
+    }
+    const data = this.accountData.get(accountId);
+    return data.directMessages.get(messageId) || null;
+  }
 }
 
 // 单例模式

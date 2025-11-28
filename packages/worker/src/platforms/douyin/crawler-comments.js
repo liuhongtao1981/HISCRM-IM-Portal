@@ -57,6 +57,11 @@ function normalizeCommentData(comment, context = {}) {
     // ✅ 父评论ID：从reply_id获取
     parent_comment_id: context.parent_comment_id || comment.reply_id || null,
     reply_id: comment.reply_id || null,
+    reply_to_reply_id: comment.reply_to_reply_id || null,  // ⭐ 被回复的二级评论ID（三级回复时有值）
+
+    // ⭐ 被回复用户信息（通知API提供，用于定位父评论）
+    reply_to_username: comment.reply_to_username || null,  // 被回复用户昵称
+    reply_to_userid: comment.reply_to_userid || null,  // 被回复用户ID
 
     // ✅ 评论内容
     text: comment.text,
@@ -73,6 +78,7 @@ function normalizeCommentData(comment, context = {}) {
     user_info: {
       user_id: comment.user.uid,
       uid: comment.user.uid,
+      sec_uid: comment.user.sec_uid || null,  // ⭐ 加密用户ID，用于评论回复匹配
       screen_name: comment.user.nickname,
       nickname: comment.user.nickname,
       avatar_url: comment.user.avatar_thumb?.url_list?.[0] || null,
@@ -129,6 +135,7 @@ async function onCommentsListV2API(body, response) {
         logger.info(`  - digg_count: ${sample.digg_count} (${typeof sample.digg_count})`);
         logger.info(`  - reply_comment_total: ${sample.reply_comment_total} (${typeof sample.reply_comment_total})`);
         logger.info(`  - user.uid: ${sample.user?.uid} (${typeof sample.user?.uid})`);
+        logger.info(`  - user.sec_uid: ${sample.user?.sec_uid || '❌ 无'}`);  // ⭐ 加密用户ID
         logger.info(`  - user.nickname: ${sample.user?.nickname} (${typeof sample.user?.nickname})`);
         logger.info(`  - aweme_id: ${sample.aweme_id} (${typeof sample.aweme_id})`);
         logger.info(`  - image_list: ${sample.image_list ? `✅ 有 (${sample.image_list.length}张)` : '❌ 无'}`);
@@ -197,6 +204,7 @@ async function onDiscussionsListV2API(body, response) {
         logger.info(`  - digg_count: ${sample.digg_count} (${typeof sample.digg_count})`);
         logger.info(`  - reply_comment_total: ${sample.reply_comment_total} (${typeof sample.reply_comment_total})`);
         logger.info(`  - user.uid: ${sample.user?.uid} (${typeof sample.user?.uid})`);
+        logger.info(`  - user.sec_uid: ${sample.user?.sec_uid || '❌ 无'}`);  // ⭐ 加密用户ID
         logger.info(`  - user.nickname: ${sample.user?.nickname} (${typeof sample.user?.nickname})`);
         logger.info(`  - aweme_id: ${sample.aweme_id} (${typeof sample.aweme_id})`);
         logger.info(`  - reply_id: ${sample.reply_id || '❌ 缺失'}`);
@@ -256,8 +264,23 @@ async function onNoticeDetailAPI(body, response) {
   // 过滤评论类型的通知 (type === 31)
   const commentNotices = notices.filter(notice => notice.type === 31 && notice.comment);
 
+  logger.info(`[API] 通知详情: 共 ${notices.length} 条通知，其中评论通知 ${commentNotices.length} 条`);
+
   if (commentNotices.length === 0) {
     return;
+  }
+
+  // 📊 V2 API数据样本日志
+  if (commentNotices.length > 0) {
+    const sample = commentNotices[0].comment?.comment;
+    if (sample) {
+      logger.info(`📊 [V2 API 数据样本] 通知详情`);
+      logger.info(`  - cid: ${sample.cid} (${typeof sample.cid})`);
+      logger.info(`  - text: ${sample.text?.substring(0, 30)}...`);
+      logger.info(`  - user.uid: ${sample.user?.uid} (${typeof sample.user?.uid})`);
+      logger.info(`  - user.sec_uid: ${sample.user?.sec_uid || '❌ 无'}`);  // ⭐ 加密用户ID
+      logger.info(`  - user.nickname: ${sample.user?.nickname}`);
+    }
   }
 
   // ✅ 从 page 对象读取账号上下文（账号级别隔离）

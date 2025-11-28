@@ -28,6 +28,9 @@ const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comme
 
 const { sendReplyToDirectMessage } = require('./send-reply-to-message');
 
+// 导入 API 爬虫
+const { DouyinAPICrawler } = require('./crawler-api');
+
 const logger = createLogger('douyin-platform');
 const cacheManager = getCacheManager();
 
@@ -42,6 +45,9 @@ class DouyinPlatform extends PlatformBase {
 
         // 实时监控管理器集合 (accountId => DouyinRealtimeMonitor)
         this.realtimeMonitors = new Map();
+
+        // API 爬虫管理器集合 (accountId => DouyinAPICrawler)
+        this.apiCrawlers = new Map();
     }
 
     /**
@@ -74,6 +80,9 @@ class DouyinPlatform extends PlatformBase {
         // 页面和 API 拦截器会在爬虫函数中按需创建
         // 不需要在初始化时创建页面
 
+        // ✨ 初始化并启动 API 爬虫（如果配置启用）
+        await this.initializeAPICrawler(account);
+
         logger.info(`Douyin platform initialized for account ${account.id}`);
     }
 
@@ -95,7 +104,7 @@ class DouyinPlatform extends PlatformBase {
         manager.register('**/aweme/v1/web/comment/list/select/**', onCommentsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/select/?aweme_id=7571732586456812800
         manager.register('**/aweme/v1/web/comment/list/reply/**', onDiscussionsListV2API); //匹配 /web/api/third_party/aweme/api/comment/read/aweme/v1/web/comment/list/reply/?comment_id=7572250319850095397
 
-        manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 通知详情 API（评论通知）
+        manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 抖音首页 通知详情 API（评论通知）
 
         // 评论回复 API（回调函数内部会排除 /comment/reply/list 列表接口）
         manager.register('**/comment/reply{/,}?**', onCommentReplyAPI);
@@ -1242,17 +1251,38 @@ class DouyinPlatform extends PlatformBase {
 /**
  * 回复评论
  *
+ * 🎯 架构设计：Master 传递原始数据对象，Worker 负责解析平台特定字段
+ * 这样 Master 保持平台无关，方便以后扩展其他平台
+ *
  * @param {string} accountId - 账户 ID
  * @param {Object} options - 回复选项
  * @param {string} [options.target_id] - 评论 ID（可选，不提供则回复作品）
  * @param {string} options.reply_content - 回复内容
  * @param {Object} [options.context] - 上下文信息
- * @param {string} [options.context.video_title] - 视频标题
+ * @param {Object} [options.context.video_content] - 视频原始对象（包含 title, coverUrl 等）
+ * @param {Object} [options.context.target_comment] - 目标评论原始对象（包含 content, authorName, sec_uid, level 等）
  * @returns {Promise<{success: boolean, platform_reply_id?: string, data?: Object, reason?: string}>}
  */
 async replyToComment(accountId, options) {
     const { target_id, reply_content, context = {} } = options;
-    const { video_title } = context;
+
+    // 🎯 架构设计：Worker 负责解析平台特定字段
+    // Master 传递原始数据对象 (video_content, target_comment)，Worker 自行提取需要的字段
+    const { video_content, target_comment } = context;
+
+    // ⭐ 从原始对象中提取抖音平台特定字段
+    const video_title = video_content?.title || null;
+
+    // 评论匹配所需数据（从 target_comment 原始对象提取）
+    const comment_content = target_comment?.content || target_comment?.text || null;
+    const author_name = target_comment?.fromName || target_comment?.authorName ||
+                        target_comment?.user_info?.nickname || target_comment?.user?.nickname || null;
+    const sec_uid = target_comment?.user_info?.sec_uid || target_comment?.user?.sec_uid ||
+                    target_comment?.sec_uid || target_comment?.secUid || null;
+    const comment_level = target_comment?.level ||
+                          (target_comment?.parent_comment_id || target_comment?.parentCommentId ? 2 : 1);
+    const parent_comment_id = target_comment?.parent_comment_id || target_comment?.parentCommentId || null;
+    const reply_to_username = target_comment?.reply_to_username || target_comment?.replyToUsername || null;
 
     let page = null;
     let replyTabId = null;
@@ -1273,7 +1303,11 @@ async replyToComment(accountId, options) {
             accountId,
             commentId: target_id,
             videoTitle: video_title?.substring(0, 50),
-            tabId: replyTabId
+            tabId: replyTabId,
+            // ⭐ 添加评论匹配数据日志
+            authorName: author_name || '无',
+            commentContent: comment_content ? comment_content.substring(0, 30) + '...' : '无',
+            level: comment_level || 1,
         });
 
         // 2. 调用新的回复模块
@@ -1281,7 +1315,14 @@ async replyToComment(accountId, options) {
             commentId: target_id,
             replyContent: reply_content,
             videoTitle: video_title,
-            accountId
+            accountId,
+            // ⭐ 传递评论匹配数据
+            commentContent: comment_content,      // 评论内容
+            authorName: author_name,              // 评论作者昵称
+            secUid: sec_uid,                      // 用户加密ID
+            level: comment_level || 1,            // 评论层级
+            parentCommentId: parent_comment_id,   // 父评论ID
+            replyToUsername: reply_to_username,   // 被回复用户昵称
         });
 
         if (result.success) {
@@ -1597,11 +1638,40 @@ async replyToComment(accountId, options) {
      * @returns {Object} 配置对象
      */
     parseMonitoringConfig(account) {
-        // 默认配置
+        // 从环境变量读取 API 爬虫配置
+        const envApiCrawlerConfig = {
+            enableAPICrawler: process.env.API_CRAWLER_ENABLED === 'true',
+            apiCrawlerAutoStart: process.env.API_CRAWLER_AUTO_START !== 'false',  // 默认true
+            apiCrawlerInterval: (parseInt(process.env.API_CRAWLER_INTERVAL) || 300) * 1000,  // 秒 → 毫秒
+
+            // 作品抓取配置
+            apiCrawlerWorksPageSize: parseInt(process.env.API_CRAWLER_WORKS_PAGE_SIZE) || 50,
+            apiCrawlerWorksMaxPages: parseInt(process.env.API_CRAWLER_WORKS_MAX_PAGES) || 50,
+
+            // 评论抓取配置
+            apiCrawlerCommentsEnabled: process.env.API_CRAWLER_COMMENTS_ENABLED !== 'false',
+            apiCrawlerCommentsPageSize: parseInt(process.env.API_CRAWLER_COMMENTS_PAGE_SIZE) || 20,
+            apiCrawlerCommentsMaxPages: parseInt(process.env.API_CRAWLER_COMMENTS_MAX_PAGES) || 25,
+            apiCrawlerCommentsMaxComments: parseInt(process.env.API_CRAWLER_COMMENTS_MAX_COMMENTS) || 500,
+
+            // 二级评论抓取配置
+            apiCrawlerRepliesEnabled: process.env.API_CRAWLER_REPLIES_ENABLED !== 'false',
+            apiCrawlerRepliesPageSize: parseInt(process.env.API_CRAWLER_REPLIES_PAGE_SIZE) || 20,
+            apiCrawlerRepliesMaxPages: parseInt(process.env.API_CRAWLER_REPLIES_MAX_PAGES) || 5,
+            apiCrawlerRepliesMaxReplies: parseInt(process.env.API_CRAWLER_REPLIES_MAX_REPLIES) || 100,
+
+            // 延迟配置
+            apiCrawlerDelayBetweenWorks: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_WORKS) || 2000,
+            apiCrawlerDelayBetweenCommentPages: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_COMMENT_PAGES) || 1000,
+            apiCrawlerDelayBetweenReplies: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_REPLIES) || 500,
+        };
+
+        // 默认配置（合并环境变量配置）
         const defaultConfig = {
             enableRealtimeMonitor: true,
             crawlIntervalMin: 0.5,  // 0.5分钟 = 30秒
-            crawlIntervalMax: 0.5   // 0.5分钟 = 30秒
+            crawlIntervalMax: 0.5,  // 0.5分钟 = 30秒
+            ...envApiCrawlerConfig,  // 从环境变量读取的 API 爬虫配置
         };
 
         if (!account.monitoring_config) {
@@ -1621,6 +1691,149 @@ async replyToComment(accountId, options) {
     }
 
     // ============================================================================
+    // API 爬虫管理
+    // ============================================================================
+
+    /**
+     * 初始化并启动 API 爬虫
+     * @param {Object} account - 账户对象
+     */
+    async initializeAPICrawler(account) {
+        logger.info(`初始化 API 爬虫 (账户: ${account.id})`);
+
+        // 检查配置
+        const config = this.parseMonitoringConfig(account);
+        if (!config.enableAPICrawler) {
+            logger.info(`API 爬虫未启用 (账户: ${account.id})`);
+            return;
+        }
+
+        // 检查是否已存在
+        if (this.apiCrawlers.has(account.id)) {
+            logger.warn(`API 爬虫已存在 (账户: ${account.id})`);
+            return;
+        }
+
+        try {
+            // 创建 API 爬虫配置
+            const crawlerConfig = {
+                intervalMs: config.apiCrawlerInterval || 5 * 60 * 1000,
+                works: {
+                    pageSize: config.apiCrawlerWorksPageSize || 50,
+                    maxPages: config.apiCrawlerWorksMaxPages || 50,
+                },
+                comments: {
+                    enabled: config.apiCrawlerCommentsEnabled !== false,
+                    pageSize: config.apiCrawlerCommentsPageSize || 20,
+                    maxPages: config.apiCrawlerCommentsMaxPages || 25,
+                    maxComments: config.apiCrawlerCommentsMaxComments || 500,
+                },
+                replies: {
+                    enabled: config.apiCrawlerRepliesEnabled !== false,
+                    pageSize: config.apiCrawlerRepliesPageSize || 20,
+                    maxPages: config.apiCrawlerRepliesMaxPages || 5,
+                    maxReplies: config.apiCrawlerRepliesMaxReplies || 100,
+                },
+                delays: {
+                    betweenWorks: config.apiCrawlerDelayBetweenWorks || 2000,
+                    betweenCommentPages: config.apiCrawlerDelayBetweenCommentPages || 1000,
+                    betweenReplies: config.apiCrawlerDelayBetweenReplies || 500,
+                },
+            };
+
+            // 创建 API 爬虫实例（不自动启动，等待登录检测成功）
+            const crawler = new DouyinAPICrawler(this, account, crawlerConfig);
+
+            // ⚠️ 不在初始化时自动启动，而是由 LoginDetectionTask 在登录检测成功后启动
+            // 这样确保：1. 浏览器和Tab已经创建  2. 账户已登录  3. Cookie已准备好
+            logger.info(`✅ API 爬虫已创建（等待登录检测启动）(账户: ${account.id}, 间隔: ${crawlerConfig.intervalMs}ms)`);
+
+            // 保存到集合
+            this.apiCrawlers.set(account.id, crawler);
+
+            logger.info(`✅ API 爬虫初始化成功 (账户: ${account.id})`);
+        } catch (error) {
+            logger.error(`❌ API 爬虫初始化失败 (账户: ${account.id}):`, error);
+            throw error;
+        }
+    }
+
+    /**
+     * 手动启动 API 爬虫
+     * @param {string} accountId - 账户 ID
+     */
+    async startAPICrawler(accountId) {
+        const crawler = this.apiCrawlers.get(accountId);
+        if (!crawler) {
+            throw new Error(`API 爬虫不存在 (账户: ${accountId})`);
+        }
+
+        logger.info(`启动 API 爬虫 (账户: ${accountId})`);
+        await crawler.start();
+        logger.info(`✅ API 爬虫已启动 (账户: ${accountId})`);
+    }
+
+    /**
+     * 停止 API 爬虫
+     * @param {string} accountId - 账户 ID
+     */
+    async stopAPICrawler(accountId) {
+        const crawler = this.apiCrawlers.get(accountId);
+        if (!crawler) {
+            logger.warn(`API 爬虫不存在 (账户: ${accountId})`);
+            return;
+        }
+
+        logger.info(`停止 API 爬虫 (账户: ${accountId})`);
+        await crawler.stop();
+        logger.info(`✅ API 爬虫已停止 (账户: ${accountId})`);
+    }
+
+    /**
+     * 暂停 API 爬虫
+     * @param {string} accountId - 账户 ID
+     */
+    pauseAPICrawler(accountId) {
+        const crawler = this.apiCrawlers.get(accountId);
+        if (!crawler) {
+            throw new Error(`API 爬虫不存在 (账户: ${accountId})`);
+        }
+
+        logger.info(`暂停 API 爬虫 (账户: ${accountId})`);
+        crawler.pause();
+        logger.info(`✅ API 爬虫已暂停 (账户: ${accountId})`);
+    }
+
+    /**
+     * 恢复 API 爬虫
+     * @param {string} accountId - 账户 ID
+     */
+    resumeAPICrawler(accountId) {
+        const crawler = this.apiCrawlers.get(accountId);
+        if (!crawler) {
+            throw new Error(`API 爬虫不存在 (账户: ${accountId})`);
+        }
+
+        logger.info(`恢复 API 爬虫 (账户: ${accountId})`);
+        crawler.resume();
+        logger.info(`✅ API 爬虫已恢复 (账户: ${accountId})`);
+    }
+
+    /**
+     * 获取 API 爬虫状态
+     * @param {string} accountId - 账户 ID
+     * @returns {Object|null}
+     */
+    getAPICrawlerStatus(accountId) {
+        const crawler = this.apiCrawlers.get(accountId);
+        if (!crawler) {
+            return null;
+        }
+
+        return crawler.getStats();
+    }
+
+    // ============================================================================
     // 清理资源
     // ============================================================================
 
@@ -1634,6 +1847,12 @@ async replyToComment(accountId, options) {
         // 停止实时监控
         if (this.realtimeMonitors.has(accountId)) {
             await this.stopRealtimeMonitor(accountId);
+        }
+
+        // 停止 API 爬虫
+        if (this.apiCrawlers.has(accountId)) {
+            await this.stopAPICrawler(accountId);
+            this.apiCrawlers.delete(accountId);
         }
 
         // ⭐ 页面现在由 BrowserManager 统一管理和清理
