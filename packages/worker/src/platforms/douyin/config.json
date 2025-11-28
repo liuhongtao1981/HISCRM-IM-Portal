@@ -23,6 +23,10 @@
     "qrCodeLifetime": 150000
   },
   "crawlers": {
+    "realtimeMonitor": {
+      "enabled": true,
+      "description": "实时监控 - 打开抖音首页注入Hook监听实时通知（新评论、新私信推送）"
+    },
     "commentCrawler": {
       "enabled": false,
       "description": "评论爬虫 - 通过浏览器自动化抓取评论数据",

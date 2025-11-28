@@ -1641,13 +1641,16 @@ async replyToComment(accountId, options) {
         // 从平台配置文件读取爬虫配置（所有配置都在 config.json 中定义）
         // 注意：不再使用账户的 monitoring_config 字段，所有账户使用统一的平台配置
         const crawlersConfig = this.config.crawlers || {};
+        const realtimeMonitorCfg = crawlersConfig.realtimeMonitor || {};
         const apiCfg = crawlersConfig.apiCrawler || {};
         const commentCfg = crawlersConfig.commentCrawler || {};
 
         // 直接返回平台配置，不允许账户级别的配置覆盖
         return {
+            // 实时监控（打开抖音首页监听实时通知）
+            enableRealtimeMonitor: realtimeMonitorCfg.enabled ?? true,
+
             // 评论爬虫（浏览器自动化）
-            enableRealtimeMonitor: commentCfg.enabled ?? true,
             crawlIntervalMin: (commentCfg.interval?.min ?? 15) / 60,  // 秒 → 分钟
             crawlIntervalMax: (commentCfg.interval?.max ?? 30) / 60,
 

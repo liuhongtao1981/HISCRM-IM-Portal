@@ -350,12 +350,12 @@ class LoginDetectionTask {
         if (this.platformManager) {
           const platformInstance = this.platformManager.getPlatform(this.account.platform);
           if (platformInstance && typeof platformInstance.startRealtimeMonitor === 'function') {
-            // 检查 commentCrawler 配置是否启用
+            // 检查 realtimeMonitor 配置是否启用
             const crawlersConfig = platformInstance.config.crawlers || {};
-            const commentCfg = crawlersConfig.commentCrawler || {};
-            const enableCommentCrawler = commentCfg.enabled ?? true;
+            const realtimeMonitorCfg = crawlersConfig.realtimeMonitor || {};
+            const enableRealtimeMonitor = realtimeMonitorCfg.enabled ?? true;
 
-            if (enableCommentCrawler) {
+            if (enableRealtimeMonitor) {
               try {
                 await platformInstance.startRealtimeMonitor(this.account);
                 logger.info(`✓ Realtime monitor started for account ${this.account.id}`);
@@ -363,7 +363,7 @@ class LoginDetectionTask {
                 logger.warn(`Failed to start realtime monitor: ${error.message}`);
               }
             } else {
-              logger.info(`⏭️  跳过实时监控 (commentCrawler.enabled = false)`);
+              logger.info(`⏭️  跳过实时监控 (realtimeMonitor.enabled = false)`);
             }
           }
         }

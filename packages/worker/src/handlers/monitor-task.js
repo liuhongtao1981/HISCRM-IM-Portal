@@ -56,6 +56,9 @@ class MonitorTask {
     const platformInstance = this.platformManager.getPlatform(this.account.platform);
     const crawlersConfig = platformInstance.config.crawlers || {};
 
+    // 读取实时监控配置
+    const realtimeMonitorCfg = crawlersConfig.realtimeMonitor || {};
+
     // 读取评论爬虫配置
     const commentCfg = crawlersConfig.commentCrawler || {};
 
@@ -68,11 +71,12 @@ class MonitorTask {
     this.maxInterval = maxIntervalSec * 1000;
 
     // 保存启用标志
+    this.enableRealtimeMonitor = realtimeMonitorCfg.enabled ?? true;
     this.enableCommentCrawler = commentCfg.enabled ?? true;
     this.enableDMCrawler = (crawlersConfig.dmCrawler || {}).enabled ?? true;
 
     logger.info(`📋 从平台配置加载 MonitorTask 间隔: ${minIntervalSec}-${maxIntervalSec}秒 (账户: ${this.account.id})`);
-    logger.info(`📋 爬虫启用状态 - 评论: ${this.enableCommentCrawler}, 私信: ${this.enableDMCrawler} (账户: ${this.account.id})`);
+    logger.info(`📋 爬虫启用状态 - 实时监控: ${this.enableRealtimeMonitor}, 评论: ${this.enableCommentCrawler}, 私信: ${this.enableDMCrawler} (账户: ${this.account.id})`);
   }
 
   /**
@@ -128,9 +132,9 @@ class MonitorTask {
     this.isRunning = true;
 
     // ⭐ 启动实时监控（如果平台支持且配置启用）
-    // 注意：实时监控 (startRealtimeMonitor) 对应 commentCrawler 配置
+    // 注意：实时监控 (startRealtimeMonitor) 打开抖音首页监听实时通知，和评论爬虫是独立的 Tab
     if (this.account.platform === 'douyin' && typeof platformInstance.startRealtimeMonitor === 'function') {
-      if (this.enableCommentCrawler) {
+      if (this.enableRealtimeMonitor) {
         try {
           logger.info(`🚀 启动实时监控 (账户: ${this.account.id})...`);
           await platformInstance.startRealtimeMonitor(this.account);
@@ -140,7 +144,7 @@ class MonitorTask {
           logger.error(`⚠️  实时监控启动失败 (账户: ${this.account.id}):`, error);
         }
       } else {
-        logger.info(`⏭️  跳过实时监控 (commentCrawler.enabled = false)`);
+        logger.info(`⏭️  跳过实时监控 (realtimeMonitor.enabled = false)`);
       }
     }
 
