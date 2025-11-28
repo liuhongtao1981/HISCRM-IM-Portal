@@ -25,53 +25,17 @@ const { DataSource } = require('../base/data-models');
 const logger = createLogger('douyin-crawler-api');
 
 /**
- * API 爬虫配置
- */
-const DEFAULT_CONFIG = {
-    // 定时间隔（毫秒）
-    intervalMs: 5 * 60 * 1000,  // 默认 5 分钟
-
-    // 作品爬取配置
-    works: {
-        pageSize: 50,           // 每页作品数
-        maxPages: 50,           // 最多爬取页数
-    },
-
-    // 评论爬取配置
-    comments: {
-        pageSize: 20,           // 每页评论数
-        maxPages: 25,           // 最多爬取页数（每个作品）
-        maxComments: 500,       // 每个作品最多评论数
-    },
-
-    // 二级评论配置
-    replies: {
-        enabled: true,          // 是否爬取二级评论
-        pageSize: 20,           // 每页回复数
-        maxPages: 5,            // 最多爬取页数（每条评论）
-        maxReplies: 100,        // 每条评论最多回复数
-    },
-
-    // 反爬虫延迟（毫秒）
-    delays: {
-        betweenWorks: 2000,     // 作品之间延迟
-        betweenCommentPages: 1000,  // 评论分页延迟
-        betweenReplies: 500,    // 二级评论延迟
-    },
-
-    // 其他配置
-    autoStart: true,            // 是否自动启动
-    stopOnError: false,         // 出错是否停止
-};
-
-/**
  * API 爬虫类
+ *
+ * 配置说明：
+ * - 所有配置从 platform.js 传入（已从 config.json 读取）
+ * - 不在此处定义默认值，避免配置分散
  */
 class DouyinAPICrawler {
     constructor(platform, account, config = {}) {
         this.platform = platform;
         this.account = account;
-        this.config = { ...DEFAULT_CONFIG, ...config };
+        this.config = config;  // 配置由 platform.js 从 config.json 读取后传入
 
         this.isRunning = false;
         this.isPaused = false;
@@ -626,5 +590,4 @@ class DouyinAPICrawler {
 
 module.exports = {
     DouyinAPICrawler,
-    DEFAULT_CONFIG,
 };
