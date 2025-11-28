@@ -10,7 +10,9 @@
   },
   "dependencies": {
     "@hiscrm-im/shared": "file:../shared",
+    "axios": "^1.6.2",
     "better-sqlite3": "^9.2.2",
+    "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
     "node-cron": "^3.0.3",
     "playwright": "^1.56.1",
