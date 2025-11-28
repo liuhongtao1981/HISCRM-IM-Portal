@@ -48,53 +48,40 @@ class MonitorTask {
 
   /**
    * 解析监控配置
-   * 优先从环境变量读取，支持 account.monitoring_config 覆盖
+   * 从平台配置文件读取（config.json）
+   * 注意：不再使用环境变量或 account.monitoring_config
    */
   parseMonitoringConfig() {
-    // 从环境变量读取默认间隔（分钟）
-    const envMinInterval = parseFloat(process.env.CRAWL_INTERVAL_MIN) || 0.5;
-    const envMaxInterval = parseFloat(process.env.CRAWL_INTERVAL_MAX) || 0.5;
-    
-    let minInterval = envMinInterval * 60;  // 分钟转秒
-    let maxInterval = envMaxInterval * 60;  // 分钟转秒
+    // 从平台配置文件读取爬虫配置
+    const platformInstance = this.platformManager.getPlatform(this.account.platform);
+    const crawlersConfig = platformInstance.config.crawlers || {};
 
-    logger.info(`📋 从环境变量加载爬虫间隔默认值: ${envMinInterval}-${envMaxInterval}分钟`);
+    // 读取评论爬虫配置
+    const commentCfg = crawlersConfig.commentCrawler || {};
 
-    // 从 account.monitoring_config 读取配置（可选覆盖）
-    if (this.account.monitoring_config) {
-      try {
-        const config = typeof this.account.monitoring_config === 'string'
-          ? JSON.parse(this.account.monitoring_config)
-          : this.account.monitoring_config;
+    // 读取间隔配置（秒）
+    const minIntervalSec = (commentCfg.interval?.min ?? 60);
+    const maxIntervalSec = (commentCfg.interval?.max ?? 600);
 
-        // 读取爬虫间隔配置（覆盖环境变量默认值）
-        if (config.crawlIntervalMin !== undefined) {
-          minInterval = config.crawlIntervalMin * 60; // 分钟转秒
-        }
-        if (config.crawlIntervalMax !== undefined) {
-          maxInterval = config.crawlIntervalMax * 60; // 分钟转秒
-        }
+    // 保存间隔配置（毫秒）
+    this.minInterval = minIntervalSec * 1000;
+    this.maxInterval = maxIntervalSec * 1000;
 
-        logger.info(`✅ 从 monitoring_config 覆盖爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
-      } catch (error) {
-        logger.warn(`⚠️  解析 monitoring_config 失败，使用环境变量默认值: ${error.message}`);
-      }
-    } else {
-      logger.info(`使用环境变量默认爬虫间隔: ${minInterval/60}-${maxInterval/60}分钟 (账户: ${this.account.id})`);
-    }
+    // 保存启用标志
+    this.enableCommentCrawler = commentCfg.enabled ?? true;
+    this.enableDMCrawler = (crawlersConfig.dmCrawler || {}).enabled ?? true;
 
-    // 保存间隔配置
-    this.minInterval = minInterval;
-    this.maxInterval = maxInterval;
+    logger.info(`📋 从平台配置加载 MonitorTask 间隔: ${minIntervalSec}-${maxIntervalSec}秒 (账户: ${this.account.id})`);
+    logger.info(`📋 爬虫启用状态 - 评论: ${this.enableCommentCrawler}, 私信: ${this.enableDMCrawler} (账户: ${this.account.id})`);
   }
 
   /**
-   * 生成随机间隔时间 (默认 5-10分钟，可配置)
+   * 生成随机间隔时间 (从平台配置读取，默认 60-600秒)
    * @returns {number} 随机间隔时间(毫秒)
    */
   getRandomInterval() {
-    const randomSeconds = this.minInterval + Math.random() * (this.maxInterval - this.minInterval);
-    return Math.floor(randomSeconds * 1000);
+    const randomMs = this.minInterval + Math.random() * (this.maxInterval - this.minInterval);
+    return Math.floor(randomMs);
   }
 
   /**
@@ -141,14 +128,19 @@ class MonitorTask {
     this.isRunning = true;
 
     // ⭐ 启动实时监控（如果平台支持且配置启用）
+    // 注意：实时监控 (startRealtimeMonitor) 对应 commentCrawler 配置
     if (this.account.platform === 'douyin' && typeof platformInstance.startRealtimeMonitor === 'function') {
-      try {
-        logger.info(`🚀 启动实时监控 (账户: ${this.account.id})...`);
-        await platformInstance.startRealtimeMonitor(this.account);
-        logger.info(`✅ 实时监控已启动 (账户: ${this.account.id})`);
-      } catch (error) {
-        // 实时监控启动失败不影响定时爬虫
-        logger.error(`⚠️  实时监控启动失败 (账户: ${this.account.id}):`, error);
+      if (this.enableCommentCrawler) {
+        try {
+          logger.info(`🚀 启动实时监控 (账户: ${this.account.id})...`);
+          await platformInstance.startRealtimeMonitor(this.account);
+          logger.info(`✅ 实时监控已启动 (账户: ${this.account.id})`);
+        } catch (error) {
+          // 实时监控启动失败不影响定时爬虫
+          logger.error(`⚠️  实时监控启动失败 (账户: ${this.account.id}):`, error);
+        }
+      } else {
+        logger.info(`⏭️  跳过实时监控 (commentCrawler.enabled = false)`);
       }
     }
 
@@ -211,41 +203,67 @@ class MonitorTask {
       // 登录状态由独立的LoginDetectionTask管理
       logger.info(`Starting crawl for account ${this.account.id} (login status managed by LoginDetectionTask)...`);
 
-      // ⭐ 关键改进: 并行执行评论和私信爬取 (使用 Promise.all)
+      // ⭐ 关键改进: 根据配置文件决定是否执行评论和私信爬取
       // 现在评论爬虫 (spider2) 和私信爬虫 (spider1) 可以独立运行，互不干扰
-      logger.info(`Starting parallel crawling: spider1 (DM) and spider2 (Comments)`);
+      logger.info(`MonitorTask 配置检查 - 评论爬虫: ${this.enableCommentCrawler}, 私信爬虫: ${this.enableDMCrawler}`);
 
-      const [commentResult, dmResult] = await Promise.all([
-        // 1. 爬取评论（通过平台实例）- 返回 { comments, stats }
-        // 使用 spider2 (Tab 2) 独立运行
-        (async () => {
-          try {
-            logger.info(`Spider2 (Comments) started for account ${this.account.id}`);
-            const result = await this.platformInstance.crawlComments(this.account);
-            logger.info(`Spider2 (Comments) completed for account ${this.account.id}`);
-            return result;
-          } catch (error) {
-            logger.error(`Spider2 (Comments) failed: ${error.message}`);
-            throw error;
+      // 准备爬虫任务数组
+      const crawlerTasks = [];
+
+      // 1. 爬取评论（如果配置启用）
+      let commentResult = { comments: [], stats: {} };
+      if (this.enableCommentCrawler) {
+        crawlerTasks.push(
+          (async () => {
+            try {
+              logger.info(`Spider2 (Comments) started for account ${this.account.id}`);
+              const result = await this.platformInstance.crawlComments(this.account);
+              logger.info(`Spider2 (Comments) completed for account ${this.account.id}`);
+              return { type: 'comment', result };
+            } catch (error) {
+              logger.error(`Spider2 (Comments) failed: ${error.message}`);
+              return { type: 'comment', result: { comments: [], stats: {} } };
+            }
+          })()
+        );
+      } else {
+        logger.info(`⏭️  跳过评论爬虫 (commentCrawler.enabled = false)`);
+      }
+
+      // 2. 爬取私信（如果配置启用）
+      let dmResult = { directMessages: [], conversations: [], stats: {} };
+      if (this.enableDMCrawler) {
+        crawlerTasks.push(
+          (async () => {
+            try {
+              logger.info(`Spider1 (DM) started for account ${this.account.id}`);
+              const result = await this.platformInstance.crawlDirectMessages(this.account);
+              logger.info(`Spider1 (DM) completed for account ${this.account.id}`);
+              return { type: 'dm', result };
+            } catch (error) {
+              logger.error(`Spider1 (DM) failed: ${error.message}`);
+              return { type: 'dm', result: { directMessages: [], conversations: [], stats: {} } };
+            }
+          })()
+        );
+      } else {
+        logger.info(`⏭️  跳过私信爬虫 (dmCrawler.enabled = false)`);
+      }
+
+      // 3. 并行执行启用的爬虫
+      if (crawlerTasks.length > 0) {
+        const results = await Promise.all(crawlerTasks);
+        // 分配结果
+        results.forEach(({ type, result }) => {
+          if (type === 'comment') {
+            commentResult = result;
+          } else if (type === 'dm') {
+            dmResult = result;
           }
-        })(),
+        });
+      }
 
-        // 4. 爬取私信（通过平台实例）- 返回 { conversations, directMessages, stats } (Phase 8)
-        // 使用 spider1 (Tab 1) 独立运行
-        (async () => {
-          try {
-            logger.info(`Spider1 (DM) started for account ${this.account.id}`);
-            const result = await this.platformInstance.crawlDirectMessages(this.account);
-            logger.info(`Spider1 (DM) completed for account ${this.account.id}`);
-            return result;
-          } catch (error) {
-            logger.error(`Spider1 (DM) failed: ${error.message}`);
-            throw error;
-          }
-        })(),
-      ]);
-
-      const rawComments = commentResult.comments || commentResult;  // 兼容旧版本
+      const rawComments = commentResult.comments || commentResult;
       const commentStats = commentResult.stats || {};
 
       // 2. 解析评论

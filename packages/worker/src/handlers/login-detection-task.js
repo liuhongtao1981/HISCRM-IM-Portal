@@ -346,15 +346,24 @@ class LoginDetectionTask {
           logger.info(`✓ Crawling tasks started for account ${this.account.id}`);
         }
 
-        // 2. 启动实时监控任务（常驻任务）
+        // 2. 启动实时监控任务（常驻任务）- 需要检查配置是否启用
         if (this.platformManager) {
           const platformInstance = this.platformManager.getPlatform(this.account.platform);
           if (platformInstance && typeof platformInstance.startRealtimeMonitor === 'function') {
-            try {
-              await platformInstance.startRealtimeMonitor(this.account);
-              logger.info(`✓ Realtime monitor started for account ${this.account.id}`);
-            } catch (error) {
-              logger.warn(`Failed to start realtime monitor: ${error.message}`);
+            // 检查 commentCrawler 配置是否启用
+            const crawlersConfig = platformInstance.config.crawlers || {};
+            const commentCfg = crawlersConfig.commentCrawler || {};
+            const enableCommentCrawler = commentCfg.enabled ?? true;
+
+            if (enableCommentCrawler) {
+              try {
+                await platformInstance.startRealtimeMonitor(this.account);
+                logger.info(`✓ Realtime monitor started for account ${this.account.id}`);
+              } catch (error) {
+                logger.warn(`Failed to start realtime monitor: ${error.message}`);
+              }
+            } else {
+              logger.info(`⏭️  跳过实时监控 (commentCrawler.enabled = false)`);
             }
           }
         }
