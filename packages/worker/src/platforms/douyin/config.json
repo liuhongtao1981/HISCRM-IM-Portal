@@ -5,7 +5,8 @@
   "capabilities": [
     "login",
     "comment_monitoring",
-    "dm_monitoring"
+    "dm_monitoring",
+    "api_crawler"
   ],
   "urls": {
     "home": "https://www.douyin.com/",
@@ -26,5 +27,64 @@
     "loginCheck": 300000,
     "pageLoad": 15000,
     "qrCodeLifetime": 150000
+  },
+  "crawlers": {
+    "common": {
+      "intervalMin": 1,
+      "intervalMax": 10,
+      "description": "爬虫通用配置：最小和最大间隔时间（分钟）"
+    },
+    "commentCrawler": {
+      "enabled": true,
+      "description": "评论爬虫 - 通过浏览器自动化抓取评论数据",
+      "interval": {
+        "min": 15,
+        "max": 30,
+        "unit": "seconds",
+        "description": "随机间隔范围（秒）"
+      }
+    },
+    "dmCrawler": {
+      "enabled": true,
+      "description": "私信爬虫 - 通过浏览器自动化抓取私信数据",
+      "interval": {
+        "min": 15,
+        "max": 30,
+        "unit": "seconds",
+        "description": "随机间隔范围（秒）"
+      }
+    },
+    "apiCrawler": {
+      "enabled": true,
+      "autoStart": true,
+      "interval": 30,
+      "description": "API爬虫 - 定时自动抓取作品、评论和二级评论，无需打开浏览器窗口",
+      "works": {
+        "pageSize": 50,
+        "maxPages": 9999,
+        "description": "作品抓取配置：9999表示不限制，抓取所有"
+      },
+      "comments": {
+        "enabled": true,
+        "pageSize": 20,
+        "maxPages": 9999,
+        "maxComments": 999999,
+        "description": "评论抓取配置：9999表示不限制，抓取所有"
+      },
+      "replies": {
+        "enabled": true,
+        "pageSize": 20,
+        "maxPages": 9999,
+        "maxReplies": 999999,
+        "description": "二级评论抓取配置：9999表示不限制，抓取所有"
+      },
+      "delays": {
+        "betweenWorks": 500,
+        "betweenCommentPages": 300,
+        "betweenReplies": 200,
+        "unit": "milliseconds",
+        "description": "延迟配置（防止触发限流）：测试环境用较小值，生产环境建议增加"
+      }
+    }
   }
 }
