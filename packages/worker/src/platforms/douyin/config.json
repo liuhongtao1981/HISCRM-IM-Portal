@@ -24,11 +24,11 @@
   },
   "crawlers": {
     "commentCrawler": {
-      "enabled": true,
+      "enabled": false,
       "description": "评论爬虫 - 通过浏览器自动化抓取评论数据",
       "interval": {
-        "min": 15,
-        "max": 30,
+        "min": 60,
+        "max": 600,
         "unit": "seconds",
         "description": "随机间隔范围（秒）"
       }
@@ -37,8 +37,8 @@
       "enabled": true,
       "description": "私信爬虫 - 通过浏览器自动化抓取私信数据",
       "interval": {
-        "min": 15,
-        "max": 30,
+        "min": 60,
+        "max": 600,
         "unit": "seconds",
         "description": "随机间隔范围（秒）"
       }
@@ -46,7 +46,7 @@
     "apiCrawler": {
       "enabled": true,
       "autoStart": true,
-      "interval": 30,
+      "interval": 120,
       "description": "API爬虫 - 定时自动抓取作品、评论和二级评论，无需打开浏览器窗口",
       "works": {
         "pageSize": 50,

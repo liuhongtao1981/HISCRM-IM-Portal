@@ -1634,17 +1634,18 @@ async replyToComment(accountId, options) {
 
     /**
      * 解析监控配置
-     * @param {Object} account - 账户对象
+     * @param {Object} _account - 账户对象（保留参数以保持接口兼容，但不再使用账户级配置）
      * @returns {Object} 配置对象
      */
-    parseMonitoringConfig(account) {
-        // 从平台配置文件读取爬虫配置（所有默认值都在 config.json 中定义）
+    parseMonitoringConfig(_account) {
+        // 从平台配置文件读取爬虫配置（所有配置都在 config.json 中定义）
+        // 注意：不再使用账户的 monitoring_config 字段，所有账户使用统一的平台配置
         const crawlersConfig = this.config.crawlers || {};
         const apiCfg = crawlersConfig.apiCrawler || {};
         const commentCfg = crawlersConfig.commentCrawler || {};
 
-        // 构建配置对象（优先级：账户配置 > config.json > 环境变量）
-        const defaultConfig = {
+        // 直接返回平台配置，不允许账户级别的配置覆盖
+        return {
             // 评论爬虫（浏览器自动化）
             enableRealtimeMonitor: commentCfg.enabled ?? true,
             crawlIntervalMin: (commentCfg.interval?.min ?? 15) / 60,  // 秒 → 分钟
@@ -1676,21 +1677,6 @@ async replyToComment(accountId, options) {
             apiCrawlerDelayBetweenCommentPages: apiCfg.delays?.betweenCommentPages ?? 300,
             apiCrawlerDelayBetweenReplies: apiCfg.delays?.betweenReplies ?? 200,
         };
-
-        if (!account.monitoring_config) {
-            return defaultConfig;
-        }
-
-        try {
-            const config = typeof account.monitoring_config === 'string'
-                ? JSON.parse(account.monitoring_config)
-                : account.monitoring_config;
-
-            return { ...defaultConfig, ...config };
-        } catch (error) {
-            logger.warn(`解析 monitoring_config 失败: ${error.message}，使用默认配置`);
-            return defaultConfig;
-        }
     }
 
     // ============================================================================
