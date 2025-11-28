@@ -2226,24 +2226,26 @@ export default function MonitorPage() {
         </Form>
       </Modal>
 
-      {/* 拖拽删除区域（回收站） - 固定在窗口左下角 */}
+      {/* 拖拽删除区域（回收站） - 固定在窗口左下角，限制在左侧栏宽度内 */}
       {isDragging && (
         <div
           style={{
             position: 'fixed',
             bottom: 0,
             left: 0,
-            width: '280px',
-            padding: '24px',
+            width: '300px',
+            height: '120px',
             backgroundColor: isOverTrash ? '#ff4d4f' : '#fff1f0',
             borderTop: '3px solid #ff4d4f',
-            borderRight: '3px solid #ff4d4f',
-            borderTopRightRadius: '8px',
             textAlign: 'center',
             transition: 'all 0.3s ease',
             cursor: 'pointer',
             zIndex: 9999,
-            boxShadow: isOverTrash ? '0 -4px 12px rgba(255, 77, 79, 0.3)' : '0 -2px 8px rgba(0, 0, 0, 0.1)'
+            boxShadow: isOverTrash ? '0 -4px 12px rgba(255, 77, 79, 0.3)' : '0 -2px 8px rgba(0, 0, 0, 0.1)',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center'
           }}
           onDragOver={(e) => {
             e.preventDefault()
@@ -2263,16 +2265,14 @@ export default function MonitorPage() {
           }}
         >
           <DeleteOutlined style={{
-            fontSize: 48,
+            fontSize: 40,
             color: isOverTrash ? '#fff' : '#ff4d4f',
-            marginBottom: 12,
-            display: 'block'
+            marginBottom: 8
           }} />
           <div style={{
-            fontSize: 16,
+            fontSize: 14,
             color: isOverTrash ? '#fff' : '#ff4d4f',
-            fontWeight: 600,
-            letterSpacing: '0.5px'
+            fontWeight: 600
           }}>
             {isOverTrash ? '松开即可删除' : '拖到这里删除账号'}
           </div>
