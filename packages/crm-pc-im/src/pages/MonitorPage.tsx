@@ -80,6 +80,7 @@ export default function MonitorPage() {
   const [isDragging, setIsDragging] = useState(false) // 是否正在拖拽
   const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null) // 正在拖拽的账号ID
   const [isOverTrash, setIsOverTrash] = useState(false) // 是否拖拽到回收站上方
+  const [isAddBtnHovered, setIsAddBtnHovered] = useState(false) // 添加按钮是否悬停
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -1204,22 +1205,6 @@ export default function MonitorPage() {
             }}
           />
         </div>
-
-        {/* 底部添加账号按钮 */}
-        <div style={{
-          padding: '12px',
-          borderTop: '1px solid #e8e8e8',
-          backgroundColor: '#fafafa'
-        }}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleOpenAddAccountModal}
-            block
-          >
-            添加账号
-          </Button>
-        </div>
       </Sider>
 
       {/* 右侧消息对话框 */}
@@ -2225,6 +2210,40 @@ export default function MonitorPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 固定在左下角的添加账号按钮 */}
+      <Button
+        type="primary"
+        icon={!isAddBtnHovered && <PlusOutlined />}
+        onClick={handleOpenAddAccountModal}
+        style={{
+          position: 'fixed',
+          bottom: '20px',
+          left: '20px',
+          width: isAddBtnHovered ? '160px' : '56px',
+          height: '56px',
+          borderRadius: isAddBtnHovered ? '28px' : '50%',
+          fontSize: isAddBtnHovered ? '16px' : '24px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: isAddBtnHovered ? '0 20px' : '0',
+          zIndex: 8888,
+          boxShadow: '0 4px 12px rgba(0, 0, 0, 0.15)',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          overflow: 'hidden',
+          whiteSpace: 'nowrap'
+        }}
+        onMouseEnter={() => setIsAddBtnHovered(true)}
+        onMouseLeave={() => setIsAddBtnHovered(false)}
+      >
+        {isAddBtnHovered && (
+          <>
+            <PlusOutlined style={{ marginRight: '8px' }} />
+            添加账号
+          </>
+        )}
+      </Button>
 
       {/* 拖拽删除区域（回收站） - 固定在窗口左下角，限制在左侧栏宽度内 */}
       {isDragging && (
