@@ -1220,49 +1220,6 @@ export default function MonitorPage() {
             添加账号
           </Button>
         </div>
-
-        {/* 拖拽删除区域（回收站） - 位于软件最左下角 */}
-        {isDragging && (
-          <div
-            style={{
-              padding: '20px',
-              backgroundColor: isOverTrash ? '#ff4d4f' : '#fff1f0',
-              borderTop: '2px dashed #ff4d4f',
-              textAlign: 'center',
-              transition: 'all 0.3s ease',
-              cursor: 'pointer'
-            }}
-            onDragOver={(e) => {
-              e.preventDefault()
-              e.dataTransfer.dropEffect = 'move'
-              setIsOverTrash(true)
-            }}
-            onDragLeave={() => {
-              setIsOverTrash(false)
-            }}
-            onDrop={(e) => {
-              e.preventDefault()
-              const channelId = e.dataTransfer.getData('text/plain')
-              setIsOverTrash(false)
-              if (channelId) {
-                handleDeleteAccount(channelId)
-              }
-            }}
-          >
-            <DeleteOutlined style={{
-              fontSize: 40,
-              color: isOverTrash ? '#fff' : '#ff4d4f',
-              marginBottom: 8
-            }} />
-            <div style={{
-              fontSize: 14,
-              color: isOverTrash ? '#fff' : '#ff4d4f',
-              fontWeight: 600
-            }}>
-              {isOverTrash ? '松开即可删除' : '拖到这里删除账号'}
-            </div>
-          </div>
-        )}
       </Sider>
 
       {/* 右侧消息对话框 */}
@@ -2268,6 +2225,59 @@ export default function MonitorPage() {
           </Form.Item>
         </Form>
       </Modal>
+
+      {/* 拖拽删除区域（回收站） - 固定在窗口左下角 */}
+      {isDragging && (
+        <div
+          style={{
+            position: 'fixed',
+            bottom: 0,
+            left: 0,
+            width: '280px',
+            padding: '24px',
+            backgroundColor: isOverTrash ? '#ff4d4f' : '#fff1f0',
+            borderTop: '3px solid #ff4d4f',
+            borderRight: '3px solid #ff4d4f',
+            borderTopRightRadius: '8px',
+            textAlign: 'center',
+            transition: 'all 0.3s ease',
+            cursor: 'pointer',
+            zIndex: 9999,
+            boxShadow: isOverTrash ? '0 -4px 12px rgba(255, 77, 79, 0.3)' : '0 -2px 8px rgba(0, 0, 0, 0.1)'
+          }}
+          onDragOver={(e) => {
+            e.preventDefault()
+            e.dataTransfer.dropEffect = 'move'
+            setIsOverTrash(true)
+          }}
+          onDragLeave={() => {
+            setIsOverTrash(false)
+          }}
+          onDrop={(e) => {
+            e.preventDefault()
+            const channelId = e.dataTransfer.getData('text/plain')
+            setIsOverTrash(false)
+            if (channelId) {
+              handleDeleteAccount(channelId)
+            }
+          }}
+        >
+          <DeleteOutlined style={{
+            fontSize: 48,
+            color: isOverTrash ? '#fff' : '#ff4d4f',
+            marginBottom: 12,
+            display: 'block'
+          }} />
+          <div style={{
+            fontSize: 16,
+            color: isOverTrash ? '#fff' : '#ff4d4f',
+            fontWeight: 600,
+            letterSpacing: '0.5px'
+          }}>
+            {isOverTrash ? '松开即可删除' : '拖到这里删除账号'}
+          </div>
+        </div>
+      )}
     </Layout>
   )
 }
