@@ -70,6 +70,7 @@ const logger = createLogger('master', './logs');
 
 // 配置
 const PORT = process.env.PORT || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 const DB_PATH = process.env.DB_PATH || './data/master.db';
 
 // 初始化Express应用
@@ -839,6 +840,10 @@ async function start() {
     accountAssigner = new AccountAssigner(db, workerRegistry, taskScheduler, dataStore);
     logger.info('Account assigner initialized');
 
+    // ⭐ 将 AccountAssigner 注入到 IM WebSocket Server（用于账号创建后自动分配 Worker）
+    imWebSocketServer.setAccountAssigner(accountAssigner);
+    logger.info('IM WebSocket Server connected to AccountAssigner for account assignment');
+
     // 10.1 初始化账号状态更新器
     accountStatusUpdater = new AccountStatusUpdater(db);
     logger.info('Account status updater initialized');
@@ -945,10 +950,11 @@ async function start() {
     initializeDebugMode();
 
     // 14. 启动HTTP服务器
-    server.listen(PORT, () => {
+    server.listen(PORT, HOST, () => {
       logger.info(`╔═══════════════════════════════════════════╗`);
       logger.info(`║  Master Server Started                    ║`);
       logger.info(`╠═══════════════════════════════════════════╣`);
+      logger.info(`║  Host: ${HOST.padEnd(29)} ║`);
       logger.info(`║  Port: ${PORT}                               ║`);
       logger.info(`║  Environment: ${(process.env.NODE_ENV || 'development').padEnd(20)} ║`);
       logger.info(`║  Namespaces: /worker, /client, /admin     ║`);

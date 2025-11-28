@@ -1,6 +1,6 @@
 {
   "websocket": {
-    "url": "http://192.168.120.48:3000",
+    "url": "http://localhost:3000",
     "reconnection": true,
     "reconnectionDelay": 1000,
     "reconnectionDelayMax": 5000,

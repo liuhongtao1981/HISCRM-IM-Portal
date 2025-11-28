@@ -16,6 +16,7 @@ class IMWebSocketServer {
         this.accountDAO = accountDAO;
         this.workerRegistry = workerRegistry;  // ✅ 新增: Worker 注册表
         this.replyDAO = replyDAO;  // ✅ 新增: 回复数据访问层
+        this.accountAssigner = null;  // ✅ 新增: 账号分配器（延迟注入）
 
         // 在线客户端管理
         this.monitorClients = new Map(); // clientId -> socketId
@@ -29,6 +30,15 @@ class IMWebSocketServer {
         this.sendingQueues = new Map(); // topicId -> Array<SendingMessage>
 
         logger.info('IM WebSocket Server initialized with CacheDAO, AccountDAO, WorkerRegistry and ReplyDAO support');
+    }
+
+    /**
+     * 设置账号分配器（延迟注入）
+     * @param {AccountAssigner} accountAssigner - 账号分配器实例
+     */
+    setAccountAssigner(accountAssigner) {
+        this.accountAssigner = accountAssigner;
+        logger.info('✅ AccountAssigner injected into IM WebSocket Server');
     }
 
     /**
@@ -90,6 +100,23 @@ class IMWebSocketServer {
             // 获取未读计数
             socket.on('monitor:get_unread_count', (data) => {
                 this.handleGetUnreadCount(socket, data);
+            });
+
+            // ============ 账号管理事件 ============
+
+            // 创建账号
+            socket.on('monitor:create_account', (data) => {
+                this.handleCreateAccount(socket, data);
+            });
+
+            // 请求平台列表
+            socket.on('monitor:request_platforms', () => {
+                this.handleRequestPlatforms(socket);
+            });
+
+            // 请求Worker列表
+            socket.on('monitor:request_workers', () => {
+                this.handleRequestWorkers(socket);
             });
 
             // 断开连接
@@ -1903,6 +1930,153 @@ class IMWebSocketServer {
         }
 
         return removedCount;
+    }
+
+    /**
+     * 处理创建账号请求
+     */
+    async handleCreateAccount(socket, data) {
+        try {
+            logger.info('[IM WS] Received create account request:', data);
+
+            if (!this.accountDAO) {
+                socket.emit('monitor:create_account_result', {
+                    success: false,
+                    error: '账号创建功能未启用（缺少 AccountDAO）'
+                });
+                return;
+            }
+
+            const { platform, account_name, account_id, status, monitor_interval, assigned_worker_id } = data;
+
+            // 验证必填字段
+            if (!platform || !account_name) {
+                socket.emit('monitor:create_account_result', {
+                    success: false,
+                    error: '缺少必填字段：platform 和 account_name'
+                });
+                return;
+            }
+
+            // 引入 Account 模型
+            const { Account } = require('@hiscrm-im/shared/models/Account');
+
+            // 创建账号数据
+            const accountData = {
+                platform,
+                account_name,
+                account_id: account_id || `temp_${Date.now()}`,  // 如果未提供，生成临时ID
+                status: status || 'active',
+                monitor_interval: monitor_interval || 30,
+                assigned_worker_id: assigned_worker_id || null,
+                credentials: null,  // 新账号尚未登录，凭证为空
+            };
+
+            // 创建 Account 实例
+            const account = new Account(accountData);
+
+            // 调用 DAO 的 create 方法（注意：方法名是 create，不是 createAccount）
+            const newAccount = this.accountDAO.create(account);
+
+            logger.info('[IM WS] Account created successfully:', newAccount.id);
+
+            // ✅ 触发账户分配逻辑（和 web-admin HTTP API 一样）
+            if (this.accountAssigner) {
+                // 如果手动指定了 Worker，直接分配并发送任务
+                if (assigned_worker_id) {
+                    this.accountAssigner.assignToSpecificWorker(newAccount, assigned_worker_id);
+                    logger.info(`[IM WS] Account ${newAccount.id} assigned to worker ${assigned_worker_id}`);
+                } else {
+                    // 自动分配到负载最低的 Worker
+                    this.accountAssigner.assignNewAccount(newAccount);
+                    logger.info(`[IM WS] Account ${newAccount.id} auto-assigned to worker`);
+                }
+            } else {
+                logger.warn('[IM WS] AccountAssigner not available, account created but not assigned to worker');
+            }
+
+            // 通知客户端创建成功（返回安全的JSON格式）
+            socket.emit('monitor:create_account_result', {
+                success: true,
+                data: newAccount.toSafeJSON()
+            });
+
+            // 广播更新账户列表
+            const channels = this.getChannelsFromDataStore();
+            this.broadcastToMonitors('monitor:channels', { channels });
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to create account:', error);
+            socket.emit('monitor:create_account_result', {
+                success: false,
+                error: error.message || '创建账号失败'
+            });
+        }
+    }
+
+    /**
+     * 处理请求平台列表
+     */
+    async handleRequestPlatforms(socket) {
+        try {
+            logger.info('[IM WS] Request platforms list');
+
+            // 返回硬编码的平台列表（可以从数据库或配置文件读取）
+            const platforms = [
+                { value: 'douyin', label: '抖音' },
+                { value: 'xiaohongshu', label: '小红书' }
+            ];
+
+            socket.emit('monitor:platforms', {
+                success: true,
+                data: platforms
+            });
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to get platforms:', error);
+            socket.emit('monitor:platforms', {
+                success: false,
+                error: error.message || '获取平台列表失败'
+            });
+        }
+    }
+
+    /**
+     * 处理请求Worker列表
+     */
+    async handleRequestWorkers(socket) {
+        try {
+            logger.info('[IM WS] Request workers list');
+
+            if (!this.workerRegistry) {
+                socket.emit('monitor:workers', {
+                    success: false,
+                    error: 'Worker管理功能未启用'
+                });
+                return;
+            }
+
+            // 从 Worker 注册表获取在线 Worker 列表
+            const workers = Array.from(this.workerRegistry.workers.values()).map(worker => ({
+                id: worker.id,
+                status: worker.status,
+                assigned_accounts: worker.assigned_accounts || 0,
+                host: worker.host,
+                port: worker.port
+            }));
+
+            socket.emit('monitor:workers', {
+                success: true,
+                data: workers
+            });
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to get workers:', error);
+            socket.emit('monitor:workers', {
+                success: false,
+                error: error.message || '获取Worker列表失败'
+            });
+        }
     }
 }
 

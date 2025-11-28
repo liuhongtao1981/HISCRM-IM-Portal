@@ -5,8 +5,8 @@
  */
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
-import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip, Modal } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined } from '@ant-design/icons'
+import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip, Modal, Form, message as antdMessage } from 'antd'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined, PlusOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -68,6 +68,13 @@ export default function MonitorPage() {
   const [isSending, setIsSending] = useState(false) // 是否正在发送消息
   const [sendingQueues, setSendingQueues] = useState<Record<string, any[]>>({}) // 发送队列 topicId -> SendingMessage[]
   const [worksSortBy, setWorksSortBy] = useState<'createdTime' | 'viewCount' | 'likeCount' | 'commentCount' | 'shareCount' | 'favoriteCount' | 'danmakuCount' | 'dislikeCount' | 'downloadCount' | 'subscribeCount' | 'unsubscribeCount' | 'likeRate' | 'commentRate' | 'shareRate' | 'favoriteRate' | 'dislikeRate' | 'subscribeRate' | 'unsubscribeRate' | 'completionRate' | 'completionRate5s' | 'avgViewSecond' | 'avgViewProportion' | 'bounceRate2s' | 'fanViewProportion' | 'homepageVisitCount' | 'coverShow'>('createdTime') // 作品列表排序字段
+
+  // 添加账号 Modal 相关状态
+  const [addAccountModalVisible, setAddAccountModalVisible] = useState(false)
+  const [platforms, setPlatforms] = useState<any[]>([])
+  const [workers, setWorkers] = useState<any[]>([])
+  const [platformsLoading, setPlatformsLoading] = useState(false)
+  const [form] = Form.useForm()
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -935,6 +942,85 @@ export default function MonitorPage() {
     return text.substring(0, maxLength) + '...'
   }
 
+  // 加载平台列表（通过WebSocket）
+  const loadPlatforms = () => {
+    setPlatformsLoading(true)
+
+    // 监听平台列表响应
+    const handlePlatformsResponse = (response: any) => {
+      setPlatformsLoading(false)
+      if (response.success && Array.isArray(response.data)) {
+        setPlatforms(response.data)
+      } else {
+        setPlatforms([
+          { value: 'douyin', label: '抖音' },
+          { value: 'xiaohongshu', label: '小红书' }
+        ])
+      }
+      websocketService.off('monitor:platforms')
+    }
+
+    websocketService.on('monitor:platforms', handlePlatformsResponse)
+    websocketService.emit('monitor:request_platforms')
+  }
+
+  // 加载 Workers 列表（通过WebSocket）
+  const loadWorkers = () => {
+    // 监听Workers列表响应
+    const handleWorkersResponse = (response: any) => {
+      if (response.success && Array.isArray(response.data)) {
+        setWorkers(response.data)
+      }
+      websocketService.off('monitor:workers')
+    }
+
+    websocketService.on('monitor:workers', handleWorkersResponse)
+    websocketService.emit('monitor:request_workers')
+  }
+
+  // 打开添加账号 Modal
+  const handleOpenAddAccountModal = () => {
+    form.resetFields()
+    form.setFieldsValue({ monitor_interval: 30 })
+    setAddAccountModalVisible(true)
+    loadPlatforms()
+  }
+
+  // 关闭添加账号 Modal
+  const handleCloseAddAccountModal = () => {
+    setAddAccountModalVisible(false)
+    form.resetFields()
+  }
+
+  // 提交添加账号表单（通过WebSocket）
+  const handleSubmitAddAccount = async () => {
+    try {
+      const values = await form.validateFields()
+
+      // 自动设置默认值
+      values.status = 'active'  // 默认启用
+      values.assigned_worker_id = null  // 自动分配Worker
+
+      // 监听创建账号响应
+      const handleCreateAccountResult = (response: any) => {
+        if (response.success) {
+          antdMessage.success('账户创建成功')
+          handleCloseAddAccountModal()
+          // 账户列表会自动更新（Master会广播）
+        } else {
+          antdMessage.error(response.error || '账户创建失败')
+        }
+        websocketService.off('monitor:create_account_result')
+      }
+
+      websocketService.on('monitor:create_account_result', handleCreateAccountResult)
+      websocketService.emit('monitor:create_account', values)
+    } catch (error) {
+      console.error('Failed to create account:', error)
+      antdMessage.error('表单验证失败')
+    }
+  }
+
   // 作品下拉菜单
   const topicsMenu = (
     <Menu
@@ -1059,6 +1145,22 @@ export default function MonitorPage() {
               )
             }}
           />
+        </div>
+
+        {/* 底部添加账号按钮 */}
+        <div style={{
+          padding: '12px',
+          borderTop: '1px solid #e8e8e8',
+          backgroundColor: '#fafafa'
+        }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleOpenAddAccountModal}
+            block
+          >
+            添加账号
+          </Button>
         </div>
       </Sider>
 
@@ -2015,6 +2117,56 @@ export default function MonitorPage() {
           </div>
         )}
       </Content>
+
+      {/* 添加账号 Modal */}
+      <Modal
+        title="添加账户"
+        open={addAccountModalVisible}
+        onOk={handleSubmitAddAccount}
+        onCancel={handleCloseAddAccountModal}
+        width={600}
+        okText="创建"
+        cancelText="取消"
+      >
+        <Form form={form} layout="vertical">
+          <Form.Item
+            name="platform"
+            label="平台"
+            rules={[{ required: true, message: '请选择平台' }]}
+          >
+            <Select
+              placeholder="选择平台"
+              loading={platformsLoading}
+            >
+              {platforms.map(platform => (
+                <Select.Option key={platform.value} value={platform.value}>
+                  {platform.label}
+                </Select.Option>
+              ))}
+            </Select>
+          </Form.Item>
+
+          <Form.Item
+            name="account_name"
+            label="账户名称"
+            rules={[{ required: true, message: '请输入账户名称' }]}
+          >
+            <Input placeholder="输入账户名称" />
+          </Form.Item>
+
+          <Form.Item
+            name="account_id"
+            label="账户ID"
+            tooltip="可选，留空将自动生成临时ID，登录后自动更新为真实ID"
+          >
+            <Input placeholder="选填，留空将自动生成" />
+          </Form.Item>
+
+          <Form.Item name="monitor_interval" label="监控间隔（秒）" initialValue={30}>
+            <Input type="number" placeholder="监控间隔" />
+          </Form.Item>
+        </Form>
+      </Modal>
     </Layout>
   )
 }

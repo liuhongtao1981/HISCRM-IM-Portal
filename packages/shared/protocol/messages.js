@@ -76,6 +76,14 @@ const CLIENT_NOTIFICATION_READ = 'client:notification:read';
 const CLIENT_MANUAL_LOGIN_SUCCESS = 'client:manual-login-success';  // IM客户端手动登录成功
 const CLIENT_MANUAL_LOGIN_SUCCESS_ACK = 'client:manual-login-success:ack';  // Master确认收到
 
+// ✨ 新增: 账号管理相关
+const CLIENT_CREATE_ACCOUNT = 'client:create-account';  // IM客户端创建账号
+const CLIENT_CREATE_ACCOUNT_ACK = 'client:create-account:ack';  // Master确认账号创建结果
+const CLIENT_REQUEST_PLATFORMS = 'client:request-platforms';  // IM客户端请求平台列表
+const CLIENT_REQUEST_PLATFORMS_ACK = 'client:request-platforms:ack';  // Master响应平台列表
+const CLIENT_REQUEST_WORKERS = 'client:request-workers';  // IM客户端请求Worker列表
+const CLIENT_REQUEST_WORKERS_ACK = 'client:request-workers:ack';  // Master响应Worker列表
+
 // ============================================
 // Master → Client 消息类型
 // ============================================
@@ -178,6 +186,12 @@ module.exports = {
   CLIENT_NOTIFICATION_READ,
   CLIENT_MANUAL_LOGIN_SUCCESS,
   CLIENT_MANUAL_LOGIN_SUCCESS_ACK,
+  CLIENT_CREATE_ACCOUNT,
+  CLIENT_CREATE_ACCOUNT_ACK,
+  CLIENT_REQUEST_PLATFORMS,
+  CLIENT_REQUEST_PLATFORMS_ACK,
+  CLIENT_REQUEST_WORKERS,
+  CLIENT_REQUEST_WORKERS_ACK,
 
   // Master → Client
   MASTER_NOTIFICATION_PUSH,
