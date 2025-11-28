@@ -1205,14 +1205,29 @@ export default function MonitorPage() {
           />
         </div>
 
-        {/* 拖拽删除区域（回收站） */}
+        {/* 底部添加账号按钮 */}
+        <div style={{
+          padding: '12px',
+          borderTop: '1px solid #e8e8e8',
+          backgroundColor: '#fafafa'
+        }}>
+          <Button
+            type="primary"
+            icon={<PlusOutlined />}
+            onClick={handleOpenAddAccountModal}
+            block
+          >
+            添加账号
+          </Button>
+        </div>
+
+        {/* 拖拽删除区域（回收站） - 位于软件最左下角 */}
         {isDragging && (
           <div
             style={{
-              padding: '16px',
+              padding: '20px',
               backgroundColor: isOverTrash ? '#ff4d4f' : '#fff1f0',
               borderTop: '2px dashed #ff4d4f',
-              borderBottom: '2px dashed #ff4d4f',
               textAlign: 'center',
               transition: 'all 0.3s ease',
               cursor: 'pointer'
@@ -1235,35 +1250,19 @@ export default function MonitorPage() {
             }}
           >
             <DeleteOutlined style={{
-              fontSize: 32,
+              fontSize: 40,
               color: isOverTrash ? '#fff' : '#ff4d4f',
               marginBottom: 8
             }} />
             <div style={{
               fontSize: 14,
               color: isOverTrash ? '#fff' : '#ff4d4f',
-              fontWeight: 500
+              fontWeight: 600
             }}>
-              {isOverTrash ? '松开删除' : '拖到这里删除账号'}
+              {isOverTrash ? '松开即可删除' : '拖到这里删除账号'}
             </div>
           </div>
         )}
-
-        {/* 底部添加账号按钮 */}
-        <div style={{
-          padding: '12px',
-          borderTop: '1px solid #e8e8e8',
-          backgroundColor: '#fafafa'
-        }}>
-          <Button
-            type="primary"
-            icon={<PlusOutlined />}
-            onClick={handleOpenAddAccountModal}
-            block
-          >
-            添加账号
-          </Button>
-        </div>
       </Sider>
 
       {/* 右侧消息对话框 */}
