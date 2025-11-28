@@ -518,6 +518,18 @@ export default function MonitorPage() {
         console.log('[监控] WebSocket 连接成功')
         dispatch(setConnected(true))
 
+        // ✅ 监听 WebSocket 断开连接事件
+        websocketService.on('disconnect', (reason: string) => {
+          console.log('[监控] WebSocket 连接已断开, 原因:', reason)
+          dispatch(setConnected(false))
+        })
+
+        // ✅ 监听连接错误事件
+        websocketService.on('connect_error', (error: Error) => {
+          console.error('[监控] WebSocket 连接错误:', error.message)
+          dispatch(setConnected(false))
+        })
+
         console.log('[监控] 发送注册请求:', { clientType: 'monitor', clientId })
         websocketService.emit('monitor:register', {
           clientType: 'monitor',
@@ -667,6 +679,8 @@ export default function MonitorPage() {
     connectToServer()
     return () => {
       websocketService.off('monitor:new_message_hint')
+      websocketService.off('disconnect')  // ✅ 移除 disconnect 监听
+      websocketService.off('connect_error')  // ✅ 移除 connect_error 监听
       websocketService.disconnect()
       // 清理定时器
       if (refreshChannelsIntervalRef.current) {
@@ -1342,8 +1356,15 @@ export default function MonitorPage() {
                 </Text>
               </div>
               <div className="wechat-chat-actions">
-                <Text type="secondary" style={{ fontSize: 12, marginRight: 12 }}>
-                  {isConnected ? '● 在线' : '○ 离线'}
+                <Text
+                  style={{
+                    fontSize: 12,
+                    marginRight: 12,
+                    color: isConnected ? '#52c41a' : '#ff4d4f',
+                    fontWeight: 500
+                  }}
+                >
+                  {isConnected ? '● 连接' : '● 断开'}
                 </Text>
                 <Button
                   type="text"
