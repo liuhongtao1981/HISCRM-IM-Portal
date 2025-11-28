@@ -1638,40 +1638,43 @@ async replyToComment(accountId, options) {
      * @returns {Object} 配置对象
      */
     parseMonitoringConfig(account) {
-        // 从环境变量读取 API 爬虫配置
-        const envApiCrawlerConfig = {
-            enableAPICrawler: process.env.API_CRAWLER_ENABLED === 'true',
-            apiCrawlerAutoStart: process.env.API_CRAWLER_AUTO_START !== 'false',  // 默认true
-            apiCrawlerInterval: (parseInt(process.env.API_CRAWLER_INTERVAL) || 300) * 1000,  // 秒 → 毫秒
+        // 从平台配置文件读取爬虫配置（所有默认值都在 config.json 中定义）
+        const crawlersConfig = this.config.crawlers || {};
+        const apiCfg = crawlersConfig.apiCrawler || {};
+        const commentCfg = crawlersConfig.commentCrawler || {};
 
-            // 作品抓取配置
-            apiCrawlerWorksPageSize: parseInt(process.env.API_CRAWLER_WORKS_PAGE_SIZE) || 50,
-            apiCrawlerWorksMaxPages: parseInt(process.env.API_CRAWLER_WORKS_MAX_PAGES) || 50,
+        // 构建配置对象（优先级：账户配置 > config.json > 环境变量）
+        const defaultConfig = {
+            // 评论爬虫（浏览器自动化）
+            enableRealtimeMonitor: commentCfg.enabled ?? true,
+            crawlIntervalMin: (commentCfg.interval?.min ?? 15) / 60,  // 秒 → 分钟
+            crawlIntervalMax: (commentCfg.interval?.max ?? 30) / 60,
 
-            // 评论抓取配置
-            apiCrawlerCommentsEnabled: process.env.API_CRAWLER_COMMENTS_ENABLED !== 'false',
-            apiCrawlerCommentsPageSize: parseInt(process.env.API_CRAWLER_COMMENTS_PAGE_SIZE) || 20,
-            apiCrawlerCommentsMaxPages: parseInt(process.env.API_CRAWLER_COMMENTS_MAX_PAGES) || 25,
-            apiCrawlerCommentsMaxComments: parseInt(process.env.API_CRAWLER_COMMENTS_MAX_COMMENTS) || 500,
+            // API 爬虫
+            enableAPICrawler: apiCfg.enabled ?? true,
+            apiCrawlerAutoStart: apiCfg.autoStart ?? true,
+            apiCrawlerInterval: (apiCfg.interval ?? 30) * 1000,  // 秒 → 毫秒
 
-            // 二级评论抓取配置
-            apiCrawlerRepliesEnabled: process.env.API_CRAWLER_REPLIES_ENABLED !== 'false',
-            apiCrawlerRepliesPageSize: parseInt(process.env.API_CRAWLER_REPLIES_PAGE_SIZE) || 20,
-            apiCrawlerRepliesMaxPages: parseInt(process.env.API_CRAWLER_REPLIES_MAX_PAGES) || 5,
-            apiCrawlerRepliesMaxReplies: parseInt(process.env.API_CRAWLER_REPLIES_MAX_REPLIES) || 100,
+            // 作品配置
+            apiCrawlerWorksPageSize: apiCfg.works?.pageSize ?? 50,
+            apiCrawlerWorksMaxPages: apiCfg.works?.maxPages ?? 9999,
+
+            // 评论配置
+            apiCrawlerCommentsEnabled: apiCfg.comments?.enabled ?? true,
+            apiCrawlerCommentsPageSize: apiCfg.comments?.pageSize ?? 20,
+            apiCrawlerCommentsMaxPages: apiCfg.comments?.maxPages ?? 9999,
+            apiCrawlerCommentsMaxComments: apiCfg.comments?.maxComments ?? 999999,
+
+            // 二级评论配置
+            apiCrawlerRepliesEnabled: apiCfg.replies?.enabled ?? true,
+            apiCrawlerRepliesPageSize: apiCfg.replies?.pageSize ?? 20,
+            apiCrawlerRepliesMaxPages: apiCfg.replies?.maxPages ?? 9999,
+            apiCrawlerRepliesMaxReplies: apiCfg.replies?.maxReplies ?? 999999,
 
             // 延迟配置
-            apiCrawlerDelayBetweenWorks: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_WORKS) || 2000,
-            apiCrawlerDelayBetweenCommentPages: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_COMMENT_PAGES) || 1000,
-            apiCrawlerDelayBetweenReplies: parseInt(process.env.API_CRAWLER_DELAY_BETWEEN_REPLIES) || 500,
-        };
-
-        // 默认配置（合并环境变量配置）
-        const defaultConfig = {
-            enableRealtimeMonitor: true,
-            crawlIntervalMin: 0.5,  // 0.5分钟 = 30秒
-            crawlIntervalMax: 0.5,  // 0.5分钟 = 30秒
-            ...envApiCrawlerConfig,  // 从环境变量读取的 API 爬虫配置
+            apiCrawlerDelayBetweenWorks: apiCfg.delays?.betweenWorks ?? 500,
+            apiCrawlerDelayBetweenCommentPages: apiCfg.delays?.betweenCommentPages ?? 300,
+            apiCrawlerDelayBetweenReplies: apiCfg.delays?.betweenReplies ?? 200,
         };
 
         if (!account.monitoring_config) {
