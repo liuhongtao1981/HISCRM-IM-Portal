@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip, Modal, Form, message as antdMessage } from 'antd'
 import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
+import VirtualList from 'rc-virtual-list'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -81,6 +82,10 @@ export default function MonitorPage() {
   const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null) // 正在拖拽的账号ID
   const [isOverTrash, setIsOverTrash] = useState(false) // 是否拖拽到回收站上方
   const [isAddBtnHovered, setIsAddBtnHovered] = useState(false) // 添加按钮是否悬停
+
+  // 虚拟列表动态高度（根据窗口大小自适应）
+  const [listContainerHeight, setListContainerHeight] = useState(600)
+  const listContainerRef = useRef<HTMLDivElement>(null)
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -272,6 +277,47 @@ export default function MonitorPage() {
       return bTime - aTime
     })
   }, [selectedChannelId, currentTopics, messages])
+
+  // 缓存排序后的作品列表（避免每次渲染都重新排序）
+  // 同时预格式化所有数字，避免在渲染时计算
+  const sortedWorks = React.useMemo(() => {
+    return currentTopics
+      .filter(t => !t.isPrivate)
+      .sort((a, b) => {
+        const aValue = a[worksSortBy] ?? 0
+        const bValue = b[worksSortBy] ?? 0
+        return bValue - aValue
+      })
+      .map(topic => ({
+        ...topic,
+        // 预格式化基础统计数字
+        _viewCountFmt: topic.viewCount?.toLocaleString(),
+        _likeCountFmt: topic.likeCount?.toLocaleString(),
+        _commentCountFmt: topic.commentCount?.toLocaleString(),
+        _shareCountFmt: topic.shareCount?.toLocaleString(),
+        _favoriteCountFmt: topic.favoriteCount?.toLocaleString(),
+        _danmakuCountFmt: topic.danmakuCount?.toLocaleString(),
+        _downloadCountFmt: topic.downloadCount?.toLocaleString(),
+        _subscribeCountFmt: topic.subscribeCount?.toLocaleString(),
+        // 预格式化比率
+        _likeRateFmt: topic.likeRate !== undefined ? ((topic.likeRate * 1000).toFixed(1) + '‰') : undefined,
+        _commentRateFmt: topic.commentRate !== undefined ? ((topic.commentRate * 1000).toFixed(1) + '‰') : undefined,
+        _shareRateFmt: topic.shareRate !== undefined ? ((topic.shareRate * 1000).toFixed(1) + '‰') : undefined,
+        _favoriteRateFmt: topic.favoriteRate !== undefined ? ((topic.favoriteRate * 1000).toFixed(1) + '‰') : undefined,
+        _dislikeRateFmt: topic.dislikeRate !== undefined ? ((topic.dislikeRate * 1000).toFixed(1) + '‰') : undefined,
+        _subscribeRateFmt: topic.subscribeRate !== undefined ? ((topic.subscribeRate * 1000).toFixed(1) + '‰') : undefined,
+        _unsubscribeRateFmt: topic.unsubscribeRate !== undefined ? ((topic.unsubscribeRate * 1000).toFixed(1) + '‰') : undefined,
+        // 预格式化高级指标
+        _completionRateFmt: topic.completionRate !== undefined ? ((topic.completionRate * 100).toFixed(1) + '%') : undefined,
+        _completionRate5sFmt: topic.completionRate5s !== undefined ? ((topic.completionRate5s * 100).toFixed(1) + '%') : undefined,
+        _avgViewSecondFmt: topic.avgViewSecond !== undefined ? (topic.avgViewSecond.toFixed(1) + '秒') : undefined,
+        _avgViewProportionFmt: topic.avgViewProportion !== undefined ? ((topic.avgViewProportion * 100).toFixed(1) + '%') : undefined,
+        _bounceRate2sFmt: topic.bounceRate2s !== undefined ? ((topic.bounceRate2s * 100).toFixed(1) + '%') : undefined,
+        _fanViewProportionFmt: topic.fanViewProportion !== undefined ? ((topic.fanViewProportion * 100).toFixed(1) + '%') : undefined,
+        _homepageVisitCountFmt: topic.homepageVisitCount?.toLocaleString(),
+        _coverShowFmt: topic.coverShow?.toLocaleString()
+      }))
+  }, [currentTopics, worksSortBy])
 
   // 调试日志
   useEffect(() => {
@@ -646,6 +692,52 @@ export default function MonitorPage() {
       messageListRef.current.scrollTop = messageListRef.current.scrollHeight
     }
   }, [currentMessages])
+
+  // 监听窗口大小变化，动态计算虚拟列表高度
+  useEffect(() => {
+    const updateListHeight = () => {
+      if (listContainerRef.current) {
+        // 获取容器的实际高度
+        const containerHeight = listContainerRef.current.clientHeight
+        // 减去 padding 和其他元素（如排序选择器）的高度
+        const actualHeight = containerHeight - 80 // 80px = padding(40) + 排序选择器(40)
+        setListContainerHeight(Math.max(actualHeight, 300)) // 最小 300px
+      }
+    }
+
+    // 初始计算
+    updateListHeight()
+
+    // 监听窗口大小变化
+    window.addEventListener('resize', updateListHeight)
+
+    // 延迟计算（确保 DOM 已渲染）
+    const timer = setTimeout(updateListHeight, 100)
+
+    return () => {
+      window.removeEventListener('resize', updateListHeight)
+      clearTimeout(timer)
+    }
+  }, [activeTab, selectedChannelId])
+
+  // 监听 Tab 切换，重置列表显示状态
+  useEffect(() => {
+    if (activeTab === 'comment') {
+      // 切换到评论Tab时，确保显示评论列表
+      setShowCommentList(true)
+      setShowPrivateList(false)
+    } else if (activeTab === 'private') {
+      // 切换到私信Tab时，确保显示私信列表
+      setShowPrivateList(true)
+      setShowCommentList(false)
+    } else if (activeTab === 'works') {
+      // 切换到作品Tab时，重置两个列表状态
+      setShowCommentList(false)
+      setShowPrivateList(false)
+      // 清除选中的作品，以免影响作品列表的显示
+      dispatch(selectTopic(''))
+    }
+  }, [activeTab, dispatch])
 
   // 选择账户并自动选择对应的作品
   const handleSelectChannel = (channelId: string) => {
@@ -1212,13 +1304,40 @@ export default function MonitorPage() {
         {selectedChannel && (
           selectedTopic ||
           (activeTab === 'comment' && showCommentList) ||
-          (activeTab === 'private' && showPrivateList)
+          (activeTab === 'private' && showPrivateList) ||
+          (activeTab === 'works')
         ) ? (
           <>
             {/* 对话框头部 */}
             <div className="wechat-chat-header">
               <div className="wechat-chat-title">
-                <Text strong style={{ fontSize: 16 }}>
+                <Text
+                  strong
+                  style={{
+                    fontSize: 16,
+                    cursor: selectedTopic?.url ? 'pointer' : 'default',
+                    transition: 'color 0.2s'
+                  }}
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    // 如果选中了作品且作品有URL,在浏览器中打开
+                    if (selectedTopic?.url && window.electron?.openExternal) {
+                      try {
+                        await window.electron.openExternal(selectedTopic.url)
+                      } catch (error) {
+                        console.error('打开作品链接失败:', error)
+                      }
+                    }
+                  }}
+                  onMouseEnter={(e) => {
+                    if (selectedTopic?.url) {
+                      e.currentTarget.style.color = '#1890ff'
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = ''
+                  }}
+                >
                   {selectedChannel.name}
                 </Text>
               </div>
@@ -1291,14 +1410,19 @@ export default function MonitorPage() {
 
             {/* 评论Tab下的评论列表（显示所有作品，未读在前） */}
             {activeTab === 'comment' && showCommentList ? (
-              <div className="wechat-comment-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+              <div ref={listContainerRef} className="wechat-comment-list" style={{ flex: 1, overflow: 'hidden', padding: '20px' }}>
                 {unreadCommentsByTopic.length > 0 ? (
-                  <List
-                    dataSource={unreadCommentsByTopic}
-                    renderItem={(item) => {
-                      const isRead = item.unreadCount === 0
-                      return (
-                        <List.Item
+                  <List>
+                    <VirtualList
+                      data={unreadCommentsByTopic}
+                      height={listContainerHeight}
+                      itemHeight={100}
+                      itemKey="id"
+                    >
+                      {(item) => {
+                        const isRead = item.unreadCount === 0
+                        return (
+                          <List.Item
                           key={item.topic.id}
                           onClick={() => handleEnterTopicFromCommentList(item.topic.id)}
                           style={{
@@ -1373,9 +1497,10 @@ export default function MonitorPage() {
                             }
                           />
                         </List.Item>
-                      )
-                    }}
-                  />
+                        )
+                      }}
+                    </VirtualList>
+                  </List>
                 ) : (
                   <Empty
                     description="暂无评论"
@@ -1386,12 +1511,17 @@ export default function MonitorPage() {
               </div>
             ) : activeTab === 'private' && showPrivateList ? (
               /* 私信Tab下的私信列表 */
-              <div className="wechat-private-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+              <div ref={listContainerRef} className="wechat-private-list" style={{ flex: 1, overflow: 'hidden', padding: '20px' }}>
                 {privateMessagesByTopic.length > 0 ? (
-                  <List
-                    dataSource={privateMessagesByTopic}
-                    renderItem={(item) => (
-                      <List.Item
+                  <List>
+                    <VirtualList
+                      data={privateMessagesByTopic}
+                      height={listContainerHeight}
+                      itemHeight={100}
+                      itemKey="id"
+                    >
+                      {(item) => (
+                        <List.Item
                         key={item.topic.id}
                         onClick={() => handleEnterTopicFromPrivateList(item.topic.id)}
                         style={{
@@ -1440,8 +1570,9 @@ export default function MonitorPage() {
                           }
                         />
                       </List.Item>
-                    )}
-                  />
+                      )}
+                    </VirtualList>
+                  </List>
                 ) : (
                   <Empty
                     description="暂无私信"
@@ -1452,7 +1583,7 @@ export default function MonitorPage() {
               </div>
             ) : activeTab === 'works' ? (
               /* 作品列表Tab - 显示用户的所有作品及统计数据 */
-              <div className="wechat-works-list" style={{ flex: 1, overflow: 'auto', padding: '20px' }}>
+              <div ref={listContainerRef} className="wechat-works-list" style={{ flex: 1, overflow: 'hidden', padding: '20px' }}>
                 {/* 排序选择器 */}
                 <div style={{ marginBottom: 16, display: 'flex', alignItems: 'center', gap: 8 }}>
                   <SortAscendingOutlined style={{ fontSize: 16, color: '#8c8c8c' }} />
@@ -1492,38 +1623,32 @@ export default function MonitorPage() {
                   />
                 </div>
 
-                {currentTopics.filter(t => !t.isPrivate).length > 0 ? (
-                  <List
-                    dataSource={currentTopics.filter(t => !t.isPrivate).sort((a, b) => {
-                      // 根据选择的字段进行倒序排序
-                      const aValue = a[worksSortBy] ?? 0
-                      const bValue = b[worksSortBy] ?? 0
-                      return bValue - aValue
-                    })}
-                    renderItem={(topic) => {
+                {sortedWorks.length > 0 ? (
+                  <List>
+                    <VirtualList
+                      data={sortedWorks}
+                      height={listContainerHeight}
+                      itemHeight={130}
+                      itemKey="id"
+                    >
+                      {(topic) => {
                       const thumbnail = topic.thumbnail || topic.avatar
 
                       return (
                         <List.Item
                           key={topic.id}
+                          className="works-list-item"
                           style={{
                             padding: '12px 16px',
-                            transition: 'background-color 0.2s',
                             borderRadius: 4
                           }}
-                          onMouseEnter={(e) => {
-                            e.currentTarget.style.backgroundColor = '#fafafa'
-                          }}
-                          onMouseLeave={(e) => {
-                            e.currentTarget.style.backgroundColor = 'transparent'
-                          }}
                         >
-                          <div style={{ display: 'flex', gap: 16, width: '100%', alignItems: 'flex-start' }}>
+                          <div style={{ display: 'flex', gap: 12, width: '100%', alignItems: 'flex-start' }}>
                             {/* 左侧缩略图 - 点击打开URL */}
                             <div
                               style={{
-                                width: 120,
-                                height: 68,
+                                width: 80,
+                                height: 45,
                                 flexShrink: 0,
                                 borderRadius: 4,
                                 overflow: 'hidden',
@@ -1547,6 +1672,7 @@ export default function MonitorPage() {
                                 <img
                                   alt={topic.title}
                                   src={thumbnail}
+                                  loading="lazy"
                                   style={{
                                     width: '100%',
                                     height: '100%',
@@ -1562,7 +1688,7 @@ export default function MonitorPage() {
                                   top: '50%',
                                   left: '50%',
                                   transform: 'translate(-50%, -50%)',
-                                  fontSize: 32,
+                                  fontSize: 24,
                                   color: '#d9d9d9'
                                 }} />
                               )}
@@ -1609,165 +1735,40 @@ export default function MonitorPage() {
                                 gap: '8px 16px',
                                 fontSize: 12
                               }}>
-                                {/* 浏览数 */}
-                                {topic.viewCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">浏览:</Text> <Text>{topic.viewCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 点赞数 */}
-                                {topic.likeCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">点赞:</Text> <Text>{topic.likeCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 评论数 */}
-                                {topic.commentCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">评论:</Text> <Text>{topic.commentCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 分享数 */}
-                                {topic.shareCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">分享:</Text> <Text>{topic.shareCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 收藏数 */}
-                                {topic.favoriteCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">收藏:</Text> <Text>{topic.favoriteCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 弹幕数 */}
-                                {topic.danmakuCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">弹幕:</Text> <Text>{topic.danmakuCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 下载数 */}
-                                {topic.downloadCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">下载:</Text> <Text>{topic.downloadCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
-
-                                {/* 订阅数 */}
-                                {topic.subscribeCount !== undefined && (
-                                  <span>
-                                    <Text type="secondary">订阅:</Text> <Text>{topic.subscribeCount.toLocaleString()}</Text>
-                                  </span>
-                                )}
+                                {topic._viewCountFmt && <span><span style={{ color: '#8c8c8c' }}>浏览:</span> {topic._viewCountFmt}</span>}
+                                {topic._likeCountFmt && <span><span style={{ color: '#8c8c8c' }}>点赞:</span> {topic._likeCountFmt}</span>}
+                                {topic._commentCountFmt && <span><span style={{ color: '#8c8c8c' }}>评论:</span> {topic._commentCountFmt}</span>}
+                                {topic._shareCountFmt && <span><span style={{ color: '#8c8c8c' }}>分享:</span> {topic._shareCountFmt}</span>}
+                                {topic._favoriteCountFmt && <span><span style={{ color: '#8c8c8c' }}>收藏:</span> {topic._favoriteCountFmt}</span>}
+                                {topic._danmakuCountFmt && <span><span style={{ color: '#8c8c8c' }}>弹幕:</span> {topic._danmakuCountFmt}</span>}
+                                {topic._downloadCountFmt && <span><span style={{ color: '#8c8c8c' }}>下载:</span> {topic._downloadCountFmt}</span>}
+                                {topic._subscribeCountFmt && <span><span style={{ color: '#8c8c8c' }}>订阅:</span> {topic._subscribeCountFmt}</span>}
                               </div>
 
                               {/* 第三行：统计比率 */}
-                              {(topic.likeRate !== undefined || topic.commentRate !== undefined ||
-                                topic.shareRate !== undefined || topic.favoriteRate !== undefined ||
-                                topic.dislikeRate !== undefined || topic.subscribeRate !== undefined ||
-                                topic.unsubscribeRate !== undefined) && (
+                              {(topic._likeRateFmt || topic._commentRateFmt || topic._shareRateFmt ||
+                                topic._favoriteRateFmt || topic._dislikeRateFmt || topic._subscribeRateFmt ||
+                                topic._unsubscribeRateFmt) && (
                                 <div style={{
                                   display: 'flex',
                                   flexWrap: 'wrap',
                                   gap: '8px 16px',
                                   fontSize: 12
                                 }}>
-                                  {/* 点赞率 */}
-                                  {topic.likeRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">点赞率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的点赞次数">
-                                        <Text style={{ color: '#ff4d4f', cursor: 'help' }}>
-                                          {(topic.likeRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 评论率 */}
-                                  {topic.commentRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">评论率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的评论次数">
-                                        <Text style={{ color: '#52c41a', cursor: 'help' }}>
-                                          {(topic.commentRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 分享率 */}
-                                  {topic.shareRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">分享率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的分享次数">
-                                        <Text style={{ color: '#faad14', cursor: 'help' }}>
-                                          {(topic.shareRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 收藏率 */}
-                                  {topic.favoriteRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">收藏率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的收藏次数">
-                                        <Text style={{ color: '#722ed1', cursor: 'help' }}>
-                                          {(topic.favoriteRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 不喜欢率 */}
-                                  {topic.dislikeRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">不喜欢率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的不喜欢次数">
-                                        <Text style={{ color: '#8c8c8c', cursor: 'help' }}>
-                                          {(topic.dislikeRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 订阅率 */}
-                                  {topic.subscribeRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">订阅率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的订阅次数">
-                                        <Text style={{ color: '#1890ff', cursor: 'help' }}>
-                                          {(topic.subscribeRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 取消订阅率 */}
-                                  {topic.unsubscribeRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">取消订阅率:</Text>{' '}
-                                      <Tooltip title="每1000次曝光中的取消订阅次数">
-                                        <Text style={{ color: '#ff7875', cursor: 'help' }}>
-                                          {(topic.unsubscribeRate * 1000).toFixed(1)}‰
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
+                                  {topic._likeRateFmt && <span><span style={{ color: '#8c8c8c' }}>点赞率:</span> <span style={{ color: '#ff4d4f' }}>{topic._likeRateFmt}</span></span>}
+                                  {topic._commentRateFmt && <span><span style={{ color: '#8c8c8c' }}>评论率:</span> <span style={{ color: '#52c41a' }}>{topic._commentRateFmt}</span></span>}
+                                  {topic._shareRateFmt && <span><span style={{ color: '#8c8c8c' }}>分享率:</span> <span style={{ color: '#faad14' }}>{topic._shareRateFmt}</span></span>}
+                                  {topic._favoriteRateFmt && <span><span style={{ color: '#8c8c8c' }}>收藏率:</span> <span style={{ color: '#722ed1' }}>{topic._favoriteRateFmt}</span></span>}
+                                  {topic._dislikeRateFmt && <span><span style={{ color: '#8c8c8c' }}>不喜欢率:</span> <span style={{ color: '#8c8c8c' }}>{topic._dislikeRateFmt}</span></span>}
+                                  {topic._subscribeRateFmt && <span><span style={{ color: '#8c8c8c' }}>订阅率:</span> <span style={{ color: '#1890ff' }}>{topic._subscribeRateFmt}</span></span>}
+                                  {topic._unsubscribeRateFmt && <span><span style={{ color: '#8c8c8c' }}>取消订阅率:</span> <span style={{ color: '#ff7875' }}>{topic._unsubscribeRateFmt}</span></span>}
                                 </div>
                               )}
 
-                              {/* 第四行：高级分析指标（如果有数据才显示）*/}
-                              {(topic.completionRate !== undefined || topic.avgViewSecond !== undefined ||
-                                topic.fanViewProportion !== undefined || topic.homepageVisitCount !== undefined ||
-                                topic.completionRate5s !== undefined || topic.avgViewProportion !== undefined ||
-                                topic.bounceRate2s !== undefined || topic.coverShow !== undefined) && (
+                              {/* 第四行：高级分析指标 */}
+                              {(topic._completionRateFmt || topic._avgViewSecondFmt || topic._fanViewProportionFmt ||
+                                topic._homepageVisitCountFmt || topic._completionRate5sFmt || topic._avgViewProportionFmt ||
+                                topic._bounceRate2sFmt || topic._coverShowFmt) && (
                                 <div style={{
                                   display: 'flex',
                                   flexWrap: 'wrap',
@@ -1776,109 +1777,23 @@ export default function MonitorPage() {
                                   paddingTop: 4,
                                   borderTop: '1px dashed #f0f0f0'
                                 }}>
-                                  {/* 完播率 */}
-                                  {topic.completionRate !== undefined && (
-                                    <span>
-                                      <Text type="secondary">完播率:</Text>{' '}
-                                      <Tooltip title="观看完整视频的用户比例">
-                                        <Text style={{ color: '#52c41a', cursor: 'help' }}>
-                                          {(topic.completionRate * 100).toFixed(1)}%
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 5秒完播率 */}
-                                  {topic.completionRate5s !== undefined && (
-                                    <span>
-                                      <Text type="secondary">5秒完播:</Text>{' '}
-                                      <Tooltip title="观看超过5秒的用户比例">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {(topic.completionRate5s * 100).toFixed(1)}%
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 平均观看 */}
-                                  {topic.avgViewSecond !== undefined && (
-                                    <span>
-                                      <Text type="secondary">平均观看:</Text>{' '}
-                                      <Tooltip title="用户平均观看视频的时长">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {topic.avgViewSecond.toFixed(1)}秒
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 平均观看比例 */}
-                                  {topic.avgViewProportion !== undefined && (
-                                    <span>
-                                      <Text type="secondary">平均观看比例:</Text>{' '}
-                                      <Tooltip title="用户平均观看视频的比例">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {(topic.avgViewProportion * 100).toFixed(1)}%
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 2秒跳出率 */}
-                                  {topic.bounceRate2s !== undefined && (
-                                    <span>
-                                      <Text type="secondary">2秒跳出:</Text>{' '}
-                                      <Tooltip title="观看少于2秒就离开的用户比例">
-                                        <Text style={{ color: '#ff4d4f', cursor: 'help' }}>
-                                          {(topic.bounceRate2s * 100).toFixed(1)}%
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 粉丝观看比例 */}
-                                  {topic.fanViewProportion !== undefined && (
-                                    <span>
-                                      <Text type="secondary">粉丝占比:</Text>{' '}
-                                      <Tooltip title="观看者中粉丝的比例">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {(topic.fanViewProportion * 100).toFixed(1)}%
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 主页访问 */}
-                                  {topic.homepageVisitCount !== undefined && (
-                                    <span>
-                                      <Text type="secondary">主页访问:</Text>{' '}
-                                      <Tooltip title="通过此视频访问主页的次数">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {topic.homepageVisitCount.toLocaleString()}
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
-
-                                  {/* 封面展示 */}
-                                  {topic.coverShow !== undefined && (
-                                    <span>
-                                      <Text type="secondary">封面展示:</Text>{' '}
-                                      <Tooltip title="视频封面被展示的次数">
-                                        <Text style={{ cursor: 'help' }}>
-                                          {topic.coverShow.toLocaleString()}
-                                        </Text>
-                                      </Tooltip>
-                                    </span>
-                                  )}
+                                  {topic._completionRateFmt && <span><span style={{ color: '#8c8c8c' }}>完播率:</span> <span style={{ color: '#52c41a' }}>{topic._completionRateFmt}</span></span>}
+                                  {topic._completionRate5sFmt && <span><span style={{ color: '#8c8c8c' }}>5秒完播:</span> {topic._completionRate5sFmt}</span>}
+                                  {topic._avgViewSecondFmt && <span><span style={{ color: '#8c8c8c' }}>平均观看:</span> {topic._avgViewSecondFmt}</span>}
+                                  {topic._avgViewProportionFmt && <span><span style={{ color: '#8c8c8c' }}>平均观看比例:</span> {topic._avgViewProportionFmt}</span>}
+                                  {topic._bounceRate2sFmt && <span><span style={{ color: '#8c8c8c' }}>2秒跳出:</span> <span style={{ color: '#ff4d4f' }}>{topic._bounceRate2sFmt}</span></span>}
+                                  {topic._fanViewProportionFmt && <span><span style={{ color: '#8c8c8c' }}>粉丝占比:</span> {topic._fanViewProportionFmt}</span>}
+                                  {topic._homepageVisitCountFmt && <span><span style={{ color: '#8c8c8c' }}>主页访问:</span> {topic._homepageVisitCountFmt}</span>}
+                                  {topic._coverShowFmt && <span><span style={{ color: '#8c8c8c' }}>封面展示:</span> {topic._coverShowFmt}</span>}
                                 </div>
                               )}
                             </div>
                           </div>
                         </List.Item>
                       )
-                    }}
-                  />
+                      }}
+                    </VirtualList>
+                  </List>
                 ) : (
                   <Empty
                     description="暂无作品"
@@ -1907,7 +1822,34 @@ export default function MonitorPage() {
                     >
                       返回未读列表
                     </Button>
-                    <Text strong style={{ fontSize: 14, color: '#191919' }}>
+                    <Text
+                      strong
+                      style={{
+                        fontSize: 14,
+                        color: '#191919',
+                        cursor: selectedTopic.url ? 'pointer' : 'default',
+                        transition: 'color 0.2s'
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        // 点击作品标题跳转到作品 URL
+                        if (selectedTopic.url && window.electron?.openExternal) {
+                          try {
+                            await window.electron.openExternal(selectedTopic.url)
+                          } catch (error) {
+                            console.error('打开作品链接失败:', error)
+                          }
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedTopic.url) {
+                          e.currentTarget.style.color = '#1890ff'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#191919'
+                      }}
+                    >
                       {selectedTopic.title}
                     </Text>
                   </div>
@@ -1931,7 +1873,34 @@ export default function MonitorPage() {
                     >
                       返回私信列表
                     </Button>
-                    <Text strong style={{ fontSize: 14, color: '#191919' }}>
+                    <Text
+                      strong
+                      style={{
+                        fontSize: 14,
+                        color: '#191919',
+                        cursor: selectedTopic.url ? 'pointer' : 'default',
+                        transition: 'color 0.2s'
+                      }}
+                      onClick={async (e) => {
+                        e.stopPropagation();
+                        // 点击作品标题跳转到作品 URL
+                        if (selectedTopic.url && window.electron?.openExternal) {
+                          try {
+                            await window.electron.openExternal(selectedTopic.url)
+                          } catch (error) {
+                            console.error('打开作品链接失败:', error)
+                          }
+                        }
+                      }}
+                      onMouseEnter={(e) => {
+                        if (selectedTopic.url) {
+                          e.currentTarget.style.color = '#1890ff'
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.color = '#191919'
+                      }}
+                    >
                       {selectedTopic.title}
                     </Text>
                   </div>
@@ -1962,19 +1931,25 @@ export default function MonitorPage() {
                       ? []
                       : discussions.filter(d => d.replyToId === mainMsg.id)
 
-                    // ✅ 统一使用 mainMsg.authorAvatar 作为头像来源
-                    // 如果 Master 没有提供头像，fallback 到左侧账户列表的头像
-                    const avatarSrc = mainMsg.authorAvatar || (isReply && selectedChannel ? selectedChannel.avatar : undefined)
+                    // ✅ 头像来源优先级：
+                    // 1. 消息自带的 authorAvatar
+                    // 2. 如果是客服回复，使用账号头像 (selectedChannel.avatar)
+                    // 3. 如果是私信用户发来的消息，使用私信会话头像 (selectedTopic.avatar)
+                    const avatarSrc = mainMsg.authorAvatar ||
+                                      (isReply && selectedChannel ? selectedChannel.avatar : undefined) ||
+                                      (!isReply && activeTab === 'private' && selectedTopic ? selectedTopic.avatar : undefined)
 
                     // 🔍 调试: 打印前3条消息的头像数据
                     if (activeTab === 'private' && selectedTopic && debugCounter < 3) {
-                      console.log('[IM-Client] Private message avatar debug (new logic):', {
+                      console.log('[IM-Client] Private message avatar debug (fixed logic):', {
                         messageId: mainMsg.id,
                         direction: (mainMsg as any).direction,
                         fromId: mainMsg.fromId,
                         fromName: mainMsg.fromName,
                         isReply,
                         msgAuthorAvatar: mainMsg.authorAvatar,
+                        selectedChannelAvatar: selectedChannel?.avatar,
+                        selectedTopicAvatar: selectedTopic?.avatar,
                         finalAvatarSrc: avatarSrc
                       })
                       debugCounter++

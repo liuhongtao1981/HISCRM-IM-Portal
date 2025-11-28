@@ -603,3 +603,12 @@
 .work-item-card:hover .anticon {
   transform: scale(1.1);
 }
+
+/* 作品列表项 hover 效果（使用 CSS 代替 JS） */
+.works-list-item {
+  transition: background-color 0.2s;
+}
+
+.works-list-item:hover {
+  background-color: #fafafa !important;
+}
