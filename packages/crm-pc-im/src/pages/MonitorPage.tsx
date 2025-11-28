@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { Layout, Avatar, Badge, List, Typography, Empty, Input, Button, Dropdown, Menu, Tabs, Select, Tooltip, Modal, Form, message as antdMessage } from 'antd'
-import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined, PlusOutlined } from '@ant-design/icons'
+import { UserOutlined, SendOutlined, SearchOutlined, MoreOutlined, CloseOutlined, LogoutOutlined, MessageOutlined, CommentOutlined, AppstoreOutlined, SortAscendingOutlined, PlusOutlined, DeleteOutlined } from '@ant-design/icons'
 import { useSelector, useDispatch } from 'react-redux'
 import { useNavigate } from 'react-router-dom'
 import type { RootState } from '../store'
@@ -75,6 +75,11 @@ export default function MonitorPage() {
   const [workers, setWorkers] = useState<any[]>([])
   const [platformsLoading, setPlatformsLoading] = useState(false)
   const [form] = Form.useForm()
+
+  // 拖拽删除相关状态
+  const [isDragging, setIsDragging] = useState(false) // 是否正在拖拽
+  const [draggingChannelId, setDraggingChannelId] = useState<string | null>(null) // 正在拖拽的账号ID
+  const [isOverTrash, setIsOverTrash] = useState(false) // 是否拖拽到回收站上方
 
   // ✅ 合并正常消息和发送队列消息
   const allMessages = useMemo(() => {
@@ -1021,6 +1026,56 @@ export default function MonitorPage() {
     }
   }
 
+  // 拖拽开始
+  const handleDragStart = (e: React.DragEvent, channelId: string) => {
+    console.log('[拖拽] 开始拖拽账号:', channelId)
+    setIsDragging(true)
+    setDraggingChannelId(channelId)
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', channelId)
+  }
+
+  // 拖拽结束
+  const handleDragEnd = (e: React.DragEvent) => {
+    console.log('[拖拽] 结束拖拽')
+    setIsDragging(false)
+    setDraggingChannelId(null)
+    setIsOverTrash(false)
+  }
+
+  // 删除账号（通过WebSocket）
+  const handleDeleteAccount = (channelId: string) => {
+    const channel = channels.find(ch => ch.id === channelId)
+    if (!channel) return
+
+    Modal.confirm({
+      title: '确认删除账号',
+      content: `确定要删除账号 "${channel.name}" 吗？删除后将无法恢复。`,
+      okText: '确定删除',
+      okType: 'danger',
+      cancelText: '取消',
+      onOk: () => {
+        // 监听删除账号响应
+        const handleDeleteAccountResult = (response: any) => {
+          if (response.success) {
+            antdMessage.success('账号删除成功')
+            // 如果删除的是当前选中的账号，清除选择
+            if (selectedChannelId === channelId) {
+              dispatch(selectChannel(''))
+            }
+            // 账户列表会自动更新（Master会广播）
+          } else {
+            antdMessage.error(response.error || '账号删除失败')
+          }
+          websocketService.off('monitor:delete_account_result')
+        }
+
+        websocketService.on('monitor:delete_account_result', handleDeleteAccountResult)
+        websocketService.emit('monitor:delete_account', { accountId: channelId })
+      }
+    })
+  }
+
   // 作品下拉菜单
   const topicsMenu = (
     <Menu
@@ -1086,8 +1141,11 @@ export default function MonitorPage() {
               return (
                 <div
                   key={channel.id}
-                  className={`wechat-account-item ${isSelected ? 'selected' : ''} ${channel.isFlashing ? 'flashing' : ''} ${!isLoggedIn ? 'not-logged-in' : ''}`}
+                  className={`wechat-account-item ${isSelected ? 'selected' : ''} ${channel.isFlashing ? 'flashing' : ''} ${!isLoggedIn ? 'not-logged-in' : ''} ${draggingChannelId === channel.id ? 'dragging' : ''}`}
                   onClick={() => handleChannelClick(channel)}
+                  draggable={true}
+                  onDragStart={(e) => handleDragStart(e, channel.id)}
+                  onDragEnd={handleDragEnd}
                 >
                   <Badge count={channel.unreadCount} offset={[0, 10]}>
                     <div style={{ position: 'relative' }}>
@@ -1146,6 +1204,50 @@ export default function MonitorPage() {
             }}
           />
         </div>
+
+        {/* 拖拽删除区域（回收站） */}
+        {isDragging && (
+          <div
+            style={{
+              padding: '16px',
+              backgroundColor: isOverTrash ? '#ff4d4f' : '#fff1f0',
+              borderTop: '2px dashed #ff4d4f',
+              borderBottom: '2px dashed #ff4d4f',
+              textAlign: 'center',
+              transition: 'all 0.3s ease',
+              cursor: 'pointer'
+            }}
+            onDragOver={(e) => {
+              e.preventDefault()
+              e.dataTransfer.dropEffect = 'move'
+              setIsOverTrash(true)
+            }}
+            onDragLeave={() => {
+              setIsOverTrash(false)
+            }}
+            onDrop={(e) => {
+              e.preventDefault()
+              const channelId = e.dataTransfer.getData('text/plain')
+              setIsOverTrash(false)
+              if (channelId) {
+                handleDeleteAccount(channelId)
+              }
+            }}
+          >
+            <DeleteOutlined style={{
+              fontSize: 32,
+              color: isOverTrash ? '#fff' : '#ff4d4f',
+              marginBottom: 8
+            }} />
+            <div style={{
+              fontSize: 14,
+              color: isOverTrash ? '#fff' : '#ff4d4f',
+              fontWeight: 500
+            }}>
+              {isOverTrash ? '松开删除' : '拖到这里删除账号'}
+            </div>
+          </div>
+        )}
 
         {/* 底部添加账号按钮 */}
         <div style={{

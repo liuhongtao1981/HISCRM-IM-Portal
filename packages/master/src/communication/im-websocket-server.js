@@ -109,6 +109,11 @@ class IMWebSocketServer {
                 this.handleCreateAccount(socket, data);
             });
 
+            // 删除账号
+            socket.on('monitor:delete_account', (data) => {
+                this.handleDeleteAccount(socket, data);
+            });
+
             // 请求平台列表
             socket.on('monitor:request_platforms', () => {
                 this.handleRequestPlatforms(socket);
@@ -2010,6 +2015,86 @@ class IMWebSocketServer {
             socket.emit('monitor:create_account_result', {
                 success: false,
                 error: error.message || '创建账号失败'
+            });
+        }
+    }
+
+    /**
+     * 处理删除账号请求
+     */
+    async handleDeleteAccount(socket, data) {
+        try {
+            logger.info('[IM WS] Received delete account request:', data);
+
+            if (!this.accountDAO) {
+                socket.emit('monitor:delete_account_result', {
+                    success: false,
+                    error: '账号删除功能未启用（缺少 AccountDAO）'
+                });
+                return;
+            }
+
+            const { accountId } = data;
+
+            // 验证必填字段
+            if (!accountId) {
+                socket.emit('monitor:delete_account_result', {
+                    success: false,
+                    error: '缺少必填字段：accountId'
+                });
+                return;
+            }
+
+            // 检查账号是否存在
+            const account = this.accountDAO.findById(accountId);
+            if (!account) {
+                socket.emit('monitor:delete_account_result', {
+                    success: false,
+                    error: '账号不存在'
+                });
+                return;
+            }
+
+            // ✅ 在删除前触发任务撤销逻辑（和 web-admin HTTP API 一样）
+            if (this.accountAssigner) {
+                this.accountAssigner.revokeDeletedAccount(accountId);
+                logger.info(`[IM WS] Revoked tasks for account ${accountId}`);
+            }
+
+            // 删除账号
+            const deleted = this.accountDAO.delete(accountId);
+
+            if (!deleted) {
+                socket.emit('monitor:delete_account_result', {
+                    success: false,
+                    error: '删除账号失败'
+                });
+                return;
+            }
+
+            logger.info('[IM WS] Account deleted successfully:', accountId);
+
+            // 从 DataStore 中删除账号（清理内存缓存）
+            if (this.dataStore && this.dataStore.accounts) {
+                this.dataStore.accounts.delete(accountId);
+                logger.info(`[IM WS] Removed account from DataStore: ${accountId}`);
+            }
+
+            // 通知客户端删除成功
+            socket.emit('monitor:delete_account_result', {
+                success: true,
+                accountId: accountId
+            });
+
+            // 广播更新账户列表到所有监控客户端
+            const channels = this.getChannelsFromDataStore();
+            this.broadcastToMonitors('monitor:channels', { channels });
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to delete account:', error);
+            socket.emit('monitor:delete_account_result', {
+                success: false,
+                error: error.message || '删除账号失败'
             });
         }
     }

@@ -93,6 +93,22 @@
   background-color: #fff3e0;
 }
 
+/* 拖拽状态 */
+.wechat-account-item.dragging {
+  opacity: 0.5;
+  cursor: move;
+  background-color: #e6f7ff;
+  border: 2px dashed #1890ff;
+}
+
+.wechat-account-item[draggable="true"] {
+  cursor: move;
+}
+
+.wechat-account-item[draggable="true"]:active {
+  cursor: grabbing;
+}
+
 /* 账户信息 */
 .wechat-account-info {
   flex: 1;
