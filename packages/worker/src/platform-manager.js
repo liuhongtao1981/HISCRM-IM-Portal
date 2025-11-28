@@ -105,25 +105,6 @@ class PlatformManager {
   }
 
   /**
-   * 获取所有平台的能力列表
-   * @returns {Array<Object>} 平台能力列表
-   */
-  getAllPlatformCapabilities() {
-    const capabilities = [];
-    
-    for (const [name, config] of this.platformConfigs.entries()) {
-      capabilities.push({
-        platform: name,
-        displayName: config.displayName,
-        version: config.version,
-        capabilities: config.capabilities || [],
-      });
-    }
-    
-    return capabilities;
-  }
-
-  /**
    * 检查是否支持指定平台
    * @param {string} platformName - 平台名称
    * @returns {boolean}

@@ -2,12 +2,6 @@
   "platform": "douyin",
   "displayName": "抖音",
   "version": "1.0.0",
-  "capabilities": [
-    "login",
-    "comment_monitoring",
-    "dm_monitoring",
-    "api_crawler"
-  ],
   "urls": {
     "home": "https://www.douyin.com/",
     "login": "https://www.douyin.com/",
