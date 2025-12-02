@@ -143,6 +143,11 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
       }
     });
 
+    // ✅ Worker 验证请求处理已迁移到 IM WebSocket Server
+    // 参见: packages/master/src/communication/im-websocket-server.js
+    // - handleWorkerVerificationRequest() 监听 Worker namespace 的验证请求
+    // - 广播到所有 IM 客户端（根命名空间 + /client namespace）
+
     // 监听通用消息事件
     socket.on(MESSAGE, async (msg) => {
       logger.info(`📥 Worker ${socket.id} sent MESSAGE event`);
@@ -329,6 +334,28 @@ function initSocketServer(httpServer, handlers = {}, masterServer = null, sessio
         }
       } else {
         logger.warn('No handler registered for onManualLoginSuccess');
+      }
+    });
+
+    // 处理验证响应（来自 IM 端的用户选择）
+    socket.on('client:verification:response', async (data) => {
+      logger.info(`📱 Client ${socket.id} verification response:`, {
+        requestId: data.request_id,
+        choice: data.choice,
+        timestamp: data.timestamp
+      });
+
+      try {
+        // 转发回 Worker 命名空间
+        workerNamespace.emit(`worker:verification:response:${data.request_id}`, {
+          choice: data.choice,
+          timestamp: data.timestamp || Date.now()
+        });
+
+        logger.info(`Verification response forwarded to Worker, request_id: ${data.request_id}, choice: ${data.choice}`);
+
+      } catch (error) {
+        logger.error('Failed to forward verification response:', error);
       }
     });
 

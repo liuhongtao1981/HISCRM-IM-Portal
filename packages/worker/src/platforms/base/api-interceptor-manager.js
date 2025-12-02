@@ -14,7 +14,7 @@
  */
 
 const { createLogger } = require('@hiscrm-im/shared/utils/logger');
-const minimatch = require('minimatch');
+const { minimatch } = require('minimatch');  // ✅ minimatch v5+ 需要解构导入
 const logger = createLogger('api-interceptor');
 
 class APIInterceptorManager {

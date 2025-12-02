@@ -315,14 +315,19 @@ class AccountDataManager {
 
     this.comments.set(id, comment);
 
-    // ✨ 新增：检测是否为新评论（inbound 且未读）
-    if (isNew && comment.direction === 'inbound' && !comment.isRead) {
-      this.hasNewMessages = true;
-      this.newMessageDetails.comments.push(comment);
-
-      // 立即推送
-      this.logger.info(`🔔 检测到新评论，触发立即推送: ${comment.commentId}`);
-      this.syncToMasterNow();
+    // ✨ 新增：检测是否为新评论并推送
+    if (isNew) {
+      if (comment.direction === 'inbound' && !comment.isRead) {
+        // Inbound 评论：别人发给我们的，作为新消息提醒推送
+        this.hasNewMessages = true;
+        this.newMessageDetails.comments.push(comment);
+        this.logger.info(`🔔 检测到新评论（inbound），触发立即推送: ${comment.commentId}`);
+        this.syncToMasterNow();
+      } else if (comment.direction === 'outbound') {
+        // Outbound 评论：我们发送的评论，也推送到 Master（但不作为新消息提醒）
+        this.logger.info(`📤 检测到自己发送的评论（outbound），触发推送: ${comment.commentId}`);
+        this.syncToMasterNow();
+      }
     }
 
     this.logger.debug(`Upserted comment: ${id}`);

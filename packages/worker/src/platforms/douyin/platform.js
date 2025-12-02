@@ -23,8 +23,12 @@ const { onMessageInitAPI, onConversationListAPI, onMessageHistoryAPI } = require
 // 导入实时监控管理器
 const DouyinRealtimeMonitor = require('./realtime-monitor');
 
-// 导入回复功能模块
-const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comment');
+// ⚠️ 创作中心版本已废弃，保留备份在 send-reply-to-comment-creator-center.backup.js
+// 导入回复功能模块（创作中心版本 - 已注释）
+// const { sendReplyToComment, onCommentReplyAPI } = require('./send-reply-to-comment');
+
+// 导入回复功能模块（视频详情页版本 - 当前使用）⭐
+const { sendReplyToCommentVideoDetail, onCommentPublishAPI } = require('./send-reply-to-comment-video-detail');
 
 const { sendReplyToDirectMessage } = require('./send-reply-to-message');
 
@@ -106,15 +110,19 @@ class DouyinPlatform extends PlatformBase {
 
         manager.register('**/aweme/v1/web/notice/detail/**', onNoticeDetailAPI);  // 抖音首页 通知详情 API（评论通知）
 
-        // 评论回复 API（回调函数内部会排除 /comment/reply/list 列表接口）
-        manager.register('**/comment/reply{/,}?**', onCommentReplyAPI);
+        // ⚠️ 创作中心版本的评论回复 API 已废弃
+        // 评论回复 API - 创作中心版本（已注释）
+        // manager.register('**/comment/reply{/,}?**', onCommentReplyAPI);
+
+        // ✅ 评论发布 API - 视频详情页版本（支持三级回复，自动同步新评论到 Master）⭐
+        manager.register('**/aweme/v1/web/comment/publish**', onCommentPublishAPI);
 
         // 私信相关 API
         manager.register('**/v2/message/get_by_user_init**', onMessageInitAPI);
         manager.register('**/creator/im/user_detail/**', onConversationListAPI);  // 修正：匹配实际的会话 API
         manager.register('**/v1/im/message/history**', onMessageHistoryAPI);
 
-        logger.info(`✅ API handlers registered (7 total) for account ${accountId}`);
+        logger.info(`✅ API handlers registered (8 total) for account ${accountId}`);
     }
 
     /**
@@ -1249,7 +1257,7 @@ class DouyinPlatform extends PlatformBase {
         }
     }
 /**
- * 回复评论
+ * 回复评论（视频详情页版本 - 支持三级回复）⭐
  *
  * 🎯 架构设计：Master 传递原始数据对象，Worker 负责解析平台特定字段
  * 这样 Master 保持平台无关，方便以后扩展其他平台
@@ -1259,37 +1267,76 @@ class DouyinPlatform extends PlatformBase {
  * @param {string} [options.target_id] - 评论 ID（可选，不提供则回复作品）
  * @param {string} options.reply_content - 回复内容
  * @param {Object} [options.context] - 上下文信息
- * @param {Object} [options.context.video_content] - 视频原始对象（包含 title, coverUrl 等）
- * @param {Object} [options.context.target_comment] - 目标评论原始对象（包含 content, authorName, sec_uid, level 等）
+ * @param {Object} [options.context.video_content] - 视频原始对象（包含 aweme_id, title 等）
+ * @param {Object} [options.context.target_comment] - 目标评论原始对象（包含 content, level, reply_id 等）
  * @returns {Promise<{success: boolean, platform_reply_id?: string, data?: Object, reason?: string}>}
  */
 async replyToComment(accountId, options) {
     const { target_id, reply_content, context = {} } = options;
 
     // 🎯 架构设计：Worker 负责解析平台特定字段
-    // Master 传递原始数据对象 (video_content, target_comment)，Worker 自行提取需要的字段
-    const { video_content, target_comment } = context;
+    // ✅ 统一使用 camelCase 访问 DataStore 对象
+    const { video_content: videoContent, target_comment: targetComment } = context;
 
-    // ⭐ 从原始对象中提取抖音平台特定字段
-    const video_title = video_content?.title || null;
+    // ⭐ 提取视频详情页API所需的参数
+    // DataStore 使用 contentId 字段（已统一为 camelCase）
+    const awemeId = videoContent?.contentId || null;
 
-    // 评论匹配所需数据（从 target_comment 原始对象提取）
-    const comment_content = target_comment?.content || target_comment?.text || null;
-    const author_name = target_comment?.fromName || target_comment?.authorName ||
-                        target_comment?.user_info?.nickname || target_comment?.user?.nickname || null;
-    const sec_uid = target_comment?.user_info?.sec_uid || target_comment?.user?.sec_uid ||
-                    target_comment?.sec_uid || target_comment?.secUid || null;
-    const comment_level = target_comment?.level ||
-                          (target_comment?.parent_comment_id || target_comment?.parentCommentId ? 2 : 1);
-    const parent_comment_id = target_comment?.parent_comment_id || target_comment?.parentCommentId || null;
-    const reply_to_username = target_comment?.reply_to_username || target_comment?.replyToUsername || null;
+    // ⭐ 确定评论层级和相关ID（修复版 - 正确处理 1/2/3 级回复）
+    let commentLevel = 1;
+    let replyId = null;
+    let replyToReplyId = null;
+
+    if (!target_id) {
+        // 场景1: 没有回复目标 → 一级评论
+        commentLevel = 1;
+        logger.debug('判断为一级评论（直接评论视频）');
+    } else if (!targetComment) {
+        // 场景2: 有 target_id 但没有详细数据 → 默认二级回复
+        commentLevel = 2;
+        replyId = target_id;
+        logger.debug('判断为二级回复（缺少targetComment，使用默认值）');
+    } else {
+        // 场景3: 有完整的 targetComment 数据（DataStore camelCase 格式）
+        // 判断 targetComment（被回复的评论）是几级评论
+        const targetCommentLevel = this._getCommentLevel(targetComment);
+        logger.debug(`被回复的评论层级: ${targetCommentLevel}`);
+
+        if (targetCommentLevel === 1) {
+            // 回复一级评论 → 发送二级回复
+            commentLevel = 2;
+            replyId = target_id;  // 一级评论ID
+            replyToReplyId = null;
+            logger.debug('判断为二级回复（回复一级评论）');
+        } else if (targetCommentLevel === 2) {
+            // 回复二级评论 → 发送三级回复
+            commentLevel = 3;
+            replyId = targetComment.replyId;  // ✅ 一级根评论ID（camelCase）
+            replyToReplyId = target_id;  // 二级评论ID
+            logger.debug(`判断为三级回复（回复二级评论，根评论=${replyId}）`);
+        } else {
+            // 回复三级评论 → 仍然发送三级回复（抖音不支持四级）
+            // 挂在同一个二级评论下
+            commentLevel = 3;
+            replyId = targetComment.replyId;  // ✅ 一级根评论ID（camelCase）
+            replyToReplyId = targetComment.replyToReplyId;  // ✅ 二级评论ID（camelCase）
+            logger.debug(`判断为三级回复（回复三级评论，挂在二级=${replyToReplyId}下）`);
+        }
+    }
 
     let page = null;
     let replyTabId = null;
 
     try {
-        // 1. 获取临时标签页
-        const { tabId, page: replyPage } = await this.browserManager.tabManager.getPageForTask(accountId, {
+        // 验证必需参数
+        if (!awemeId) {
+            throw new Error('缺少视频ID (aweme_id)');
+        }
+
+        // 1. 获取临时标签页（自动注册API拦截器）
+        // ✅ 使用 getPageWithAPI 而不是直接调用 getPageForTask
+        // getPageWithAPI 会自动注册 API 拦截器，这样 onCommentPublishAPI 才能捕获响应
+        const { tabId, page: replyPage } = await this.getPageWithAPI(accountId, {
             tag: TabTag.REPLY_COMMENT,
             persistent: false,
             shareable: false,
@@ -1299,36 +1346,37 @@ async replyToComment(accountId, options) {
         page = replyPage;
         replyTabId = tabId;
 
-        logger.info(`[Douyin] 开始回复${target_id ? '评论' : '作品'}`, {
+        logger.info(`[Douyin-视频详情页] 开始回复${commentLevel}级评论`, {
             accountId,
-            commentId: target_id,
-            videoTitle: video_title?.substring(0, 50),
+            awemeId: awemeId?.substring(0, 20),
+            commentLevel,
+            targetId: target_id,
+            replyId,
+            replyToReplyId,
             tabId: replyTabId,
-            // ⭐ 添加评论匹配数据日志
-            authorName: author_name || '无',
-            commentContent: comment_content ? comment_content.substring(0, 30) + '...' : '无',
-            level: comment_level || 1,
         });
 
-        // 2. 调用新的回复模块
-        const result = await sendReplyToComment(page, {
-            commentId: target_id,
-            replyContent: reply_content,
-            videoTitle: video_title,
+        // 2. 调用视频详情页回复模块 ⭐
+        const result = await sendReplyToCommentVideoDetail(page, {
             accountId,
-            // ⭐ 传递评论匹配数据
-            commentContent: comment_content,      // 评论内容
-            authorName: author_name,              // 评论作者昵称
-            secUid: sec_uid,                      // 用户加密ID
-            level: comment_level || 1,            // 评论层级
-            parentCommentId: parent_comment_id,   // 父评论ID
-            replyToUsername: reply_to_username,   // 被回复用户昵称
+            awemeId,
+            replyContent: reply_content,
+            commentLevel,
+            replyId,
+            replyToReplyId,
+            // ✅ 从 rawData 获取原始 API 字段
+            oneLevelCommentRank: targetComment?.rawData?.one_level_comment_rank || 0,
         });
 
         if (result.success) {
+            logger.info(`✅ 评论回复成功`, {
+                commentId: result.data.commentId,
+                level: commentLevel
+            });
+
             return {
                 success: true,
-                platform_reply_id: result.data?.platform_reply_id || `${target_id}_${Date.now()}`,
+                platform_reply_id: result.data.commentId,
                 data: result.data
             };
         } else {
@@ -1337,8 +1385,10 @@ async replyToComment(accountId, options) {
                 status: 'error',
                 reason: result.error,
                 data: {
-                    comment_id: target_id,
+                    aweme_id: awemeId,
+                    target_id,
                     reply_content,
+                    comment_level: commentLevel,
                     error_message: result.error,
                     timestamp: new Date().toISOString()
                 }
@@ -1346,9 +1396,208 @@ async replyToComment(accountId, options) {
         }
 
     } catch (error) {
-        logger.error(`❌ [Douyin] 回复评论失败`, {
+        // ⭐ 特殊处理：验证弹窗检测
+        if (error.code === 'VERIFICATION_REQUIRED') {
+            logger.warn(`⚠️ [Douyin-视频详情页] 检测到验证弹窗，请求 IM 端处理`, {
+                accountId,
+                verificationType: error.verificationInfo.type,
+                message: error.verificationInfo.message
+            });
+
+            try {
+                // 通过 WorkerBridge 请求 IM 端处理验证
+                const userChoice = await this.bridge.requestVerification(
+                    accountId,
+                    error.verificationInfo,
+                    (choice) => {
+                        logger.info(`用户选择: ${choice}`, { accountId });
+                    }
+                );
+
+                logger.info(`收到用户选择: ${userChoice}`, { accountId });
+
+                if (userChoice === 'yes') {
+                    // 用户选择继续验证
+                    logger.info('用户选择继续验证，准备处理短信验证码...');
+
+                    try {
+                        // 引入handleSMSVerification函数
+                        const { handleSMSVerification } = require('./send-reply-to-comment-video-detail');
+
+                        // 创建请求验证码的回调函数
+                        const requestSMSCodeCallback = async () => {
+                            logger.info('请求IM端输入短信验证码...');
+                            const smsCode = await this.bridge.requestSMSCode(accountId, {
+                                phone_number: error.verificationInfo.phoneNumber,
+                                message: `请输入手机号${error.verificationInfo.phoneNumber}收到的短信验证码`
+                            });
+                            return smsCode;
+                        };
+
+                        // 处理短信验证码流程
+                        const verifyResult = await handleSMSVerification(page, requestSMSCodeCallback);
+
+                        if (verifyResult.success) {
+                            logger.info('✅ 短信验证成功，重新尝试发送评论...');
+
+                            // 🔥 通知IM端验证成功，关闭弹窗
+                            this.bridge.notifyVerificationComplete(accountId, true, '短信验证成功');
+
+                            // 验证成功后，重新执行评论发送逻辑
+                            // 🔥 关键：设置 skipVerificationCheck: true，避免重复弹出验证窗口
+                            const { sendReplyToCommentVideoDetail } = require('./send-reply-to-comment-video-detail');
+                            const retryResult = await sendReplyToCommentVideoDetail(page, {
+                                accountId,
+                                awemeId,
+                                replyContent: reply_content,
+                                commentLevel,
+                                replyId,
+                                replyToReplyId,
+                                // ✅ 从 rawData 获取原始 API 字段
+                                oneLevelCommentRank: targetComment?.rawData?.one_level_comment_rank || 0,
+                                skipVerificationCheck: true,  // ✅ 跳过验证检测，避免IM重复弹窗
+                            });
+
+                            if (retryResult.success) {
+                                logger.info('✅ 验证后评论发送成功！');
+                                return {
+                                    success: true,
+                                    status: 'sent',
+                                    data: {
+                                        aweme_id: awemeId,
+                                        comment_id: retryResult.commentId,
+                                        reply_content,
+                                        comment_level: commentLevel,
+                                        verification_completed: true,
+                                        timestamp: new Date().toISOString()
+                                    }
+                                };
+                            } else {
+                                logger.warn('⚠️ 验证成功但评论发送失败', { reason: retryResult.error });
+                                return {
+                                    success: false,
+                                    status: 'retry_failed',
+                                    reason: `验证成功但评论发送失败: ${retryResult.error}`,
+                                    data: {
+                                        aweme_id: awemeId,
+                                        target_id,
+                                        reply_content,
+                                        comment_level: commentLevel,
+                                        verification_completed: true,
+                                        timestamp: new Date().toISOString()
+                                    }
+                                };
+                            }
+                        } else {
+                            logger.error('❌ 短信验证失败！');
+                            logger.error(`💡 失败原因: ${verifyResult.message}`);
+                            logger.error(`📋 详细信息:`, {
+                                accountId,
+                                verificationType: error.verificationInfo.type,
+                                phoneNumber: error.verificationInfo.phoneNumber,
+                                failureMessage: verifyResult.message
+                            });
+
+                            // 🔥 通知IM端验证失败，关闭弹窗
+                            this.bridge.notifyVerificationComplete(accountId, false, `验证失败: ${verifyResult.message}`);
+
+                            // 验证失败后，检查是否需要关闭tab
+                            logger.info('验证失败，保留标签页以便用户手动操作');
+
+                            return {
+                                success: false,
+                                status: 'verification_failed',
+                                reason: `短信验证失败: ${verifyResult.message}`,
+                                data: {
+                                    aweme_id: awemeId,
+                                    target_id,
+                                    reply_content,
+                                    comment_level: commentLevel,
+                                    verification_type: error.verificationInfo.type,
+                                    phone_number: error.verificationInfo.phoneNumber,
+                                    failure_detail: verifyResult.message,
+                                    timestamp: new Date().toISOString()
+                                }
+                            };
+                        }
+
+                    } catch (smsError) {
+                        logger.error('短信验证处理异常', {
+                            accountId,
+                            error: smsError.message
+                        });
+
+                        return {
+                            success: false,
+                            status: 'verification_error',
+                            reason: `短信验证处理异常: ${smsError.message}`,
+                            data: {
+                                aweme_id: awemeId,
+                                target_id,
+                                reply_content,
+                                comment_level: commentLevel,
+                                error_message: smsError.message,
+                                timestamp: new Date().toISOString()
+                            }
+                        };
+                    }
+
+                } else {
+                    // 用户选择取消
+                    logger.warn('⚠️ 用户选择取消验证');
+                    logger.info(`📋 用户选择详情: userChoice=${userChoice}, accountId=${accountId}`);
+                    logger.info('准备关闭标签页...');
+
+                    // 关闭标签页
+                    if (page && !page.isClosed()) {
+                        await page.close();
+                        logger.info('✅ 标签页已关闭');
+                    } else {
+                        logger.warn('⚠️ 标签页已经关闭或不存在');
+                    }
+
+                    return {
+                        success: false,
+                        status: 'verification_cancelled',
+                        reason: '用户取消验证',
+                        data: {
+                            aweme_id: awemeId,
+                            target_id,
+                            reply_content,
+                            comment_level: commentLevel,
+                            verification_type: error.verificationInfo.type,
+                            timestamp: new Date().toISOString()
+                        }
+                    };
+                }
+
+            } catch (verifyError) {
+                logger.error('处理验证请求失败', {
+                    accountId,
+                    error: verifyError.message
+                });
+
+                return {
+                    success: false,
+                    status: 'verification_error',
+                    reason: `验证请求失败: ${verifyError.message}`,
+                    data: {
+                        aweme_id: awemeId,
+                        target_id,
+                        reply_content,
+                        comment_level: commentLevel,
+                        error_message: verifyError.message,
+                        timestamp: new Date().toISOString()
+                    }
+                };
+            }
+        }
+
+        logger.error(`❌ [Douyin-视频详情页] 回复评论失败`, {
             accountId,
-            commentId: target_id,
+            awemeId,
+            commentLevel,
+            targetId: target_id,
             error: error.message
         });
 
@@ -1366,8 +1615,10 @@ async replyToComment(accountId, options) {
             status: 'error',
             reason: error.message,
             data: {
-                comment_id: target_id,
+                aweme_id: awemeId,
+                target_id,
                 reply_content,
+                comment_level: commentLevel,
                 error_message: error.message,
                 timestamp: new Date().toISOString()
             }
@@ -1825,6 +2076,38 @@ async replyToComment(accountId, options) {
         }
 
         return crawler.getStats();
+    }
+
+    // ============================================================================
+    // 辅助函数
+    // ============================================================================
+
+    /**
+     * 判断评论是几级评论
+     * @private
+     * @param {Object} comment - 评论对象（DataStore camelCase 格式）
+     * @param {string} comment.replyId - 一级评论ID（null 或 '0' 表示是一级评论）
+     * @param {string} comment.replyToReplyId - 二级评论ID（null 或 '0' 表示是二级评论）
+     * @returns {number} 1=一级评论, 2=二级评论, 3=三级评论
+     */
+    _getCommentLevel(comment) {
+        if (!comment) {
+            return 1;
+        }
+
+        // ✅ DataStore 使用 camelCase 字段
+        // 一级评论：replyId 为 null 或 '0'
+        if (!comment.replyId || comment.replyId === '0') {
+            return 1;
+        }
+
+        // 二级评论：replyId 不为 '0'，但 replyToReplyId 为 null 或 '0'
+        if (!comment.replyToReplyId || comment.replyToReplyId === '0') {
+            return 2;
+        }
+
+        // 三级评论：replyId 和 replyToReplyId 都不为 '0'
+        return 3;
     }
 
     // ============================================================================

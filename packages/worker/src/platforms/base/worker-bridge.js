@@ -334,6 +334,171 @@ class WorkerBridge {
     this.socket = socket;
     logger.info('Socket instance updated');
   }
+
+  /**
+   * 请求验证（短信验证码或扫码验证）
+   * @param {string} accountId - 账户 ID
+   * @param {Object} verificationInfo - 验证信息
+   * @param {string} verificationInfo.source - 验证来源 (如 'douyin_comment_reply', 'douyin_dm_send', 'douyin_login')
+   * @param {string} verificationInfo.platform - 平台标识 (如 'douyin', 'xiaohongshu')
+   * @param {string} verificationInfo.type - 验证类型: 'sms' | 'qrcode'
+   * @param {string} verificationInfo.message - 验证提示消息
+   * @param {string} verificationInfo.phoneNumber - 手机号（脱敏后）
+   * @param {Function} onUserChoice - 用户选择回调 (choice: 'yes' | 'no')
+   * @returns {Promise<string>} 返回用户选择: 'yes' | 'no'
+   */
+  async requestVerification(accountId, verificationInfo, onUserChoice) {
+    if (!this.socket) {
+      logger.error('Socket not connected');
+      throw new Error('Socket not connected');
+    }
+
+    return new Promise((resolve, reject) => {
+      const requestId = `verify_${accountId}_${Date.now()}`;
+
+      try {
+        // 发送验证请求到 Master，Master 会转发给 IM 端
+        this.socket.emit('worker:verification:request', {
+          request_id: requestId,
+          account_id: accountId,
+          source: verificationInfo.source || 'unknown',        // 验证来源
+          platform: verificationInfo.platform || 'unknown',    // 平台标识
+          verification_type: verificationInfo.type,
+          message: verificationInfo.message,
+          phone_number: verificationInfo.phoneNumber,
+          has_sms_button: verificationInfo.hasSendSMSButton,
+          has_qrcode_option: verificationInfo.hasQRCodeOption,
+          context: {
+            aweme_id: verificationInfo.awemeId,
+            comment_level: verificationInfo.commentLevel,
+            reply_content: verificationInfo.replyContent
+          },
+          timestamp: Date.now(),
+        });
+
+        logger.info(`Verification request sent for account ${accountId}, source: ${verificationInfo.source}, platform: ${verificationInfo.platform}, type: ${verificationInfo.type}`);
+
+        // 监听用户选择响应（超时 5 分钟）
+        const timeout = setTimeout(() => {
+          this.socket.off(`worker:verification:response:${requestId}`);
+          reject(new Error('Verification request timeout (5 minutes)'));
+        }, 5 * 60 * 1000);
+
+        this.socket.once(`worker:verification:response:${requestId}`, (response) => {
+          clearTimeout(timeout);
+
+          const userChoice = response.choice; // 'yes' | 'no'
+          logger.info(`User choice received: ${userChoice}`, {
+            requestId,
+            accountId,
+            choice: userChoice
+          });
+
+          if (onUserChoice) {
+            onUserChoice(userChoice);
+          }
+
+          resolve(userChoice);
+        });
+
+      } catch (error) {
+        logger.error('Failed to request verification:', error);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 请求IM端输入短信验证码
+   * @param {string} accountId - 账户 ID
+   * @param {Object} smsCodeInfo - 验证码请求信息
+   * @param {string} smsCodeInfo.phone_number - 手机号（脱敏后）
+   * @param {string} smsCodeInfo.message - 提示消息
+   * @returns {Promise<string>} 返回用户输入的验证码
+   */
+  async requestSMSCode(accountId, smsCodeInfo) {
+    if (!this.socket) {
+      logger.error('Socket not connected');
+      throw new Error('Socket not connected');
+    }
+
+    return new Promise((resolve, reject) => {
+      const requestId = `sms_code_${accountId}_${Date.now()}`;
+
+      try {
+        // 发送验证码输入请求到 Master，Master 会转发给 IM 端
+        this.socket.emit('worker:sms_code:request', {
+          request_id: requestId,
+          account_id: accountId,
+          phone_number: smsCodeInfo.phone_number,
+          message: smsCodeInfo.message || `请输入手机号${smsCodeInfo.phone_number}收到的短信验证码`,
+          timestamp: Date.now(),
+        });
+
+        logger.info(`SMS code request sent for account ${accountId}`, {
+          requestId,
+          phoneNumber: smsCodeInfo.phone_number
+        });
+
+        // 监听验证码响应（超时 3 分钟）
+        const timeout = setTimeout(() => {
+          this.socket.off(`worker:sms_code:response:${requestId}`);
+          reject(new Error('SMS code request timeout (3 minutes)'));
+        }, 3 * 60 * 1000);
+
+        this.socket.once(`worker:sms_code:response:${requestId}`, (response) => {
+          clearTimeout(timeout);
+
+          const smsCode = response.sms_code;
+          logger.info(`SMS code received`, {
+            requestId,
+            accountId,
+            codeLength: smsCode ? smsCode.length : 0
+          });
+
+          if (!smsCode || smsCode.length === 0) {
+            reject(new Error('User cancelled or empty SMS code'));
+          } else {
+            resolve(smsCode);
+          }
+        });
+
+      } catch (error) {
+        logger.error('Failed to request SMS code:', error);
+        reject(error);
+      }
+    });
+  }
+
+  /**
+   * 通知IM端验证完成（成功或失败）
+   * @param {string} accountId - 账户 ID
+   * @param {boolean} success - 验证是否成功
+   * @param {string} message - 附加消息（可选）
+   */
+  notifyVerificationComplete(accountId, success, message = '') {
+    if (!this.socket) {
+      logger.warn('Socket not connected, cannot notify verification complete');
+      return;
+    }
+
+    try {
+      this.socket.emit('worker:verification:complete', {
+        account_id: accountId,
+        success: success,
+        message: message || (success ? '验证成功' : '验证失败'),
+        timestamp: Date.now(),
+      });
+
+      logger.info(`✅ Verification complete notification sent`, {
+        accountId,
+        success,
+        message
+      });
+    } catch (error) {
+      logger.error('Failed to notify verification complete:', error);
+    }
+  }
 }
 
 module.exports = WorkerBridge;

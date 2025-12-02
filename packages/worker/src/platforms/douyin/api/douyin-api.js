@@ -69,11 +69,49 @@ class DouyinAPI {
 
             // 评论相关
             commentList: 'https://www.douyin.com/aweme/v1/web/comment/list/',
-            commentReply: 'https://www.douyin.com/aweme/v1/web/comment/list/reply/'
+            commentReply: 'https://www.douyin.com/aweme/v1/web/comment/list/reply/',
+            commentPublish: 'https://www.douyin.com/aweme/v1/web/comment/publish'  // 发布评论/回复
         };
     }
 
     // ==================== 通用方法 ====================
+
+    /**
+     * 从Cookie中提取指定字段的值
+     * @param {string} name - Cookie字段名
+     * @returns {string|null} 字段值，不存在则返回null
+     */
+    _extractCookieValue(name) {
+        if (!this.cookie) return null;
+
+        const cookies = this.cookie.split('; ');
+        for (const cookie of cookies) {
+            const [key, ...valueParts] = cookie.split('=');
+            if (key === name) {
+                return valueParts.join('='); // 处理值中包含'='的情况
+            }
+        }
+        return null;
+    }
+
+    /**
+     * 解析Cookie中的bd-ticket-guard-client-data字段
+     * @returns {Object|null} 解析后的对象，失败返回null
+     */
+    _parseBdTicketGuardData() {
+        const value = this._extractCookieValue('bd_ticket_guard_client_data');
+        if (!value) return null;
+
+        try {
+            // URL解码 + Base64解码
+            const decodedValue = decodeURIComponent(value);
+            const jsonString = Buffer.from(decodedValue, 'base64').toString('utf-8');
+            return JSON.parse(jsonString);
+        } catch (e) {
+            logger.warn('[Cookie解析] 无法解析bd_ticket_guard_client_data:', e.message);
+            return null;
+        }
+    }
 
     /**
      * 构建请求头
@@ -92,6 +130,58 @@ class DouyinAPI {
     }
 
     /**
+     * 构建评论发布请求头（包含安全验证headers）
+     * @param {string} awemeId - 作品ID
+     * @returns {Object} 请求头
+     */
+    _buildPublishHeaders(awemeId) {
+        const baseHeaders = this._buildHeaders(`https://www.douyin.com/?modal_id=${awemeId}&recommend=1`);
+
+        // 从Cookie中提取安全相关字段
+        const bdTicketData = this._parseBdTicketGuardData();
+        const uifid = this._extractCookieValue('UIFID');
+
+        // 添加抖音评论发布所需的安全headers
+        const securityHeaders = {
+            'Content-Type': 'application/x-www-form-urlencoded; charset=UTF-8',
+            'x-secsdk-csrf-token': 'DOWNGRADE', // HAR文件中固定为DOWNGRADE
+            'sec-ch-ua': '"Chromium";v="130", "Not?A_Brand";v="8"',
+            'sec-ch-ua-mobile': '?0',
+            'sec-ch-ua-platform': '"Windows"',
+            'sec-fetch-dest': 'empty',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-site': 'same-origin',
+            'priority': 'u=1, i'
+        };
+
+        // 如果成功解析bd-ticket-guard数据，添加相关headers
+        if (bdTicketData) {
+            securityHeaders['bd-ticket-guard-version'] = String(bdTicketData['bd-ticket-guard-version'] || 2);
+            securityHeaders['bd-ticket-guard-iteration-version'] = String(bdTicketData['bd-ticket-guard-iteration-version'] || 1);
+            securityHeaders['bd-ticket-guard-ree-public-key'] = bdTicketData['bd-ticket-guard-ree-public-key'] || '';
+            securityHeaders['bd-ticket-guard-web-version'] = String(bdTicketData['bd-ticket-guard-web-version'] || 2);
+            securityHeaders['bd-ticket-guard-web-sign-type'] = '1';
+
+            logger.debug('[发布评论] ✅ 成功提取bd-ticket-guard安全headers');
+        } else {
+            logger.warn('[发布评论] ⚠️  未找到bd_ticket_guard_client_data，请求可能失败');
+        }
+
+        // 添加UIFID
+        if (uifid) {
+            securityHeaders['uifid'] = uifid;
+            logger.debug('[发布评论] ✅ 成功提取UIFID');
+        } else {
+            logger.warn('[发布评论] ⚠️  未找到UIFID');
+        }
+
+        return {
+            ...baseHeaders,
+            ...securityHeaders
+        };
+    }
+
+    /**
      * 发送 HTTP 请求（带重试机制）
      * @param {string} url - 请求 URL
      * @param {Object} config - axios 配置
@@ -103,11 +193,12 @@ class DouyinAPI {
         for (let attempt = 1; attempt <= this.options.maxRetries; attempt++) {
             try {
                 const shortUrl = url.length > 100 ? url.substring(0, 100) + '...' : url;
-                logger.debug(`[请求] 尝试 ${attempt}/${this.options.maxRetries}: ${shortUrl}`);
+                const method = config.method || 'GET';
+                logger.debug(`[请求] ${method} 尝试 ${attempt}/${this.options.maxRetries}: ${shortUrl}`);
 
                 const response = await axios({
                     url,
-                    method: 'GET',
+                    method: method,
                     timeout: this.options.timeout,
                     decompress: true,
                     ...config
@@ -268,6 +359,60 @@ class DouyinAPI {
 
         logger.debug(`[二级评论] ✅ 获取 ${result.comments?.length || 0} 条回复`);
         return result || {};
+    }
+
+    /**
+     * 发布评论或回复
+     * @param {Object} params - 发布参数
+     * @param {string} params.awemeId - 作品ID
+     * @param {string} params.text - 评论内容
+     * @param {string} [params.replyId] - 回复的评论ID（一级评论ID，用于发布二级回复）
+     * @param {number} [params.commentSendCelltime] - 评论发送耗时（毫秒）
+     * @param {number} [params.commentVideoCelltime] - 视频播放耗时（毫秒）
+     * @returns {Promise<Object>} 发布结果 { comment, ... }
+     */
+    async publishComment({ awemeId, text, replyId = null, commentSendCelltime = 5000, commentVideoCelltime = 120000 }) {
+        // 构建URL参数
+        const urlParams = {
+            ...this.webBaseParams,
+            app_name: 'aweme',
+            enter_from: 'recommend',
+            previous_page: 'recommend'
+        };
+
+        const queryString = new URLSearchParams(urlParams).toString();
+
+        // 生成 a_bogus（评论发布 API 使用 a_bogus）
+        const aBogus = generateABogus(queryString, this.userAgent);
+        const url = `${this.endpoints.commentPublish}?${queryString}&a_bogus=${encodeURIComponent(aBogus)}`;
+
+        // 构建POST数据（application/x-www-form-urlencoded格式）
+        const postData = new URLSearchParams({
+            aweme_id: awemeId,
+            comment_send_celltime: Math.floor(commentSendCelltime),
+            comment_video_celltime: Math.floor(commentVideoCelltime),
+            one_level_comment_rank: replyId ? 1 : -1,  // 1=回复一级评论, -1=直接评论
+            paste_edit_method: 'non_paste',
+            text: text,
+            text_extra: '[]'
+        });
+
+        // 如果是回复一级评论，添加 reply_id
+        if (replyId) {
+            postData.append('reply_id', replyId);
+        }
+
+        logger.info(`[发布评论] ${replyId ? '回复评论 ' + replyId : '直接评论'}: "${text.substring(0, 20)}..."`);
+
+        // 使用专门的发布headers（包含安全验证）
+        const result = await this._request(url, {
+            method: 'POST',
+            headers: this._buildPublishHeaders(awemeId),
+            data: postData.toString()
+        });
+
+        logger.info(`[发布评论] ✅ 成功，评论ID: ${result.comment?.cid}`);
+        return result;
     }
 }
 

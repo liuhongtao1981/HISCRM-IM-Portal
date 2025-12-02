@@ -482,36 +482,23 @@ class DouyinAPICrawler {
         }
 
         try {
-            // 标准化评论数据
-            const normalizedComments = comments.map(comment => ({
-                comment_id: String(comment.cid),
-                cid: String(comment.cid),
-                aweme_id: workId,
-                text: comment.text,
-                create_time: comment.create_time,
-                digg_count: comment.digg_count || 0,
-                reply_count: comment.reply_comment_total || 0,
-                user_info: {
-                    user_id: comment.user.uid,
-                    uid: comment.user.uid,
-                    nickname: comment.user.nickname,
-                    avatar_url: comment.user.avatar_thumb?.url_list?.[0] || null,
-                },
-                user: comment.user,
-                _raw: comment,
-                _api_version: 'v2',
-            }));
-
             const dataManager = this.platform.dataManagers?.get(this.account.id);
-            if (dataManager) {
-                const savedComments = dataManager.batchUpsertComments(
-                    normalizedComments,
-                    DataSource.API
-                );
-                logger.debug(`[${this.account.id}] 已保存 ${savedComments.length} 条评论`);
-            } else {
+            if (!dataManager) {
                 logger.warn(`[${this.account.id}] DataManager不存在，无法保存评论`);
+                return;
             }
+
+            // ✅ 使用 dataManager 实例方法标准化数据
+            const normalizedComments = dataManager.normalizeComments(comments, {
+                accountUserId: this.account.platform_user_id,
+                awemeId: workId,
+            });
+
+            const savedComments = dataManager.batchUpsertComments(
+                normalizedComments,
+                DataSource.API
+            );
+            logger.debug(`[${this.account.id}] 已保存 ${savedComments.length} 条评论`);
 
         } catch (error) {
             logger.error(`[${this.account.id}] 保存评论失败:`, error);
@@ -527,40 +514,24 @@ class DouyinAPICrawler {
         }
 
         try {
-            // 标准化回复数据
-            const normalizedReplies = replies.map(reply => ({
-                comment_id: String(reply.cid),
-                cid: String(reply.cid),
-                aweme_id: workId,
-                parent_comment_id: commentId,
-                reply_id: commentId,
-                text: reply.text,
-                create_time: reply.create_time,
-                digg_count: reply.digg_count || 0,
-                reply_count: reply.reply_comment_total || 0,
-                reply_to_username: reply.reply_to_username || null,
-                reply_to_userid: reply.reply_to_userid || null,
-                user_info: {
-                    user_id: reply.user.uid,
-                    uid: reply.user.uid,
-                    nickname: reply.user.nickname,
-                    avatar_url: reply.user.avatar_thumb?.url_list?.[0] || null,
-                },
-                user: reply.user,
-                _raw: reply,
-                _api_version: 'v2',
-            }));
-
             const dataManager = this.platform.dataManagers?.get(this.account.id);
-            if (dataManager) {
-                const savedReplies = dataManager.batchUpsertComments(
-                    normalizedReplies,
-                    DataSource.API
-                );
-                logger.debug(`[${this.account.id}] 已保存 ${savedReplies.length} 条回复`);
-            } else {
+            if (!dataManager) {
                 logger.warn(`[${this.account.id}] DataManager不存在，无法保存回复`);
+                return;
             }
+
+            // ✅ 使用 dataManager 实例方法标准化数据
+            const normalizedReplies = dataManager.normalizeComments(replies, {
+                accountUserId: this.account.platform_user_id,
+                awemeId: workId,
+                parentCommentId: commentId,
+            });
+
+            const savedReplies = dataManager.batchUpsertComments(
+                normalizedReplies,
+                DataSource.API
+            );
+            logger.debug(`[${this.account.id}] 已保存 ${savedReplies.length} 条回复`);
 
         } catch (error) {
             logger.error(`[${this.account.id}] 保存回复失败:`, error);

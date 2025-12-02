@@ -329,8 +329,10 @@ class DouyinDataManager extends AccountDataManager {
       images: douyinData.image_list || null,
 
       // 回复信息
+      replyId: douyinData.reply_id ? String(douyinData.reply_id) : null,  // ✅ 一级评论 ID（扁平化显示用）
+      replyToReplyId: douyinData.reply_to_reply_id ? String(douyinData.reply_to_reply_id) : null,  // ✅ 三级评论时，直接回复的二级评论 ID
       replyToUserId: douyinData.reply_to_userid ? String(douyinData.reply_to_userid) : null,
-      replyToUserName: douyinData.reply_to_username || null,
+      replyToUsername: douyinData.reply_to_username || null,  // ✅ 三级评论显示"回复 @某人"
 
       // 统计数据（类型已统一为数字）
       likeCount: douyinData.digg_count || 0,
@@ -340,6 +342,11 @@ class DouyinDataManager extends AccountDataManager {
       isPinned: douyinData.is_pinned || false,
       isAuthorReply: douyinData.is_author || false,
       isLiked: douyinData.user_digged === 1,
+
+      // ✅ 方向：根据 is_author 判断
+      // is_author = true → 我们发的评论（outbound）
+      // is_author = false → 别人发的评论（inbound）
+      direction: douyinData.is_author ? 'outbound' : 'inbound',
 
       // 时间戳（类型已统一为数字）
       createdAt: douyinData.create_time || Date.now(),
@@ -644,6 +651,199 @@ class DouyinDataManager extends AccountDataManager {
 
   generateCommentId(comment) {
     return `comm_${this.accountId}_${comment.commentId}`;
+  }
+
+  // ==================== 评论数据标准化 ====================
+
+  /**
+   * 标准化单条抖音评论数据
+   *
+   * 用于统一处理以下来源的评论数据：
+   * 1. API 爬虫 (crawler-api.js)
+   * 2. 评论发布 API 拦截器 (send-reply-to-comment-video-detail.js)
+   * 3. 任何其他来源的抖音评论数据
+   *
+   * @param {Object} rawComment - 原始评论数据（来自 API）
+   * @param {Object} options - 标准化选项
+   * @param {string} options.accountUserId - 账户的 platform_user_id（用于判断 is_author）
+   * @param {string} [options.awemeId] - 作品 ID（如果原始数据中没有）
+   * @param {string} [options.parentCommentId] - 父评论 ID（用于回复）
+   * @returns {Object} 标准化后的评论数据
+   */
+  normalizeComment(rawComment, options = {}) {
+    const {
+      accountUserId,
+      awemeId = rawComment.aweme_id,
+      parentCommentId = null
+    } = options;
+
+    // 判断是否是我们自己发的评论
+    // 方法1：对比 user.uid 和 account.platform_user_id（最可靠）
+    const userUid = rawComment.user?.uid || rawComment.user?.sec_uid;
+    const isAuthorByUid = accountUserId && userUid && String(userUid) === String(accountUserId);
+
+    // 方法2：检查 label_text === "作者"（辅助判断）
+    const isAuthorByLabel = rawComment.label_text === '作者' || rawComment.label_type === 1;
+
+    // 优先使用 uid 对比，如果没有 accountUserId 则使用 label
+    const is_author = accountUserId ? isAuthorByUid : isAuthorByLabel;
+
+    // ✅ 智能推断父评论 ID（支持三级评论）
+    // 1. 优先使用外部传入的 parentCommentId（用于 API 爬虫递归提取回复）
+    // 2. 否则从 rawComment 字段推断（API 拦截器的评论响应中包含完整关系）：
+    //    - 三级评论：reply_to_reply_id 不为 '0' → parent_comment_id = reply_to_reply_id（直接回复的二级评论）
+    //    - 二级评论：reply_id 不为 '0' → parent_comment_id = reply_id（回复的一级评论）
+    //    - 一级评论：reply_id 为 '0' → parent_comment_id = null
+    let inferredParentId = null;
+    if (rawComment.reply_to_reply_id && rawComment.reply_to_reply_id !== '0') {
+      // 三级评论：父评论是 reply_to_reply_id（二级评论）
+      inferredParentId = String(rawComment.reply_to_reply_id);
+    } else if (rawComment.reply_id && rawComment.reply_id !== '0') {
+      // 二级评论：父评论是 reply_id（一级评论）
+      inferredParentId = String(rawComment.reply_id);
+    }
+    const finalParentCommentId = parentCommentId || inferredParentId;
+
+    // 构建标准化的评论对象
+    return {
+      // ========== 基础字段 ==========
+      comment_id: String(rawComment.cid),
+      cid: String(rawComment.cid),
+
+      // ========== 作品关联 ==========
+      aweme_id: awemeId,
+      item_id: awemeId,
+
+      // ========== 内容 ==========
+      text: rawComment.text,
+      content: rawComment.text,
+
+      // ========== 时间戳 ==========
+      create_time: rawComment.create_time,
+
+      // ========== 统计数据 ==========
+      digg_count: rawComment.digg_count || 0,
+      reply_count: rawComment.reply_count || rawComment.reply_comment_total || 0,
+
+      // ========== 回复关系 ==========
+      parent_comment_id: finalParentCommentId,  // ✅ 智能推断的父评论 ID
+      reply_id: rawComment.reply_id || '0',
+      reply_to_reply_id: rawComment.reply_to_reply_id || '0',
+      reply_to_username: rawComment.reply_to_username || null,
+      reply_to_userid: rawComment.reply_to_userid || null,
+
+      // ========== 用户信息 ==========
+      user_info: {
+        user_id: rawComment.user?.uid,
+        uid: rawComment.user?.uid,
+        sec_uid: rawComment.user?.sec_uid || null,
+        nickname: rawComment.user?.nickname,
+        avatar_url: rawComment.user?.avatar_thumb?.url_list?.[0] || null,
+      },
+
+      // ========== 状态标识 ==========
+      is_author: is_author,  // ✅ 核心字段：是否是我们自己发的
+      is_pinned: rawComment.is_pinned || false,
+      user_digged: rawComment.user_digged || 0,
+
+      // ========== 额外字段 ==========
+      label_text: rawComment.label_text || null,  // "作者" 标签
+      label_type: rawComment.label_type || 0,
+      image_list: rawComment.image_list || null,
+
+      // ========== 保留原始数据 ==========
+      user: rawComment.user,  // 完整的用户对象
+      _raw: rawComment,       // 原始评论数据
+      _api_version: 'v2',     // API 版本标识
+    };
+  }
+
+  /**
+   * 批量标准化评论数据
+   *
+   * @param {Array} rawComments - 原始评论数据数组
+   * @param {Object} options - 标准化选项（同 normalizeComment）
+   * @returns {Array} 标准化后的评论数据数组
+   */
+  normalizeComments(rawComments, options = {}) {
+    if (!Array.isArray(rawComments)) {
+      return [];
+    }
+
+    return rawComments.map(comment => this.normalizeComment(comment, options));
+  }
+
+  /**
+   * 从回复列表中提取并标准化评论
+   *
+   * 抖音 API 的回复数据嵌套在 reply_comment 字段中，
+   * 此函数递归提取所有回复并标准化
+   *
+   * @param {Object} parentComment - 父评论对象
+   * @param {Object} options - 标准化选项
+   * @returns {Array} 标准化后的回复数组（扁平化）
+   */
+  extractRepliesFromComment(parentComment, options = {}) {
+    const replies = [];
+
+    if (!parentComment.reply_comment || !Array.isArray(parentComment.reply_comment)) {
+      return replies;
+    }
+
+    const {
+      accountUserId,
+      awemeId
+    } = options;
+
+    // 遍历所有回复
+    for (const reply of parentComment.reply_comment) {
+      // 标准化当前回复
+      const normalizedReply = this.normalizeComment(reply, {
+        accountUserId,
+        awemeId,
+        parentCommentId: String(parentComment.cid)
+      });
+
+      replies.push(normalizedReply);
+
+      // 递归提取嵌套的回复（三级、四级等）
+      const nestedReplies = this.extractRepliesFromComment(reply, options);
+      replies.push(...nestedReplies);
+    }
+
+    return replies;
+  }
+
+  /**
+   * 从评论发布 API 响应中提取评论数据
+   *
+   * 评论发布 API 响应格式：
+   * {
+   *   status_code: 0,
+   *   comment: { ... },  // 新发布的评论
+   *   log_pb: { ... }
+   * }
+   *
+   * @param {Object} apiResponse - API 响应对象
+   * @param {Object} options - 标准化选项
+   * @returns {Object|null} 标准化后的评论对象，或 null（如果失败）
+   */
+  normalizePublishResponse(apiResponse, options = {}) {
+    if (!apiResponse || apiResponse.status_code !== 0) {
+      return null;
+    }
+
+    const comment = apiResponse.comment;
+    if (!comment) {
+      return null;
+    }
+
+    // 评论发布 API 返回的评论一定是我们自己发的
+    // 但仍然可以通过 uid 对比验证
+    return this.normalizeComment(comment, {
+      ...options,
+      // 注意：如果 options 中没有 accountUserId，则依赖 label_text 判断
+    });
   }
 }
 

@@ -124,18 +124,43 @@ class IMWebSocketServer {
                 this.handleRequestWorkers(socket);
             });
 
+            // ✅ 验证响应（来自 IM 客户端）
+            socket.on('monitor:verification:response', (data) => {
+                this.handleVerificationResponse(socket, data);
+            });
+
+            // ✅ 短信验证码响应（来自 IM 客户端）
+            socket.on('monitor:sms_code:response', (data) => {
+                this.handleSMSCodeResponse(socket, data);
+            });
+
             // 断开连接
             socket.on('disconnect', () => {
                 this.handleDisconnect(socket);
             });
         });
 
-        // ✅ 监听 Worker 命名空间的回复结果
+        // ✅ 监听 Worker 命名空间的事件
         const workerNamespace = this.io.of('/worker');
         workerNamespace.on('connection', (socket) => {
             // 监听 Worker 发送的回复结果
             socket.on('worker:reply:result', (data) => {
                 this.handleWorkerReplyResult(socket, data);
+            });
+
+            // ✅ 监听 Worker 验证请求（短信验证码/扫码验证）
+            socket.on('worker:verification:request', (data) => {
+                this.handleWorkerVerificationRequest(socket, data);
+            });
+
+            // ✅ 监听 Worker 短信验证码输入请求
+            socket.on('worker:sms_code:request', (data) => {
+                this.handleWorkerSMSCodeRequest(socket, data);
+            });
+
+            // ✅ 监听 Worker 验证完成通知（成功/失败）
+            socket.on('worker:verification:complete', (data) => {
+                this.handleWorkerVerificationComplete(socket, data);
             });
         });
 
@@ -295,8 +320,9 @@ class IMWebSocketServer {
                     const conversationsList = accountData.conversations instanceof Map ?
                         Array.from(accountData.conversations.values()) : accountData.conversations;
                     conversationsList.forEach(conv => {
-                        if (conv.userId && (conv.platform_user_avatar || conv.userAvatar)) {
-                            userAvatarMap.set(conv.userId, conv.platform_user_avatar || conv.userAvatar);
+                        // ✅ DataStore 使用 camelCase: userAvatar
+                        if (conv.userId && conv.userAvatar) {
+                            userAvatarMap.set(conv.userId, conv.userAvatar);
                         }
                     });
                 }
@@ -422,10 +448,11 @@ class IMWebSocketServer {
                         }
                     }
 
-                    // ✅ 从 DataStore 中获取视频和评论的原始对象
+                    // ✅ 从 DataStore 中获取视频、评论和会话的原始对象
                     // 🎯 架构设计：Master 只传递原始数据对象，Worker 负责解析平台特定字段
-                    let videoContent = null;   // 视频原始对象
-                    let targetComment = null;  // 目标评论原始对象
+                    let videoContent = null;        // 视频原始对象
+                    let targetComment = null;       // 目标评论原始对象
+                    let targetConversation = null;  // 目标会话原始对象（私信）
 
                     if ((targetType === 'comment' || targetType === 'work') && this.dataStore) {
                         try {
@@ -482,6 +509,34 @@ class IMWebSocketServer {
                         }
                     }
 
+                    // ✅ 查找目标会话对象（私信回复）
+                    if (targetType === 'direct_message' && this.dataStore) {
+                        try {
+                            const accountData = this.dataStore.accounts.get(channelId);
+                            if (accountData && accountData.data && accountData.data.conversations) {
+                                const conversationsList = accountData.data.conversations instanceof Map
+                                    ? Array.from(accountData.data.conversations.values())
+                                    : accountData.data.conversations;
+                                // topicId 是 conversationId
+                                targetConversation = conversationsList.find(conv =>
+                                    conv.conversationId === topicId ||
+                                    String(conv.conversationId) === String(topicId)
+                                ) || null;
+                                if (targetConversation) {
+                                    logger.info(`[IM WS] Found conversation for ${topicId}: "${targetConversation.userName}"`, {
+                                        conversationId: targetConversation.conversationId,
+                                        userId: targetConversation.userId,
+                                        userName: targetConversation.userName
+                                    });
+                                } else {
+                                    logger.warn(`[IM WS] ⚠️ Conversation not found in DataStore for conversationId: ${topicId}`);
+                                }
+                            }
+                        } catch (err) {
+                            logger.warn(`[IM WS] Failed to get conversation data: ${err.message}`);
+                        }
+                    }
+
                     // 构造回复任务（包含完整的执行信息，Worker 无需查询数据库）
                     const replyTask = {
                         // 基本执行信息
@@ -512,8 +567,9 @@ class IMWebSocketServer {
                             video_id: targetType === 'comment' ? topicId : null,
                             user_id: targetType === 'direct_message' ? (replyToId || topicId) : null,
                             // ⭐ 传递原始数据对象，Worker 自行解析平台特定字段
-                            video_content: videoContent,      // 视频原始对象（包含 title, coverUrl 等）
-                            target_comment: targetComment,    // 目标评论原始对象（包含 content, authorName, sec_uid, level 等）
+                            video_content: videoContent,           // 视频原始对象（包含 title, coverUrl 等）
+                            target_comment: targetComment,         // 目标评论原始对象（包含 content, authorName, level 等）
+                            target_conversation: targetConversation,  // ✅ 目标会话原始对象（包含 userId, userName, userAvatar 等）
                         }
                     };
 
@@ -986,7 +1042,7 @@ class IMWebSocketServer {
                     id: conversation.conversationId,
                     channelId: channelId,
                     title: conversation.userName || '未知用户',
-                    avatar: conversation.platform_user_avatar || conversation.userAvatar || null,  // ✅ 新增: 对方用户头像 (优先使用 platform_user_avatar)
+                    avatar: conversation.userAvatar || null,  // ✅ DataStore 使用 camelCase: userAvatar
                     description: `私信会话 (${conversationMessages.length}条消息)`,
                     createdTime: normalizeTimestamp(conversation.createdAt),  // ✅ 修复: 归一化时间戳
                     lastMessageTime: normalizeTimestamp(actualLastMessageTime),  // ✅ 修复: 使用消息列表中的实际最新时间
@@ -1080,10 +1136,24 @@ class IMWebSocketServer {
                 for (const comment of comments) {
                     // 如果是作者回复，fromId 设置为 'monitor_client'，fromName 设置为 '客服'
                     const isAuthorReply = comment.isAuthorReply || false;
-                    // 处理 parentCommentId: "0" 表示顶级评论(没有父评论)
-                    const parentId = comment.parentCommentId;
-                    // 将 "0", 0, null, undefined, "" 都转换为 null
-                    const replyToId = (!parentId || parentId === '0' || parentId === 0) ? null : parentId;
+
+                    // ✅ 修复：智能判断使用 replyId 或 parentCommentId（支持抖音扁平化显示）
+                    // 优先级：replyId（扁平化） > parentCommentId（树形）
+                    // - 一级评论：replyId = null → replyToId = null
+                    // - 二级评论：replyId = 一级评论 ID → replyToId = 一级评论 ID（扁平化）
+                    // - 三级评论：replyId = 一级评论 ID → replyToId = 一级评论 ID（扁平化）
+                    let replyToId = null;
+                    const replyId = comment.replyId;  // ✅ DataStore 已统一为 camelCase
+                    if (replyId && replyId !== '0' && replyId !== 0) {
+                        // 优先使用 replyId（扁平化显示）
+                        replyToId = String(replyId);
+                    } else {
+                        // 回退到 parentCommentId（树形显示，兼容旧数据）
+                        const parentId = comment.parentCommentId;  // ✅ DataStore 已统一为 camelCase
+                        if (parentId && parentId !== '0' && parentId !== 0) {
+                            replyToId = String(parentId);
+                        }
+                    }
 
                     messages.push({
                         id: comment.commentId,
@@ -1097,8 +1167,9 @@ class IMWebSocketServer {
                         messageCategory: 'comment',  // ✅ 新增: 消息分类为 'comment'
                         timestamp: normalizeTimestamp(comment.createdAt),  // ✅ 修复: 归一化时间戳
                         serverTimestamp: normalizeTimestamp(comment.detectedAt),  // ✅ 修复: 归一化时间戳
-                        replyToId: replyToId,  // ✅ 修复: "0" 转换为 null
+                        replyToId: replyToId,  // ✅ 修复: 使用 replyId 支持扁平化显示
                         replyToContent: null,
+                        replyToUsername: comment.replyToUsername || null,  // ✅ 三级评论显示"回复 @某人"（DataStore 已统一为 camelCase）
                         direction: isAuthorReply ? 'outgoing' : 'incoming',  // 作者回复为outgoing，其他为incoming
                         isAuthorReply: isAuthorReply,
                         isRead: comment.isRead || false  // ✅ 统一标准: 使用 isRead 字段
@@ -1117,8 +1188,9 @@ class IMWebSocketServer {
                 if (dataObj.conversations) {
                     const conversationsList = dataObj.conversations instanceof Map ? Array.from(dataObj.conversations.values()) : dataObj.conversations;
                     conversationsList.forEach(conv => {
-                        if (conv.userId && (conv.platform_user_avatar || conv.userAvatar)) {
-                            userAvatarMap.set(conv.userId, conv.platform_user_avatar || conv.userAvatar);
+                        // ✅ DataStore 使用 camelCase: userAvatar
+                        if (conv.userId && conv.userAvatar) {
+                            userAvatarMap.set(conv.userId, conv.userAvatar);
                         }
                     });
                 }
@@ -2161,6 +2233,164 @@ class IMWebSocketServer {
                 success: false,
                 error: error.message || '获取Worker列表失败'
             });
+        }
+    }
+
+    /**
+     * 处理 Worker 验证请求（短信验证码/扫码验证）
+     */
+    handleWorkerVerificationRequest(socket, data) {
+        try {
+            logger.info(`[IM WS] 🔔 Worker ${socket.id} verification request:`, {
+                requestId: data.request_id,
+                accountId: data.account_id,
+                source: data.source,
+                platform: data.platform,
+                verificationType: data.verification_type,
+                phoneNumber: data.phone_number
+            });
+
+            const verificationData = {
+                request_id: data.request_id,
+                account_id: data.account_id,
+                source: data.source,
+                platform: data.platform,
+                verification_type: data.verification_type,
+                message: data.message,
+                phone_number: data.phone_number,
+                has_sms_button: data.has_sms_button,
+                has_qrcode_option: data.has_qrcode_option,
+                context: data.context,
+                timestamp: data.timestamp
+            };
+
+            // 广播到根命名空间（所有 Monitor 客户端）
+            this.io.emit('verification:request', verificationData);
+
+            // 同时发送到 /client namespace（为未来的新IM客户端准备）
+            const clientNamespace = this.io.of('/client');
+            clientNamespace.emit('verification:request', verificationData);
+
+            logger.info(`[IM WS] Verification request broadcasted to all IM clients, request_id: ${data.request_id}, source: ${data.source}, platform: ${data.platform}`);
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to broadcast verification request:', error);
+        }
+    }
+
+    /**
+     * 处理验证响应（来自 IM 客户端）
+     */
+    handleVerificationResponse(socket, data) {
+        try {
+            logger.info(`[IM WS] 📱 Monitor client ${socket.id} verification response:`, {
+                requestId: data.request_id,
+                choice: data.choice,
+                timestamp: data.timestamp
+            });
+
+            // 转发到 Worker 命名空间
+            const workerNamespace = this.io.of('/worker');
+            workerNamespace.emit(`worker:verification:response:${data.request_id}`, {
+                choice: data.choice,
+                timestamp: data.timestamp || Date.now()
+            });
+
+            logger.info(`[IM WS] Verification response forwarded to Worker, request_id: ${data.request_id}, choice: ${data.choice}`);
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to forward verification response:', error);
+        }
+    }
+
+    /**
+     * 处理 Worker 短信验证码输入请求
+     */
+    handleWorkerSMSCodeRequest(socket, data) {
+        try {
+            logger.info(`[IM WS] 🔔 Worker ${socket.id} SMS code request:`, {
+                requestId: data.request_id,
+                accountId: data.account_id,
+                phoneNumber: data.phone_number
+            });
+
+            const smsCodeData = {
+                request_id: data.request_id,
+                account_id: data.account_id,
+                phone_number: data.phone_number,
+                message: data.message,
+                timestamp: data.timestamp
+            };
+
+            // 广播到根命名空间（所有 Monitor 客户端）
+            this.io.emit('sms_code:request', smsCodeData);
+
+            // 同时发送到 /client namespace（为未来的新IM客户端准备）
+            const clientNamespace = this.io.of('/client');
+            clientNamespace.emit('sms_code:request', smsCodeData);
+
+            logger.info(`[IM WS] SMS code request broadcasted to all IM clients, request_id: ${data.request_id}`);
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to broadcast SMS code request:', error);
+        }
+    }
+
+    /**
+     * 处理短信验证码响应（来自 IM 客户端）
+     */
+    handleSMSCodeResponse(socket, data) {
+        try {
+            logger.info(`[IM WS] 📱 Monitor client ${socket.id} SMS code response:`, {
+                requestId: data.request_id,
+                codeLength: data.sms_code ? data.sms_code.length : 0,
+                timestamp: data.timestamp
+            });
+
+            // 转发到 Worker 命名空间
+            const workerNamespace = this.io.of('/worker');
+            workerNamespace.emit(`worker:sms_code:response:${data.request_id}`, {
+                sms_code: data.sms_code,
+                timestamp: data.timestamp || Date.now()
+            });
+
+            logger.info(`[IM WS] SMS code response forwarded to Worker, request_id: ${data.request_id}`);
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to forward SMS code response:', error);
+        }
+    }
+
+    /**
+     * 处理 Worker 验证完成通知（成功/失败）
+     */
+    handleWorkerVerificationComplete(socket, data) {
+        try {
+            logger.info(`[IM WS] ✅ Worker ${socket.id} verification complete:`, {
+                accountId: data.account_id,
+                success: data.success,
+                message: data.message,
+                timestamp: data.timestamp
+            });
+
+            const completeData = {
+                account_id: data.account_id,
+                success: data.success,
+                message: data.message,
+                timestamp: data.timestamp
+            };
+
+            // 广播到根命名空间（所有 Monitor 客户端）
+            this.io.emit('verification:complete', completeData);
+
+            // 同时发送到 /client namespace（为未来的新IM客户端准备）
+            const clientNamespace = this.io.of('/client');
+            clientNamespace.emit('verification:complete', completeData);
+
+            logger.info(`[IM WS] Verification complete notification broadcasted to all IM clients, account_id: ${data.account_id}, success: ${data.success}`);
+
+        } catch (error) {
+            logger.error('[IM WS] Failed to broadcast verification complete notification:', error);
         }
     }
 }

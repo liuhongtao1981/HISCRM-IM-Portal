@@ -144,10 +144,20 @@ class PlatformBase {
     logger.debug(`✅ Injected account context into page: accountId=${accountId}, hasDataManager=${!!dataManager}`);
 
     // 3. 为该标签页注册 API 拦截器（如果尚未注册）
-    const managerKey = `${accountId}_${tag}`;
+    // ✅ 使用 tabId 确保每个标签页都有独立的拦截器（支持并发任务）
+    const managerKey = `${accountId}_${tabId}`;
     if (!this.apiManagers.has(managerKey)) {
       await this.setupAPIInterceptors(managerKey, page);
       logger.info(`🔌 API interceptors auto-setup for tab: ${tag} (key: ${managerKey})`);
+
+      // ✅ 监听页面关闭事件，自动清理 API 拦截器
+      page.once('close', () => {
+        const apiManager = this.apiManagers.get(managerKey);
+        if (apiManager) {
+          this.apiManagers.delete(managerKey);
+          logger.info(`🧹 Cleaned up API interceptors for closed tab: ${tag} (key: ${managerKey})`);
+        }
+      });
     }
 
     return result;

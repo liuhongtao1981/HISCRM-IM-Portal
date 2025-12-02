@@ -745,7 +745,9 @@ async function findCommentContainerByContentAndAuthor(page, commentContent, auth
                         let fiber = node[k];
                         for (let up = 0; up < 30 && fiber; up++) {
                             const props = fiber.memoizedProps || fiber.pendingProps;
-                            if (props && props.cid && String(props.cid).startsWith('@i/')) {
+                            // ⚠️ 修复：支持数字ID和加密ID两种格式
+                            // 原条件 String(props.cid).startsWith('@i/') 会跳过数字ID
+                            if (props && props.cid) {
                                 // 找到评论组件，检查内容和作者
                                 // ⭐ 方式1：直接从 props 获取（修正字段名）
                                 const propsText = normalizeText(props.text || props.content);
@@ -856,7 +858,8 @@ async function findCommentContainerByContentAndAuthor(page, commentContent, auth
                             let fiber = node[k];
                             for (let up = 0; up < 30 && fiber; up++) {
                                 const props = fiber.memoizedProps || fiber.pendingProps;
-                                if (props && props.cid && String(props.cid).startsWith('@i/')) {
+                                // ⚠️ 修复：支持数字ID和加密ID两种格式
+                                if (props && props.cid) {
                                     const propsText = normalizeText(props.text || props.content);
                                     const propsAuthor = normalizeText(
                                         props.user?.nickname || props.userName || props.replyToUserName || props.nickname

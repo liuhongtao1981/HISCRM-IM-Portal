@@ -255,6 +255,7 @@ class Comment extends BaseDataModel {
     this.isAuthorReply = false;        // 是否作者回复
     this.isLiked = false;              // 当前账户是否点赞
     this.isRead = false;               // ✅ 是否已读（用于未读数统计）
+    this.direction = 'inbound';        // ✅ 方向：inbound（别人发的）/ outbound（我们发的）
   }
 }
 

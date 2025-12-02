@@ -14,14 +14,15 @@
     "better-sqlite3": "^9.2.2",
     "crypto-js": "^4.2.0",
     "dotenv": "^16.3.1",
+    "minimatch": "^9.0.3",
     "node-cron": "^3.0.3",
     "playwright": "^1.56.1",
     "puppeteer": "^21.6.1",
+    "sm-crypto": "^0.3.13",
     "socket.io-client": "^4.7.4",
     "uuid": "^9.0.1",
     "winston": "^3.11.0",
-    "ws": "^8.14.2",
-    "minimatch": "^9.0.3"
+    "ws": "^8.14.2"
   },
   "devDependencies": {
     "jest": "^29.7.0",

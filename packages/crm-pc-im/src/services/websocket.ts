@@ -55,7 +55,7 @@ class WebSocketService {
         })
 
         // 连接到 Master 服务器的根命名空间 (IM WebSocket Server)
-        // 注意：不要使用 /client namespace，IM WebSocket Server 监听根命名空间
+        // 根命名空间处理 monitor:* 协议和验证请求
         this.socket = io(connectionUrl, {
           reconnection: config.websocket?.reconnection ?? true,
           reconnectionDelay: config.websocket?.reconnectionDelay ?? 1000,
@@ -144,6 +144,76 @@ class WebSocketService {
   off(event: string): void {
     if (this.socket) {
       this.socket.off(event)
+    }
+  }
+
+  /**
+   * 监听验证请求事件（来自 Master 服务器）
+   * @param callback 验证请求回调函数
+   */
+  onVerificationRequest(callback: (data: {
+    request_id: string
+    account_id: string
+    source: string
+    platform: string
+    verification_type: 'sms' | 'qrcode'
+    message: string
+    phone_number: string
+    has_sms_button: boolean
+    has_qrcode_option: boolean
+    context: any
+    timestamp: number
+  }) => void): void {
+    if (this.socket) {
+      this.socket.on('verification:request', callback)
+    }
+  }
+
+  /**
+   * 发送验证响应（用户选择）
+   * @param requestId 验证请求ID
+   * @param choice 用户选择 ('yes' 或 'no')
+   */
+  sendVerificationResponse(requestId: string, choice: 'yes' | 'no'): void {
+    if (this.socket) {
+      this.socket.emit('monitor:verification:response', {
+        request_id: requestId,
+        choice,
+        timestamp: Date.now()
+      })
+      console.log(`[WebSocket] 发送验证响应: ${choice}, request_id: ${requestId}`)
+    }
+  }
+
+  /**
+   * 监听短信验证码输入请求事件（来自 Master 服务器）
+   * @param callback 短信验证码请求回调函数
+   */
+  onSMSCodeRequest(callback: (data: {
+    request_id: string
+    account_id: string
+    phone_number: string
+    message: string
+    timestamp: number
+  }) => void): void {
+    if (this.socket) {
+      this.socket.on('sms_code:request', callback)
+    }
+  }
+
+  /**
+   * 发送短信验证码响应
+   * @param requestId 验证码请求ID
+   * @param smsCode 用户输入的短信验证码
+   */
+  sendSMSCodeResponse(requestId: string, smsCode: string): void {
+    if (this.socket) {
+      this.socket.emit('monitor:sms_code:response', {
+        request_id: requestId,
+        sms_code: smsCode,
+        timestamp: Date.now()
+      })
+      console.log(`[WebSocket] 发送短信验证码: request_id: ${requestId}, code_length: ${smsCode.length}`)
     }
   }
 }

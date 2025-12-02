@@ -26,6 +26,7 @@ import {
   upsertChannel
 } from '../store/monitorSlice'
 import websocketService from '../services/websocket'
+import { initVerificationDialogListener } from '../services/verification-dialog'
 import type { ChannelMessage, Topic, Message, NewMessageHint } from '../shared/types-monitor'
 import './MonitorPage.css'
 
@@ -517,6 +518,10 @@ export default function MonitorPage() {
         await websocketService.connect()
         console.log('[监控] WebSocket 连接成功')
         dispatch(setConnected(true))
+
+        // ✅ 初始化验证对话框监听器（用于抖音评论验证等）
+        initVerificationDialogListener()
+        console.log('[监控] 验证对话框监听器已初始化')
 
         // ✅ 监听 WebSocket 断开连接事件
         websocketService.on('disconnect', (reason: string) => {
@@ -2071,6 +2076,12 @@ export default function MonitorPage() {
                                       </Text>
                                     </div>
                                     <div className="wechat-discussion-text">
+                                      {/* ✅ 三级评论显示"回复 @某人" */}
+                                      {(discussion as any).replyToUsername && (
+                                        <Text type="secondary" style={{ fontSize: 12, marginRight: 4 }}>
+                                          回复 @{(discussion as any).replyToUsername}:
+                                        </Text>
+                                      )}
                                       <Text style={{ fontSize: 13 }}>{discussion.content}</Text>
                                     </div>
                                     {/* ✅ 为讨论添加回复按钮 - 强制显示用于测试 */}
